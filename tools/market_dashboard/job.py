@@ -21,6 +21,8 @@ from .concepts import (build_concept_payload, core_concept_ids,
                        load_concept_config)
 from .scoring import load_config, build_dashboard_payload, percentile_rank, score_family
 from .sources import STYLE_DEFINITIONS, INDUSTRY_DEFINITIONS
+from .rotation import score_sector
+from .rotation_store import load_rotation_state, append_rotation_close
 
 
 SHANGHAI = ZoneInfo('Asia/Shanghai')
@@ -678,6 +680,8 @@ class JobResult:
 
 
 def _read_json(path):
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('INVALID_STATE')
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
@@ -688,18 +692,46 @@ def _read_json(path):
 
 def _write_json(path, value):
     """Same-directory atomic replace; runtime derived state only, private mode."""
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('INVALID_STATE')
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with NamedTemporaryFile(mode='w', dir=path.parent, prefix='.dashboard-', delete=False) as file:
             temporary = Path(file.name)
+            os.fchmod(file.fileno(), 0o600)
             json.dump(value, file, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
             file.flush()
             os.fsync(file.fileno())
         temporary.replace(path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def prepare_rotation_state(inputs, state, config):
+    """Task 4 supplies canonical full-universe sectorRows, never provider rows.
+
+    This prepares private history only. It cannot publish or commit; run_job
+    includes it in the legacy success file only after successful publication.
+    Absent rows retain v2 isolation. Intraday rows never advance a leaderboard.
+    """
+    if 'sectorRows' not in inputs or inputs.get('session') != 'close':
+        return state
+    current = inputs['sectorRows']
+    prior = state.get('priceHistory', []) + state.get('closes', [])
+    # Forward-collected evidence supersedes price-only backfill on overlap.
+    prior = list({(row['universe'], row['id'], row['marketDate']): row for row in prior}.values())
+    scored = [score_sector(row, prior, current, config) for row in current]
+    return append_rotation_close(state, dict(schemaVersion='market-dashboard-v3',
+        **{key: config[key] for key in ('sectorScoringVersion', 'sectorUniverseVersion')},
+        observedAt=inputs['observedAt'], marketDate=inputs['marketDate'], session='close',
+        officialClose=True, sectors=scored), config)
 
 
 def _source_modes(batches):
@@ -750,12 +782,15 @@ def run_job(args, deps=None):
     try:
         if not (dry_run and fixture):
             state_path.parent.mkdir(parents=True, exist_ok=True)
+            if (state_path.parent / 'job.lock').is_symlink():
+                raise ValueError('INVALID_STATE')
             lock = (state_path.parent / 'job.lock').open('a')
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return JobResult(True, 'locked')
         state = {} if fixture else _read_json(state_path)
+        rotation_state = {} if fixture else load_rotation_state(state_path, config)
         old_health = {} if fixture else _read_json(health_path)
         last_status = old_health.get('lastPublishStatus', 'published' if state else 'never')
         if last_status not in ('published', 'failed', 'never', 'skipped'):
@@ -787,6 +822,7 @@ def run_job(args, deps=None):
         _local(now)
         stage = 'score'
         inputs = derive_inputs(batches, now, config, concept_config)
+        next_rotation_state = prepare_rotation_state(inputs, rotation_state, config)
         previous = state.get('history', [])
         previous = previous if isinstance(previous, list) else []
         if 'builder' in deps:
@@ -841,7 +877,8 @@ def run_job(args, deps=None):
                 continue
         history.append(payload)
         _write_json(state_path, {'bucket': _bucket(now), 'mode': 'published',
-                    'observedAt': now.isoformat(), 'payload': payload, 'history': history})
+                    'observedAt': now.isoformat(), 'payload': payload, 'history': history,
+                    'rotation': next_rotation_state})
         _write_json(health_path, {'stage': 'complete', 'observedAt': now.isoformat(), 'sourceCounts': counts,
                     'completeness': completeness, 'lastPublishStatus': 'published', 'errorCode': None})
         return JobResult(True, 'published', payload, publish_result=PublishResult(True, result.status_code, result.attempts))

@@ -213,6 +213,87 @@ class JobTests(unittest.TestCase):
                 'collector': lambda config: job.collect_batches(config, fixture=True),
                 'publisher': lambda *args, **kwargs: job.PublishResult(True, 201, 1)} | overrides
 
+    def test_rotation_and_legacy_close_commit_together_only_after_successful_publication(self):
+        from tools.market_dashboard.tests.test_rotation_store import snapshot
+        close = NOW.replace(hour=15, minute=5)
+        derive = job.derive_inputs
+        def sector_inputs(*args):
+            inputs = derive(*args)
+            inputs['sectorRows'] = [dict(id=row['id'], name=row['name'], universe=row['universe'],
+                marketDate=row['marketDate'], session='close', observedAt=row['observedAt'],
+                metrics={'return1d': 1., 'return5d': 2., 'return20d': 3.})
+                for row in snapshot(str(args[1].date()))['sectors']]
+            return inputs
+        def close_batches(config):
+            batches = job.collect_batches(config, fixture=True)
+            for group in ('breadth', 'styles', 'industries', 'concepts'):
+                for row in batches[group].rows:
+                    row['_timestamp'] = config['sources']['now']
+            return batches
+        with TemporaryDirectory() as directory, patch.object(job, 'derive_inputs', sector_inputs):
+            deps = self.deps(directory, now=close, collector=close_batches)
+            for failure in ['publish', 'validation', 'collection']:
+                bad_deps = dict(deps)
+                if failure == 'publish':
+                    bad_deps['publisher'] = lambda *a, **k: job.PublishResult(False, 503, 3, 'HTTP_503')
+                elif failure == 'validation':
+                    bad_deps['builder'] = lambda *a: {'invalid': True}
+                else:
+                    bad_deps['collector'] = lambda config: (_ for _ in ()).throw(ValueError('provider'))
+                failed = job.run_job(self.args(), bad_deps)
+                self.assertFalse(failed.success)
+                self.assertEqual(failed.status, {'publish': 'publish', 'validation': 'validate', 'collection': 'collect'}[failure])
+                self.assertFalse((Path(directory)/'market-dashboard/last-success.json').exists())
+            result = job.run_job(self.args(), deps)
+            self.assertTrue(result.success, result.error_code)
+            path = Path(directory)/'market-dashboard/last-success.json'
+            saved = path.read_bytes()
+            state = json.loads(saved)
+            self.assertEqual(len(state.get('rotation', {}).get('closes', [])), 110)
+            self.assertNotIn('rotation', state['payload'])
+            self.assertNotIn('_rawScores', json.dumps(result.payload))
+            duplicate = job.run_job(self.args(force=True), deps)
+            self.assertEqual(duplicate.status, 'duplicate')
+            self.assertEqual(path.read_bytes(), saved)
+            for mode in ['publish', 'validation', 'collection']:
+                bad_deps = deps | {'now': NOW.replace(day=16, hour=15, minute=5)}
+                if mode == 'publish':
+                    bad_deps['publisher'] = lambda *a, **k: job.PublishResult(False, 503, 3, 'HTTP_503')
+                elif mode == 'validation':
+                    bad_deps['builder'] = lambda *a: {'invalid': True}
+                else:
+                    bad_deps['collector'] = lambda config: (_ for _ in ()).throw(ValueError('provider'))
+                failed = job.run_job(self.args(), bad_deps)
+                self.assertFalse(failed.success)
+                self.assertEqual(failed.status, {'publish': 'publish', 'validation': 'validate', 'collection': 'collect'}[mode])
+                self.assertEqual(path.read_bytes(), saved)
+
+    def test_rotation_incomplete_close_rejects_before_publish_and_preserves_state(self):
+        from tools.market_dashboard.tests.test_rotation_store import snapshot
+        with TemporaryDirectory() as directory:
+            deps = self.deps(directory)
+            self.assertTrue(job.run_job(self.args(), deps).success)
+            path = Path(directory)/'market-dashboard/last-success.json'
+            saved = path.read_bytes()
+            derive = job.derive_inputs
+            def incomplete(*args):
+                inputs = derive(*args)
+                inputs['sectorRows'] = snapshot()['sectors'][:-1]
+                return inputs
+            def close_batches(config):
+                batches = job.collect_batches(config, fixture=True)
+                for group in ('breadth', 'styles', 'industries', 'concepts'):
+                    for row in batches[group].rows:
+                        row['_timestamp'] = config['sources']['now']
+                return batches
+            with patch.object(job, 'derive_inputs', incomplete):
+                result = job.run_job(self.args(), deps | {'now': NOW.replace(hour=15, minute=5),
+                    'collector': close_batches,
+                    'publisher': lambda *a, **k: self.fail('invalid close published')})
+            self.assertFalse(result.success)
+            self.assertEqual(result.status, 'score')
+            self.assertEqual(path.read_bytes(), saved)
+
     def test_fixture_end_to_end_missing_fields_safe_metadata_no_writes(self):
         with TemporaryDirectory() as directory:
             result = job.run_job(self.args(fixture=True, dry_run=True),
