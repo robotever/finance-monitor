@@ -6,14 +6,14 @@ fallback on errors. SourceBatch rows retain provider field names and units;
 consumers must explicitly derive score inputs, never treat these as scores.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 import argparse
 import json
 import math
 import subprocess
 
-from .concepts import concept_definitions
+from .concepts import concept_definitions, load_concept_config
 
 
 WIND_SKILL = Path.home() / '.agents/skills/wind-mcp-skill'
@@ -32,7 +32,8 @@ BREADTH_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅'
 STYLE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率', '5日涨跌幅', '20日涨跌幅', '当日主力净流入额')
 INDUSTRY_FIELDS = ('最新涨跌幅(%)', '最新换手率(%)', '最新成交额(亿元)', '最新主力净流入额(亿元)', '上涨家数', '下跌家数', '5日涨跌幅', '20日涨跌幅')
 INDUSTRY_PRICE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '成交额', '换手率',
-                         '5日涨跌幅', '20日涨跌幅', '当日主力净流入额', '上涨家数', '下跌家数')
+                         '5日涨跌幅', '20日涨跌幅', '当日主力净流入额', '上涨家数', '下跌家数',
+                         '近5日主力净流入额', '近20日主力净流入额', '平盘家数')
 CONCEPT_PRICE_FIELDS = ('最新交易日', '交易时间', '中文简称', '涨跌幅', '5日涨跌幅', '20日涨跌幅',
                         '成交额', '换手率', '当日主力净流入额', '近5日主力净流入额',
                         '近20日主力净流入额', '上涨家数', '下跌家数', '平盘家数')
@@ -163,6 +164,59 @@ def parse_wind_content(envelope):
 def run_command(argv, *, cwd=None):
     """No shell, no response printing, no disk persistence."""
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=90, check=False)
+
+
+def _history_date(value):
+    try:
+        parsed = date.fromisoformat(value)
+        if parsed.isoformat() != value:
+            raise ValueError()
+        return parsed
+    except (TypeError, ValueError):
+        raise SourceError('INVALID_HISTORY_DATE') from None
+
+
+def collect_index_history(runner, windcode: str, begin_date: str, end_date: str,
+                          period: str = '1d') -> list[dict]:
+    """Read one verified daily index history; retain only validated OHLC in memory.
+
+    This is a strict dated price adapter, not a historical flow/breadth source.
+    Provider messages, unrelated columns and CLI metadata never survive it.
+    """
+    verified = {code for code, _ in INDUSTRY_DEFINITIONS}
+    verified.update(code for code, _ in concept_definitions(load_concept_config()))
+    if not isinstance(windcode, str) or windcode not in verified or period != '1d':
+        raise SourceError('INVALID_HISTORY_REQUEST')
+    begin, end = _history_date(begin_date), _history_date(end_date)
+    if begin > end or end > datetime.now(timezone(timedelta(hours=8))).date():
+        raise SourceError('INVALID_HISTORY_DATE')
+    params = dict(windcode=windcode, begin_date=begin_date, end_date=end_date, period=period)
+    argv = ['node', 'scripts/cli.mjs', 'call', 'index_data', 'get_index_kline',
+            json.dumps(params, ensure_ascii=False)]
+    try:
+        rows = parse_wind_content(runner(argv, cwd=str(WIND_SKILL)))
+    except (OSError, subprocess.SubprocessError):
+        raise SourceError('COMMAND_ERROR') from None
+    points = {}
+    for row in rows:
+        if row.get('Wind代码') != windcode:
+            raise SourceError('IDENTITY_MISMATCH')
+        observed = _history_date(row.get('日期', row.get('交易日期')))
+        if not begin <= observed <= end or observed.isoformat() in points:
+            raise SourceError('INVALID_HISTORY_DATE')
+        point = {'id': windcode, 'date': observed.isoformat(), '_units': {}}
+        for key, field_name in [('open', '开盘价'), ('high', '最高价'),
+                                ('low', '最低价'), ('close', '收盘价')]:
+            value = _number(row.get(field_name))
+            if value is None or value <= 0:
+                raise SourceError('INVALID_HISTORY_OHLC')
+            point[key] = value
+            if field_name in row['_units']:
+                point['_units'][key] = row['_units'][field_name]
+        if not point['low'] <= min(point['open'], point['close']) <= max(point['open'], point['close']) <= point['high']:
+            raise SourceError('INVALID_HISTORY_OHLC')
+        points[point['date']] = point
+    return [points[key] for key in sorted(points)]
 
 
 def _error(source, code, group, **safe_details):
