@@ -1,6 +1,38 @@
 {
   "schemaVersion": "market-dashboard-v2",
   "scoringVersion": "market-score-v0.1",
+  "sectorScoringVersion": "sector-score-v0.2",
+  "sectorUniverseVersion": "sector-universe-v0.1",
+  "sectorScoring": {
+    "weights": {
+      "strength": {"priceTrend": 30, "funding": 25, "breadth": 25, "persistence": 20},
+      "opportunity": {"position": 25, "fundsImprovement": 25, "breadthImprovement": 20, "momentumImprovement": 20, "activityWarming": 10},
+      "risk": {"downsideDiffusion": 25, "fundsWithdrawal": 25, "trendDeterioration": 20, "divergence": 15, "crowding": 15}
+    },
+    "componentWeights": {
+      "priceTrend": {"return1d": 20, "return5d": 45, "return20d": 35},
+      "funding": {"flow1d": 30, "flow5d": 40, "flow20d": 30},
+      "persistence": {"meanPercentile": 60, "topTenStreak": 40},
+      "position": {"position60d": 50, "position250d": 50},
+      "fundsImprovement": {"historical20d": 50, "delta5d": 50},
+      "breadthImprovement": {"delta5d": 70, "improvingDays": 30},
+      "momentumImprovement": {"shortAcceleration": 50, "mediumAcceleration": 50},
+      "activityWarming": {"current": 40, "delta5d": 60},
+      "downsideDiffusion": {"current": 50, "delta5d": 50},
+      "fundsWithdrawal": {"funding": 60, "delta5d": 40},
+      "trendDeterioration": {"return5d": 30, "return20d": 40, "slope5d": 30},
+      "crowding": {"activity": 60, "acceleration": 40},
+      "activity": {"turnover": 30, "marketShare": 25, "concentration": 20, "acceleration": 25}
+    },
+    "history": {"shortBaseline": 5, "flowBaseline": 20, "positionWindows": [60, 250], "breadthImprovementCloses": 3, "minimumPersistenceCloses": 3, "persistenceCloses": 5, "topRank": 10},
+    "gates": {"minimumCloses": 20, "coldStartCloses": 60, "minimumOpportunityCompleteness": 70, "improvementThreshold": 60, "requiredImprovementComponents": 2, "highOpportunityThreshold": 70, "unconfirmedOpportunityCap": 69},
+    "heat": {"coldBelow": 30, "activeAt": 70, "crowdedAt": 90, "concentrationCrowdedAt": 95, "warmingImprovement": 15, "minimumCompleteness": 70},
+    "views": {
+      "potentialRotation": {"all": {"opportunity": {"min": 70}, "strength": {"lt": 70}, "risk": {"lt": 70}, "heatState": {"not": "crowded"}, "completeness": {"min": 70}}, "sort": ["opportunity", "strengthChange1d", "id"]},
+      "confirmedMainline": {"all": {"strength": {"min": 70}, "risk": {"lt": 70}, "completeness": {"min": 70}}, "sort": ["strength", "opportunity", "id"]},
+      "risingRisk": {"any": {"risk": {"min": 70}, "riskChange1d": {"min": 10}, "heatState": {"eq": "crowded"}}, "sort": ["risk", "riskChange1d", "id"]}
+    }
+  },
   "normalization": {
     "winsorLower": 0.05,
     "winsorUpper": 0.95,

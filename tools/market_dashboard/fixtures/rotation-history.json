@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic derived closes for persistence replay; no provider observations. Dates are fixture labels, not a trading calendar.",
+  "closes": [
+    {"id":"s4","universe":"industry","marketDate":"2026-11-05","session":"close","sectorScoringVersion":"sector-score-v0.2","sectorUniverseVersion":"sector-universe-v0.1","strength":50,"metrics":{"strengthPercentile":80,"strengthRank":1}},
+    {"id":"s4","universe":"industry","marketDate":"2026-11-06","session":"close","sectorScoringVersion":"sector-score-v0.2","sectorUniverseVersion":"sector-universe-v0.1","strength":50,"metrics":{"strengthPercentile":60,"strengthRank":2}},
+    {"id":"s4","universe":"industry","marketDate":"2026-11-09","session":"close","sectorScoringVersion":"sector-score-v0.2","sectorUniverseVersion":"sector-universe-v0.1","strength":50,"metrics":{"strengthPercentile":40,"strengthRank":3}},
+    {"id":"s4","universe":"industry","marketDate":"2026-11-10","session":"close","sectorScoringVersion":"sector-score-v0.2","sectorUniverseVersion":"sector-universe-v0.1","strength":50,"metrics":{"strengthPercentile":20,"strengthRank":11}},
+    {"id":"s4","universe":"industry","marketDate":"2026-11-11","session":"close","sectorScoringVersion":"sector-score-v0.2","sectorUniverseVersion":"sector-universe-v0.1","strength":50,"metrics":{"strengthPercentile":0,"strengthRank":1}}
+  ]
+}
