@@ -23,16 +23,32 @@ const props = defineProps<{ open: boolean; detail?: SectorDetailView | null; nam
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>(), closeButton = ref<HTMLButtonElement>()
 let previousFocus: HTMLElement | null = null
+let previousBoard: HTMLElement | null = null
+let previousFocusKey: string | undefined
 const selectedObservation = computed(() => props.observations?.filter(point => point.officialClose && point.marketDate === props.selectedCell?.marketDate).at(-1))
 const audit = computed(() => selectedObservation.value ?? props.detail?.audit)
 const axes = ['strength','opportunity','risk'] as const
 const closes = computed(() => [...new Map((props.detail?.series ?? []).filter(point => point.officialClose).map(point => [point.marketDate, point])).values()].slice(-60))
 const names: Record<string, string> = { priceTrend: '相对价格趋势', funding: '资金承接', breadth: '上涨广度', persistence: '趋势持续', position: '历史相对位置', fundsImprovement: '资金边际改善', breadthImprovement: '广度拐点', momentumImprovement: '动能改善', activityWarming: '活跃度升温', downsideDiffusion: '下跌扩散', fundsWithdrawal: '资金撤离', trendDeterioration: '趋势恶化', divergence: '价量资金背离', crowding: '拥挤回撤', activity: '活动度', concentration: '集中度', activityMean5d: '5日活动均值' }
 function componentLabel(key: string) { return names[key] ?? key }
-function restoreFocus() { previousFocus?.focus(); previousFocus = null }
+function restoreFocus() {
+  let target = previousFocus?.isConnected ? previousFocus : null
+  if (!target && previousBoard?.isConnected) {
+    target = [...previousBoard.querySelectorAll<HTMLElement>('[data-rotation-focus]')]
+      .find(element => element.dataset.rotationFocus === previousFocusKey) ??
+      previousBoard.querySelector<HTMLElement>('[role="tab"][aria-selected="true"][aria-controls="rotation-current"]')
+  }
+  target?.focus()
+  previousFocus = null; previousBoard = null; previousFocusKey = undefined
+}
 watch(() => props.open, async open => {
   await nextTick()
-  if (open && dialog.value && !dialog.value.open) { previousFocus = document.activeElement as HTMLElement; dialog.value.showModal(); closeButton.value?.focus() }
+  if (open && dialog.value && !dialog.value.open) {
+    previousFocus = document.activeElement as HTMLElement
+    previousBoard = previousFocus.closest<HTMLElement>('.sector-rotation')
+    previousFocusKey = previousFocus.dataset.rotationFocus
+    dialog.value.showModal(); closeButton.value?.focus()
+  }
   else if (!open && dialog.value?.open) { dialog.value.close(); restoreFocus() }
 }, { immediate: true })
 function trapFocus(event: KeyboardEvent) {

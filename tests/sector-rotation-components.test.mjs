@@ -2,7 +2,7 @@ import test, { before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { createServer } from 'vite'
-import { createSSRApp, h } from 'vue'
+import { createSSRApp, createRenderer, h, markRaw, nextTick, reactive, ssrContextKey } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { deriveSectorRotationView } from '../src/features/market-dashboard/model.mjs'
 let server
@@ -101,4 +101,60 @@ test('multiple close publications on one day count once and historical inspectio
   assert.equal((html.match(/data-detail-close=/g) ?? []).length,1)
   assert.match(html,/实际可得 1 个正式收盘日/)
   assert.match(html,/latestClose/);assert.ok(!html.includes('olderClose'))
+})
+
+test('board identifies replacement row and historical-cell triggers across refreshes', async () => {
+  const html = await render('SectorRotationBoard', { latest: latest(), history })
+  assert.ok(html.includes('data-rotation-focus="[&quot;concept&quot;,&quot;current&quot;,&quot;potential&quot;,&quot;884100.WI&quot;]"'))
+  assert.ok(html.includes('data-rotation-focus="[&quot;concept&quot;,&quot;history&quot;,&quot;strength&quot;,&quot;2026-11-13&quot;,&quot;884100.WI&quot;]"'))
+})
+
+// Run the real SFC setup/watchers with a minimal renderer. Focus doubles model the
+// browser rule that focusing a detached node has no effect; browser QA covers DOM events.
+test('dialog restores connected, replacement and missing board triggers without losing modal wrapping', async () => {
+  const module = await server.ssrLoadModule('/src/components/SectorRotationDetail.vue')
+  const previousDocument = globalThis.document
+  const document = globalThis.document = { activeElement: null }
+  try {
+    for (const surface of ['current', 'history']) for (const refresh of ['ordinary', 'replacement', 'missing']) {
+      const key = JSON.stringify(['concept', surface, surface === 'current' ? 'potential' : 'strength', '884100.WI'])
+      let replacements = []
+      const board = { isConnected: true, querySelectorAll: () => replacements, querySelector: () => fallback }
+      const control = (identity = null) => markRaw({
+        isConnected: true, dataset: { rotationFocus: identity },
+        getAttribute: name => name === 'data-rotation-focus' ? identity : null,
+        closest: selector => selector === '.sector-rotation' ? board : null,
+        getClientRects: () => [1],
+        focus() { if (this.isConnected) document.activeElement = this },
+      })
+      const trigger = control(key), replacement = control(key), unrelated = control('other-sector'), fallback = control()
+      const close = control(), last = control()
+      const props = reactive({ open: false })
+      let state
+      const renderer = createRenderer({ createComment: () => ({}), insert() {}, remove() {}, parentNode() {}, nextSibling() {} })
+      const app = renderer.createApp({ setup() { state = module.default.setup(props, { expose() {}, emit() {} }); return () => null } })
+      app.provide(ssrContextKey, {})
+      app.mount({})
+      await nextTick()
+      state.dialog.value = { open: false, showModal() { this.open = true }, close() { this.open = false }, querySelectorAll: () => [close, last] }
+      state.closeButton.value = close
+      trigger.focus()
+      props.open = true
+      await nextTick(); await nextTick()
+      assert.equal(document.activeElement, close, 'modal starts at its close button')
+      let prevented = false
+      state.trapFocus({ key: 'Tab', shiftKey: true, preventDefault() { prevented = true } })
+      assert.ok(prevented); assert.equal(document.activeElement, last)
+      state.trapFocus({ key: 'Tab', shiftKey: false, preventDefault() {} })
+      assert.equal(document.activeElement, close)
+      if (refresh !== 'ordinary') {
+        trigger.isConnected = false
+        replacements = refresh === 'replacement' ? [unrelated, replacement] : [unrelated]
+      }
+      props.open = false
+      await nextTick(); await nextTick()
+      assert.equal(document.activeElement, refresh === 'ordinary' ? trigger : refresh === 'replacement' ? replacement : fallback, `${surface}: ${refresh}`)
+      app.unmount()
+    }
+  } finally { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument }
 })
