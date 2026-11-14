@@ -1,16 +1,5 @@
-import { authorized, errorResponse, jsonResponse, readBoundedJson, ROTATION_SCHEMA_VERSION, validatePayload } from '../../_lib/market-dashboard.js'
-
-function rankKey(row, axis, weights) {
-  if (row[axis] === null) return null
-  let total = 0, used = 0
-  for (const [name, weight] of Object.entries(weights[axis])) {
-    const value = row.components[name]?.value
-    if (typeof value === 'number' && Number.isFinite(value)) { total += value * weight; used += weight }
-  }
-  let score = used ? total / used : row[axis]
-  if (axis === 'opportunity' && row.opportunity <= 69) score = Math.min(score, 69)
-  return score
-}
+import { authorized, errorResponse, jsonResponse, readBoundedJson, ROTATION_SCHEMA_VERSION,
+  sectorRankKey, validatePayload } from '../../_lib/market-dashboard.js'
 
 function contributors(row, definitions) {
   const entries = []
@@ -39,8 +28,8 @@ function sectorStatement(db, payload, observedAt, row, createdAt) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(observed_at, universe, sector_id, scoring_version) DO NOTHING
   `).bind(observedAt, payload.marketDate, payload.session, row.universe, row.id, row.name,
-    row.strength, rankKey(row, 'strength', definitions.weights), row.opportunity,
-    rankKey(row, 'opportunity', definitions.weights), row.risk, rankKey(row, 'risk', definitions.weights),
+    row.strength, sectorRankKey(row, 'strength', definitions), row.opportunity,
+    sectorRankKey(row, 'opportunity', definitions), row.risk, sectorRankKey(row, 'risk', definitions),
     row.heatState, row.completeness, row.ranks.strength, row.ranks.opportunity, row.ranks.risk,
     row.officialClose ? 1 : 0, row.coldStart ? 1 : 0, row.validCloses, row.improvementEvidence,
     payload.sectorScoringVersion, payload.sectorUniverseVersion, JSON.stringify(row.components),

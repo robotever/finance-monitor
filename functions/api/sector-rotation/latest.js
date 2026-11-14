@@ -18,14 +18,16 @@ function applies(row, view) {
     finite(row.strength) && row.strength < 70 && finite(row.risk) && row.risk < 70 && row.heatState !== 'crowded'
   if (view === 'main') return row.completeness >= 70 && finite(row.strength) && row.strength >= 70 &&
     finite(row.risk) && row.risk < 70
-  return finite(row.risk) && row.risk >= 70 || row.heatState === 'crowded'
+  return finite(row.risk) && row.risk >= 70 || finite(row.change1d.risk) && row.change1d.risk >= 10 || row.heatState === 'crowded'
 }
 
 function compare(view) {
-  const axes = view === 'potential' ? ['opportunity', 'strength'] : view === 'main' ? ['strength', 'opportunity'] : ['risk']
+  const axes = view === 'potential' ? ['opportunity', 'strengthChange1d'] :
+    view === 'main' ? ['strength', 'opportunity'] : ['risk', 'riskChange1d']
   return (left, right) => {
     for (const axis of axes) {
-      const a = left.rankKeys[axis], b = right.rankKeys[axis]
+      const a = axis.endsWith('Change1d') ? left.sector.change1d[axis.slice(0, -8)] : left.rankKeys[axis]
+      const b = axis.endsWith('Change1d') ? right.sector.change1d[axis.slice(0, -8)] : right.rankKeys[axis]
       if (a === null && b !== null) return 1
       if (a !== null && b === null) return -1
       if (a !== b) return b - a
@@ -49,9 +51,27 @@ export async function onRequestGet({ request, env }) {
       WHERE universe = ? AND scoring_version = ? AND universe_version = ? AND observed_at = ?
       ORDER BY sector_id ASC
     `).bind(selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION, latest.observed_at).all()
-    const sectors = rows.results.map(row => ({ sector: publicSectorRow(row), rankKeys: {
+    const priorSnapshot = await env.MARKET_DB.prepare(`
+      SELECT market_date, MAX(observed_at) AS observed_at FROM sector_rotation_snapshots
+      WHERE universe = ? AND scoring_version = ? AND universe_version = ? AND official_close = 1 AND market_date < ?
+      GROUP BY market_date ORDER BY market_date DESC LIMIT 1
+    `).bind(selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION, latest.market_date).first()
+    const prior = new Map()
+    if (priorSnapshot) {
+      const priorRows = await env.MARKET_DB.prepare(`
+        SELECT sector_id, strength, opportunity, risk FROM sector_rotation_snapshots
+        WHERE universe = ? AND scoring_version = ? AND universe_version = ? AND observed_at = ?
+      `).bind(selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION, priorSnapshot.observed_at).all()
+      for (const row of priorRows.results) prior.set(row.sector_id, row)
+    }
+    const sectors = rows.results.map(row => {
+      const sector = publicSectorRow(row), baseline = prior.get(row.sector_id)
+      sector.change1d = Object.fromEntries(['strength','opportunity','risk'].map(axis => [axis,
+        baseline && finite(sector[axis]) && finite(baseline[axis]) ? sector[axis] - baseline[axis] : null]))
+      return { sector, rankKeys: {
       strength: row.strength_rank_key, opportunity: row.opportunity_rank_key, risk: row.risk_rank_key,
-    }})).filter(row => applies(row.sector, selected.view)).sort(compare(selected.view)).map(row => row.sector)
+      }}
+    }).filter(row => applies(row.sector, selected.view)).sort(compare(selected.view)).map(row => row.sector)
     return jsonResponse({ observedAt: latest.observed_at, marketDate: latest.market_date, session: latest.session,
       universe: selected.universe, view: selected.view, scoringVersion: SECTOR_SCORING_VERSION,
       universeVersion: SECTOR_UNIVERSE_VERSION, sectors }, 200, 'public, max-age=30, s-maxage=60')

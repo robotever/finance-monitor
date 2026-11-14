@@ -22,13 +22,23 @@ export async function onRequestGet({ request, env }) {
     const dates = datesResult.results.map(row => row.market_date).reverse()
     if (!dates.length) return errorResponse('NO_SNAPSHOT', 404)
     const placeholders = dates.map(() => '?').join(',')
+    // The last collected official snapshot is canonical for the entire date;
+    // choose once per universe/version, then read every sector from that snapshot.
     const result = await env.MARKET_DB.prepare(`
-      SELECT market_date, sector_id, sector_name, ${selected.axis} AS score, ${selected.axis}_rank AS rank
-      FROM sector_rotation_snapshots
-      WHERE universe = ? AND scoring_version = ? AND universe_version = ? AND official_close = 1
-        AND market_date IN (${placeholders})
-      ORDER BY sector_id ASC, market_date ASC
-    `).bind(selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION, ...dates).all()
+      WITH chosen AS (
+        SELECT market_date, MAX(observed_at) AS observed_at FROM sector_rotation_snapshots
+        WHERE universe = ? AND scoring_version = ? AND universe_version = ? AND official_close = 1
+          AND market_date IN (${placeholders})
+        GROUP BY market_date
+      )
+      SELECT rows.market_date, rows.sector_id, rows.sector_name, rows.${selected.axis} AS score,
+        rows.${selected.axis}_rank AS rank
+      FROM sector_rotation_snapshots AS rows
+      JOIN chosen ON chosen.market_date = rows.market_date AND chosen.observed_at = rows.observed_at
+      WHERE rows.universe = ? AND rows.scoring_version = ? AND rows.universe_version = ? AND rows.official_close = 1
+      ORDER BY rows.sector_id ASC, rows.market_date ASC
+    `).bind(selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION, ...dates,
+      selected.universe, SECTOR_SCORING_VERSION, SECTOR_UNIVERSE_VERSION).all()
     const grouped = new Map()
     for (const row of result.results) {
       if (!grouped.has(row.sector_id)) grouped.set(row.sector_id, { id: row.sector_id, name: row.sector_name, points: new Map() })

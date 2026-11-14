@@ -191,6 +191,23 @@ function validateV2Payload(payload) {
 
 const COMPONENT_FIELDS = ['value', 'coverage', 'missing', 'usedWeight', 'totalWeight',
   'effectiveWeight', 'percentile', 'parts']
+const ROTATION_COMPONENT_NAMES = ['priceTrend','funding','breadth','activity','concentration','activityMean5d',
+  'persistence','position','fundsImprovement','breadthImprovement','momentumImprovement','activityWarming',
+  'downsideDiffusion','fundsWithdrawal','trendDeterioration','divergence','crowding']
+const ROTATION_PART_NAMES = ['acceleration','activity','concentration','current','delta5d','flow1d','flow20d','flow5d',
+  'funding','historical20d','improvingDays','marketShare','meanPercentile','mediumAcceleration','position250d',
+  'position60d','return1d','return20d','return5d','shortAcceleration','slope5d','topTenStreak','turnover']
+const ROTATION_COMPONENT_PARTS = {
+  priceTrend: ['return1d','return5d','return20d'], funding: ['flow1d','flow5d','flow20d'],
+  activity: ['turnover','marketShare','concentration','acceleration'], persistence: ['meanPercentile','topTenStreak'],
+  position: ['position60d','position250d'], fundsImprovement: ['historical20d','delta5d'],
+  breadthImprovement: ['delta5d','improvingDays'], momentumImprovement: ['shortAcceleration','mediumAcceleration'],
+  activityWarming: ['current','delta5d'], downsideDiffusion: ['current','delta5d'],
+  fundsWithdrawal: ['funding','delta5d'], trendDeterioration: ['return5d','return20d','slope5d'],
+  crowding: ['activity','acceleration'],
+}
+const ROTATION_GATES = { minimumCloses: 20, coldStartCloses: 60, minimumOpportunityCompleteness: 70,
+  improvementThreshold: 60, requiredImprovementComponents: 2, highOpportunityThreshold: 70, unconfirmedOpportunityCap: 69 }
 const HEAT_STATES = ['cold', 'neutral', 'warming', 'active', 'crowded']
 const FORBIDDEN_DERIVED_KEYS = new Set(['rawRows', 'rawResponse', 'authorization', 'token', '_units',
   '_timestamp', '_rawScores', 'metrics', 'history', 'indicators', 'netFlow1d', 'amount1d', 'close'])
@@ -224,6 +241,26 @@ function validateAuditDefinitions(definitions) {
     requireValid(record(settings) && Object.keys(settings).length > 0 &&
       Object.values(settings).every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0))
   }
+  requireValid(shape(definitions.gates, Object.keys(ROTATION_GATES)) &&
+    Object.entries(ROTATION_GATES).every(([key, value]) => definitions.gates[key] === value))
+}
+
+export function sectorRankKey(row, axis, definitions) {
+  if (row[axis] === null) return null
+  let total = 0, used = 0
+  for (const [name, weight] of Object.entries(definitions.weights[axis])) {
+    const value = row.components[name]?.value
+    if (numeric(value)) { total += value * weight; used += weight }
+  }
+  if (!used) return row[axis]
+  let score = total / used
+  if (axis === 'opportunity') {
+    const gates = definitions.gates
+    const improvements = ['fundsImprovement','breadthImprovement','momentumImprovement']
+      .filter(name => numeric(row.components[name]?.value) && row.components[name].value >= gates.improvementThreshold).length
+    if (improvements < gates.requiredImprovementComponents) score = Math.min(score, gates.unconfirmedOpportunityCap)
+  }
+  return score
 }
 
 function decodeAudit(block) {
@@ -231,7 +268,10 @@ function decodeAudit(block) {
     Array.isArray(block.componentFields) && block.componentFields.length === COMPONENT_FIELDS.length &&
     block.componentFields.every((field, index) => field === COMPONENT_FIELDS[index]))
   requireValid(strings(block.componentPartNames) && new Set(block.componentPartNames).size === block.componentPartNames.length &&
+    block.componentPartNames.length === ROTATION_PART_NAMES.length &&
+    ROTATION_PART_NAMES.every(name => block.componentPartNames.includes(name)) &&
     strings(block.missingReasons) && new Set(block.missingReasons).size === block.missingReasons.length &&
+    block.missingReasons.every(reason => /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*$/.test(reason)) &&
     Array.isArray(block.componentNodes) && block.componentNodes.length > 0)
   const decoded = new Map(), visiting = new Set()
   const decode = index => {
@@ -255,7 +295,8 @@ function decodeAudit(block) {
         const parts = {}
         for (const [name, child] of value) {
           const keyName = block.componentPartNames[name]
-          requireValid(!Object.hasOwn(parts, keyName)); parts[keyName] = decode(child)
+          requireValid(!Object.hasOwn(parts, keyName))
+          Object.defineProperty(parts, keyName, { value: decode(child), enumerable: true, writable: true, configurable: true })
         }
         result[key] = parts
       } else {
@@ -272,12 +313,23 @@ function decodeAudit(block) {
   return decode
 }
 
+function validateSectorSourceTime(sourceAt, collectedAt, marketDate, officialClose) {
+  const source = timestamp(sourceAt), collected = timestamp(collectedAt)
+  const earliest = new Date(collected.millis - 30 * 60000).toISOString()
+    .replace('Z', `${collected.utc.slice(-4, -1)}Z`)
+  requireValid(source.utc <= collected.utc && source.utc >= earliest &&
+    new Date(source.millis + 8 * 3600000).toISOString().slice(0, 10) === marketDate)
+  if (officialClose) requireValid(source.utc >= timestamp(`${marketDate}T15:00:00+08:00`).utc &&
+    collected.utc <= timestamp(`${marketDate}T15:30:00+08:00`).utc)
+}
+
 function validateRotationRow(row, universe, ids, block, decode) {
   requireValid(shape(row, ['id', 'name', 'universe', 'observedAt', 'strength', 'opportunity', 'risk',
     'heatState', 'axisCompleteness', 'completeness', 'coldStart', 'validCloses', 'improvementEvidence',
     'ranks', 'leaderboard', 'officialClose', 'components', 'missing']))
+  validateSectorSourceTime(row.observedAt, block.observedAt, block.marketDate, block.officialClose)
   requireValid(ids.includes(row.id) && row.universe === universe && typeof row.name === 'string' && row.name.length <= 100 &&
-    sameInstant(row.observedAt, block.observedAt) && row.officialClose === block.officialClose)
+    row.officialClose === block.officialClose)
   for (const axis of ['strength', 'opportunity', 'risk']) {
     requireValid(row[axis] === null || integer(row[axis], 0, 100))
     const maximum = universe === 'industry' ? 35 : 75
@@ -296,11 +348,42 @@ function validateRotationRow(row, universe, ids, block, decode) {
       integer(board.topTenStreak, 0, 1000000) && integer(board.topTenCount15d, 0, 15) &&
       (board.rankChange === null || integer(board.rankChange, -74, 74)))
   }
-  requireValid(record(row.components) && Object.keys(row.components).length > 0 &&
+  requireValid(record(row.components) && Object.keys(row.components).length === ROTATION_COMPONENT_NAMES.length &&
+    ROTATION_COMPONENT_NAMES.every(name => Object.hasOwn(row.components, name)) &&
     Object.values(row.components).every(index => integer(index, 0, block.componentNodes.length - 1)))
   requireValid(Array.isArray(row.missing) && row.missing.every(index => integer(index, 0, block.missingReasons.length - 1)))
-  return { ...row, components: Object.fromEntries(Object.entries(row.components).map(([name, index]) => [name, decode(index)])),
-    missing: row.missing.map(index => block.missingReasons[index]) }
+  const components = Object.fromEntries(Object.entries(row.components).map(([name, index]) => [name, decode(index)]))
+  const validateComponent = (component, name) => {
+    requireValid(shape(component, ['value', 'coverage', 'missing'], ['usedWeight','totalWeight','effectiveWeight','percentile','parts']))
+    const parts = ROTATION_COMPONENT_PARTS[name]
+    // Crowding legitimately collapses to a leaf for unavailable or quiet activity.
+    if (parts && !(name === 'crowding' && !Object.hasOwn(component, 'parts'))) {
+      requireValid(shape(component.parts, parts) && parts.length === Object.keys(component.parts).length &&
+        ['usedWeight','totalWeight','effectiveWeight'].every(key => Object.hasOwn(component, key)))
+      for (const [part, child] of Object.entries(component.parts)) {
+        const nested = name === 'activityWarming' && part === 'current' ? 'activity' : part
+        validateComponent(child, ['activity', 'funding'].includes(nested) ? nested : null)
+      }
+    } else requireValid(!Object.hasOwn(component, 'parts'))
+  }
+  Object.entries(components).forEach(([name, component]) => validateComponent(component, name))
+  requireValid(safeDerivedTree(components))
+  const gates = block.auditDefinitions.gates
+  const improvements = ['fundsImprovement','breadthImprovement','momentumImprovement']
+    .filter(name => numeric(components[name].value) && components[name].value >= gates.improvementThreshold).length
+  requireValid(row.improvementEvidence === improvements)
+  if (row.opportunity !== null) {
+    const opportunityCoverage = Object.entries(block.auditDefinitions.weights.opportunity)
+      .reduce((sum, [name, weight]) => sum + (numeric(components[name].value) ? weight * components[name].coverage : 0), 0)
+    requireValid(row.validCloses >= gates.minimumCloses &&
+      row.axisCompleteness.opportunity >= gates.minimumOpportunityCompleteness &&
+      opportunityCoverage >= gates.minimumOpportunityCompleteness &&
+      Math.abs(opportunityCoverage - row.axisCompleteness.opportunity) < 1e-9)
+    if (row.opportunity >= gates.highOpportunityThreshold) requireValid(improvements >= gates.requiredImprovementComponents)
+    const raw = sectorRankKey({ ...row, components }, 'opportunity', block.auditDefinitions)
+    requireValid(raw !== null && Math.floor(raw + .5) === row.opportunity)
+  }
+  return { ...row, components, missing: row.missing.map(index => block.missingReasons[index]) }
 }
 
 function validateRotationPayload(payload) {
@@ -409,9 +492,10 @@ export function publicSectorRow(row, audit = false) {
       ['strength', 'opportunity', 'risk'].includes(item.axis) && typeof item.component === 'string' &&
       [item.value, item.weight, item.impact].every(value => typeof value === 'number' && Number.isFinite(value))) &&
     shape(provenance, ['source', 'observedAt', 'marketDate', 'session', 'officialClose', 'sectorScoringVersion', 'sectorUniverseVersion']) &&
-    provenance.source === 'Wind' && sameInstant(provenance.observedAt, row.observed_at) && provenance.marketDate === row.market_date &&
+    provenance.source === 'Wind' && provenance.marketDate === row.market_date &&
     provenance.session === row.session && provenance.officialClose === Boolean(row.official_close) &&
     provenance.sectorScoringVersion === row.scoring_version && provenance.sectorUniverseVersion === row.universe_version)
+  validateSectorSourceTime(provenance.observedAt, row.observed_at, row.market_date, Boolean(row.official_close))
   return { ...result, observedAt: row.observed_at, marketDate: row.market_date, session: row.session,
     officialClose: Boolean(row.official_close), components, missing, contributors, provenance, scoringVersion: row.scoring_version,
     universeVersion: row.universe_version }

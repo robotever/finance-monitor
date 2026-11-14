@@ -54,23 +54,94 @@ print(json.dumps(results))
   }
 }
 
-function rotationPayload() {
+function rotationPayload({ collection = '2026-11-13T15:00:00+08:00', industrySource = collection,
+  conceptSource = collection } = {}) {
   return JSON.parse(execFileSync('python3', ['-B', '-c', `
-import json
+import json, sys
+from pathlib import Path
+from tools.market_dashboard import job
+from tools.market_dashboard.tests.test_job import rotation_batches
+config = json.loads(Path('config/market-dashboard.json').read_text())
+config.setdefault('sources', {})['now'] = sys.argv[1]
+batches = rotation_batches(config)
+for row in batches['industries'].rows: row['_timestamp'] = sys.argv[2]
+for row in batches['concepts'].rows: row['_timestamp'] = sys.argv[3]
+block = job.build_rotation_block(batches, [], config)
+inputs = job.derive_inputs(batches, job.datetime.fromisoformat(config['sources']['now']), config)
+print(json.dumps(job.build_rotation_payload(inputs, [], block, config), ensure_ascii=False, allow_nan=False,
+                 separators=(',', ':')))
+`, collection, industrySource, conceptSource], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }))
+}
+
+function rotationAuditFixture(mature) {
+  return JSON.parse(execFileSync('python3', ['-B', '-c', `
+import json, sys
+from datetime import date, timedelta
 from pathlib import Path
 from tools.market_dashboard import job
 from tools.market_dashboard.tests.test_job import rotation_batches
 config = json.loads(Path('config/market-dashboard.json').read_text())
 config.setdefault('sources', {})['now'] = '2026-11-13T15:00:00+08:00'
 batches = rotation_batches(config)
-block = job.build_rotation_block(batches, [], config)
+current = job._rotation_inputs(batches, config)
+prior = []
+if sys.argv[1] == 'mature':
+    for offset in range(60):
+        day = str(date(2026, 9, 1) + timedelta(days=offset))
+        for index, item in enumerate(current):
+            prior.append({'id': item['id'], 'universe': item['universe'], 'marketDate': day, 'session': 'close',
+                'sectorScoringVersion': config['sectorScoringVersion'],
+                'sectorUniverseVersion': config['sectorUniverseVersion'], '_rawScores': {'strength': 40 + offset/10},
+                'metrics': {'relativeStrength20d': offset + index/1000, 'flowRatio1d': index/10 + offset/100,
+                    'breadth': 40 + offset/10, 'activityPercentile': 30 + offset/2,
+                    'strengthPercentile': 50 + offset/4, 'strengthRank': index % 10 + 1}})
+rows = job._score_rotation_rows(current, prior, config)
+expected = {row['id']: {'components': row['components'], 'missing': row['missing']} for row in rows}
+block = job.build_rotation_block(batches, prior, config)
 inputs = job.derive_inputs(batches, job.datetime.fromisoformat(config['sources']['now']), config)
-print(json.dumps(job.build_rotation_payload(inputs, [], block, config), ensure_ascii=False, allow_nan=False,
-                 separators=(',', ':')))
-`], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }))
+payload = job.build_rotation_payload(inputs, [], block, config)
+print(json.dumps({'payload': payload, 'expected': expected}, ensure_ascii=False, allow_nan=False, separators=(',', ':')))
+`, mature ? 'mature' : 'cold'], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }))
 }
 
 const clone = value => structuredClone(value)
+function setComponentValue(payload, row, name, value, coverage) {
+  const original = payload.sectorRotation.componentNodes[row.components[name]]
+  const node = structuredClone(original), mask = node[0]
+  assert.ok(mask & 1, `${name} must carry a value field`)
+  node[1] = value
+  if (coverage !== undefined) node[2] = coverage / 100
+  row.components[name] = payload.sectorRotation.componentNodes.push(node) - 1
+}
+function visibleSector(payload, id) {
+  return [...payload.industries, ...payload.concepts.core, ...payload.concepts.dynamic].find(row => row.id === id)
+}
+function configureOpportunity(payload, id, raw, { evidence = 3, validCloses = 60, coverage = 100,
+  publicScore = Math.floor(raw + .5), rank = 1 } = {}) {
+  const row = [...payload.sectorRotation.industries, ...payload.sectorRotation.concepts].find(item => item.id === id)
+  const improvementWeights = [25, 20, 20], lowWeight = improvementWeights.slice(evidence).reduce((sum, value) => sum + value, 0)
+  const highWeight = 100 - lowWeight, high = (raw * 100 - 59 * lowWeight) / highWeight
+  setComponentValue(payload, row, 'position', high, coverage)
+  setComponentValue(payload, row, 'activityWarming', high, coverage)
+  for (const [index, name] of ['fundsImprovement','breadthImprovement','momentumImprovement'].entries()) {
+    setComponentValue(payload, row, name, index < evidence ? high : 59, coverage)
+  }
+  Object.assign(row, { opportunity: publicScore, validCloses, improvementEvidence: evidence, coldStart: validCloses < 60 })
+  row.axisCompleteness.opportunity = coverage
+  row.ranks.opportunity = rank
+  const projected = visibleSector(payload, id)
+  for (const key of ['opportunity','validCloses','improvementEvidence','coldStart','axisCompleteness','ranks']) {
+    projected[key] = structuredClone(row[key])
+  }
+  return row
+}
+function restampUniverse(payload, universe, observedAt) {
+  const rows = universe === 'industry' ? payload.sectorRotation.industries : payload.sectorRotation.concepts
+  for (const row of rows) row.observedAt = observedAt
+  for (const row of [...payload.industries, ...payload.concepts.core, ...payload.concepts.dynamic]) {
+    if (row.universe === universe) row.observedAt = observedAt
+  }
+}
 
 test('rotation migration enforces identity, audit and rank-query contracts', t => {
   assert.ok(existsSync(migrations[1]), 'sector rotation migration must exist')
@@ -133,10 +204,154 @@ test('v3 validation decodes all 110 lossless audit rows and rejects identity, ra
     p => { p.concepts.dynamic[0].selectionScore = 101 },
     p => { p.concepts.dynamic[1] = structuredClone(p.concepts.dynamic[0]) },
     p => { p.sourceMode = { breadth: 'mx' } },
+    p => { p.sectorRotation.componentPartNames[0] = 'rawResponse' },
+    p => { p.sectorRotation.componentPartNames[0] = '__proto__' },
+    p => { const row = p.sectorRotation.industries[0]; row.components.providerPayload = row.components.priceTrend; delete row.components.priceTrend },
+    p => { const row = p.sectorRotation.industries[0]; p.sectorRotation.componentNodes[row.components.priceTrend] = [0] },
+    p => { p.sectorRotation.missingReasons[0] = '/Users/private/provider.json' },
   ]
   for (const mutate of invalid) {
     const candidate = clone(original); mutate(candidate)
     assert.throws(() => validatePayload(candidate), /INVALID_PAYLOAD/)
+  }
+})
+
+test('node-mask audit round-trips exact cold and mature producer trees for both universes', async t => {
+  const { decodeSectorRows, publicSectorRow } = await import('../functions/_lib/market-dashboard.js')
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  for (const mature of [false, true]) {
+    const fixture = rotationAuditFixture(mature), rows = decodeSectorRows(fixture.payload)
+    assert.equal(rows.length, 110)
+    for (const row of rows) {
+      assert.deepEqual({ components: row.components, missing: row.missing }, fixture.expected[row.id])
+    }
+    const db = database(t)
+    assert.equal((await onRequestPost(publishContext(fixture.payload, db))).status, 201)
+    for (const stored of db.execute('SELECT * FROM sector_rotation_snapshots').results) {
+      const row = publicSectorRow(stored, true)
+      assert.deepEqual({ components: row.components, missing: row.missing }, fixture.expected[row.id])
+    }
+  }
+})
+
+test('real v3 builder accepts fresh lagged and differing source times while preserving provenance', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const detail = await rotationHandler('detail'), db = database(t)
+  const candidate = rotationPayload({ collection: '2026-11-13T15:05:00+08:00',
+    industrySource: '2026-11-13T15:00:00+08:00', conceptSource: '2026-11-13T15:01:00+08:00' })
+  assert.equal((await onRequestPost(publishContext(candidate, db))).status, 201)
+  const audit = await (await detail(rotationContext('detail', db, '?universe=industry&id=882100.WI'))).json()
+  assert.equal(audit.history[0].observedAt, '2026-11-13T07:05:00.000000Z')
+  assert.equal(audit.history[0].provenance.observedAt, '2026-11-13T15:00:00+08:00')
+  const concept = await (await detail(rotationContext('detail', db, '?universe=concept&id=884201.WI'))).json()
+  assert.equal(concept.history[0].provenance.observedAt, '2026-11-13T15:01:00+08:00')
+})
+
+test('v3 rejects stale, future, wrong-date and pre-close source observations before storage', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  for (const observedAt of ['2026-11-13T14:34:59+08:00', '2026-11-13T15:05:01+08:00',
+    '2026-11-12T15:00:00+08:00', '2026-11-13T14:59:59+08:00']) {
+    const db = database(t), candidate = rotationPayload({ collection: '2026-11-13T15:05:00+08:00' })
+    restampUniverse(candidate, 'industry', observedAt)
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 400)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM market_dashboard_snapshots').results[0].count, 0)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
+  }
+})
+
+test('source validation respects microseconds and the official close catch-up window', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const original = rotationPayload({ collection: '2026-11-13T15:05:00+08:00' })
+  for (const mutation of ['microsecondFuture', 'afterCloseWindow']) {
+    const candidate = clone(original), db = database(t)
+    if (mutation === 'microsecondFuture') restampUniverse(candidate, 'industry', '2026-11-13T15:05:00.000001+08:00')
+    else candidate.observedAt = candidate.sectorRotation.observedAt = '2026-11-13T15:30:00.000001+08:00'
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 400, mutation)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
+  }
+})
+
+test('opportunity persistence keeps confirmed raw precision and caps only insufficient evidence', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const db = database(t), candidate = rotationPayload()
+  configureOpportunity(candidate, '882100.WI', 69.1, { rank: 2 })
+  configureOpportunity(candidate, '882101.WI', 69.2, { rank: 1 })
+  configureOpportunity(candidate, '882102.WI', 80, { evidence: 1, publicScore: 69, rank: 3 })
+  assert.equal((await onRequestPost(publishContext(candidate, db))).status, 201)
+  const rows = db.execute("SELECT sector_id, opportunity_rank_key FROM sector_rotation_snapshots WHERE sector_id IN ('882100.WI','882101.WI','882102.WI') ORDER BY sector_id").results
+  assert.deepEqual(rows, [
+    { sector_id: '882100.WI', opportunity_rank_key: 69.1 },
+    { sector_id: '882101.WI', opportunity_rank_key: 69.2 },
+    { sector_id: '882102.WI', opportunity_rank_key: 69 },
+  ])
+  db.execute("UPDATE sector_rotation_snapshots SET strength=80, strength_rank_key=80, risk=10, risk_rank_key=10, completeness=90 WHERE sector_id IN ('882100.WI','882101.WI','882102.WI')")
+  const latest = await rotationHandler('latest')
+  const main = await (await latest(rotationContext('latest', db, '?universe=industry&view=main'))).json()
+  assert.deepEqual(main.sectors.filter(row => ['882100.WI','882101.WI','882102.WI'].includes(row.id)).map(row => row.id),
+    ['882101.WI','882100.WI','882102.WI'])
+  assert.deepEqual(db.execute("SELECT sector_id FROM sector_rotation_snapshots WHERE opportunity IS NOT NULL ORDER BY opportunity_rank").results.map(row => row.sector_id),
+    ['882101.WI','882100.WI','882102.WI'])
+})
+
+test('opportunity evidence gates reject fabricated availability and accept exact boundaries', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const cases = [
+    { validCloses: 19, coverage: 100, evidence: 2 },
+    { validCloses: 20, coverage: 69.999, evidence: 2 },
+    { validCloses: 20, coverage: 70, evidence: 1 },
+  ]
+  for (const settings of cases) {
+    const db = database(t), candidate = rotationPayload()
+    configureOpportunity(candidate, '882100.WI', 80, settings)
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 400)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM market_dashboard_snapshots').results[0].count, 0)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
+  }
+  const db = database(t), boundary = rotationPayload()
+  configureOpportunity(boundary, '882100.WI', 80, { validCloses: 20, coverage: 70, evidence: 2 })
+  assert.equal((await onRequestPost(publishContext(boundary, db))).status, 201)
+})
+
+test('opportunity gates use decoded coverage and evidence and cannot be weakened in audit definitions', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const original = rotationPayload()
+  for (const mutation of ['coverage', 'evidence', 'gates']) {
+    const candidate = clone(original), db = database(t)
+    const row = configureOpportunity(candidate, '882100.WI', 80, { evidence: 2, coverage: 70 })
+    if (mutation === 'coverage') setComponentValue(candidate, row, 'position',
+      candidate.sectorRotation.componentNodes[row.components.position][1], 0)
+    if (mutation === 'evidence') {
+      setComponentValue(candidate, row, 'fundsImprovement', 59, 70)
+    }
+    if (mutation === 'gates') {
+      row.validCloses = visibleSector(candidate, row.id).validCloses = 0
+      candidate.sectorRotation.auditDefinitions.gates.minimumCloses = 0
+    }
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 400, mutation)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM market_dashboard_snapshots').results[0].count, 0)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
+  }
+})
+
+test('restored audit names and required nested shapes fail before either table is written', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const original = rotationPayload()
+  for (const mutation of ['rawResponse', '__proto__', 'root', 'empty', 'nested']) {
+    const candidate = clone(original), db = database(t), block = candidate.sectorRotation
+    const row = block.industries[0]
+    if (['rawResponse', '__proto__'].includes(mutation)) block.componentPartNames[0] = mutation
+    if (mutation === 'root') {
+      row.components.providerPayload = row.components.priceTrend; delete row.components.priceTrend
+    }
+    if (mutation === 'empty') block.componentNodes[row.components.priceTrend] = [0]
+    if (mutation === 'nested') {
+      const node = clone(block.componentNodes[row.components.priceTrend])
+      node.at(-1)[0][0] = block.componentPartNames.indexOf('flow1d')
+      row.components.priceTrend = block.componentNodes.push(node) - 1
+    }
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 400, mutation)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM market_dashboard_snapshots').results[0].count, 0)
+    assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
   }
 })
 
@@ -214,7 +429,7 @@ test('rotation latest validates enums, filters the requested view and returns de
   assert.equal(potential.status, 200)
   const body = await potential.json()
   assert.deepEqual(body.sectors.map(row => row.id), ['882103.WI', '882100.WI'])
-  assert.deepEqual(Object.keys(body.sectors[0]).sort(), ['coldStart','completeness','heatState','id','leaderboard','name','opportunity','ranks','risk','strength'])
+  assert.deepEqual(Object.keys(body.sectors[0]).sort(), ['change1d','coldStart','completeness','heatState','id','leaderboard','name','opportunity','ranks','risk','strength'])
   assert.ok(!JSON.stringify(body).includes('components'))
   assert.ok(!JSON.stringify(body).includes('provenance'))
   assert.equal((await (await latest(rotationContext('latest', db, '?universe=industry&view=main'))).json()).sectors[0].id, '882101.WI')
@@ -224,6 +439,73 @@ test('rotation latest validates enums, filters the requested view and returns de
     const response = await latest(rotationContext('latest', db, query))
     assert.equal(response.status, 400)
   }
+})
+
+test('rotation latest applies prior-close changes for risk membership and documented tie breaks', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const latest = await rotationHandler('latest'), db = database(t), candidate = rotationPayload({ collection: '2026-11-13T15:05:00+08:00' })
+  assert.equal((await onRequestPost(publishContext(candidate, db))).status, 201)
+  const columns = '(observed_at, market_date, session, universe, sector_id, sector_name, strength, strength_rank_key, opportunity, opportunity_rank_key, risk, risk_rank_key, heat_state, completeness, strength_rank, opportunity_rank, risk_rank, official_close, cold_start, valid_closes, improvement_evidence, scoring_version, universe_version, components_json, missing_json, contributors_json, leaderboard_json, provenance_json, created_at)'
+  db.execute(`INSERT INTO sector_rotation_snapshots ${columns}
+    SELECT '2026-11-12T07:00:00.000000Z', '2026-11-12', session, universe, sector_id, sector_name,
+      strength, strength_rank_key, opportunity, opportunity_rank_key, risk, risk_rank_key, heat_state,
+      completeness, strength_rank, opportunity_rank, risk_rank, official_close, cold_start, valid_closes,
+      improvement_evidence, scoring_version, universe_version, components_json, missing_json,
+      contributors_json, leaderboard_json, provenance_json, created_at
+    FROM sector_rotation_snapshots WHERE universe='industry'`)
+  db.execute("UPDATE sector_rotation_snapshots SET strength=65, strength_rank_key=65.1, opportunity=82, opportunity_rank_key=82.2, risk=30, risk_rank_key=30.1, heat_state='warming', completeness=90 WHERE market_date='2026-11-13' AND sector_id IN ('882100.WI','882103.WI')")
+  db.execute("UPDATE sector_rotation_snapshots SET strength=50 WHERE market_date='2026-11-12' AND sector_id='882100.WI'")
+  db.execute("UPDATE sector_rotation_snapshots SET strength=60 WHERE market_date='2026-11-12' AND sector_id='882103.WI'")
+  db.execute("UPDATE sector_rotation_snapshots SET risk=60, risk_rank_key=60.2, completeness=90, heat_state='neutral' WHERE market_date='2026-11-13' AND sector_id IN ('882104.WI','882105.WI')")
+  db.execute("UPDATE sector_rotation_snapshots SET risk=45 WHERE market_date='2026-11-12' AND sector_id='882104.WI'")
+  db.execute("UPDATE sector_rotation_snapshots SET risk=51 WHERE market_date='2026-11-12' AND sector_id='882105.WI'")
+  const potential = await (await latest(rotationContext('latest', db, '?universe=industry&view=potential'))).json()
+  assert.deepEqual(potential.sectors.slice(0, 2).map(row => row.id), ['882100.WI', '882103.WI'])
+  assert.deepEqual(potential.sectors.slice(0, 2).map(row => row.change1d.strength), [15, 5])
+  const risk = await (await latest(rotationContext('latest', db, '?universe=industry&view=risk'))).json()
+  assert.ok(risk.sectors.some(row => row.id === '882104.WI'))
+  assert.ok(!risk.sectors.some(row => row.id === '882105.WI'))
+  assert.deepEqual(risk.sectors.filter(row => ['882104.WI','882105.WI'].includes(row.id)).map(row => row.change1d.risk), [15])
+  // Equal risk scores sort by the prior-close increase before stable IDs.
+  db.execute("UPDATE sector_rotation_snapshots SET risk=80, risk_rank_key=80.2 WHERE market_date='2026-11-13' AND sector_id IN ('882104.WI','882105.WI')")
+  db.execute("UPDATE sector_rotation_snapshots SET risk=30 WHERE market_date='2026-11-12' AND sector_id='882105.WI'")
+  const tiedRisk = await (await latest(rotationContext('latest', db, '?universe=industry&view=risk'))).json()
+  assert.deepEqual(tiedRisk.sectors.filter(row => ['882104.WI','882105.WI'].includes(row.id)).map(row => row.id),
+    ['882105.WI','882104.WI'])
+  const sourceRows = db.execute("SELECT * FROM sector_rotation_snapshots WHERE market_date='2026-11-13' AND universe='industry'").results
+  const priorRows = new Map(db.execute("SELECT * FROM sector_rotation_snapshots WHERE market_date='2026-11-12' AND universe='industry'").results.map(row => [row.sector_id,row]))
+  const scorerRows = sourceRows.map(row => ({ id: row.sector_id, universe: row.universe,
+    strength: row.strength, opportunity: row.opportunity, risk: row.risk, heatState: row.heat_state,
+    completeness: row.completeness, _rawScores: Object.fromEntries(['strength','opportunity','risk'].map(axis => [axis,row[`${axis}_rank_key`]])),
+    change1d: Object.fromEntries(['strength','opportunity','risk'].map(axis => [axis,
+      row[axis] !== null && priorRows.get(row.sector_id)?.[axis] != null ? row[axis] - priorRows.get(row.sector_id)[axis] : null])) }))
+  const expected = JSON.parse(execFileSync('python3', ['-B','-c', `
+import json, sys
+from pathlib import Path
+from tools.market_dashboard.rotation import derive_current_views
+config = json.loads(Path('config/market-dashboard.json').read_text())
+print(json.dumps({name: [row['id'] for row in rows] for name, rows in derive_current_views(json.load(sys.stdin), config).items()}))
+`], { input: JSON.stringify(scorerRows), encoding: 'utf8' }))
+  // A same-day close must never become the one-day baseline.
+  const sameDay = sourceRows.map(row => ({ ...row, observed_at: '2026-11-13T07:01:00.000000Z', strength: 0, risk: 0 }))
+  await db.batch(sameDay.map(row => db.prepare(`INSERT INTO sector_rotation_snapshots
+    (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(() => '?').join(',')})`).bind(...Object.values(row))))
+  for (const [view, name] of [['potential','potentialRotation'],['main','confirmedMainline'],['risk','risingRisk']]) {
+    const body = await (await latest(rotationContext('latest', db, `?universe=industry&view=${view}`))).json()
+    assert.deepEqual(body.sectors.map(row => row.id), expected[name])
+  }
+})
+
+test('rotation latest leaves change missing without a prior trading close', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const latest = await rotationHandler('latest'), db = database(t), candidate = rotationPayload()
+  assert.equal((await onRequestPost(publishContext(candidate, db))).status, 201)
+  db.execute("UPDATE sector_rotation_snapshots SET risk=60, risk_rank_key=60.2, completeness=90, heat_state='neutral' WHERE sector_id='882104.WI'")
+  const body = await (await latest(rotationContext('latest', db, '?universe=industry&view=risk'))).json()
+  assert.ok(!body.sectors.some(row => row.id === '882104.WI'))
+  db.execute("UPDATE sector_rotation_snapshots SET risk=70, risk_rank_key=70 WHERE sector_id='882104.WI'")
+  const eligible = await (await latest(rotationContext('latest', db, '?universe=industry&view=risk'))).json()
+  assert.equal(eligible.sectors.find(row => row.id === '882104.WI').change1d.risk, null)
 })
 
 test('rotation history is an official-close matrix and detail alone returns decoded audit with safe provenance', async t => {
@@ -274,6 +556,30 @@ test('detail days bounds distinct market dates rather than an arbitrary row coun
   assert.equal(response.status, 200)
   const body = await response.json()
   assert.deepEqual([...new Set(body.history.map(row => row.marketDate))], ['2026-11-13'])
+})
+
+test('history selects one coherent latest official close per market date regardless of backfill order', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const history = await rotationHandler('history')
+  const base = rotationPayload({ collection: '2026-11-13T15:05:00+08:00' })
+  for (const reverse of [false, true]) {
+    const db = database(t)
+    assert.equal((await onRequestPost(publishContext(base, db))).status, 201)
+    const rows = db.execute("SELECT * FROM sector_rotation_snapshots WHERE universe='industry'").results
+    db.execute("DELETE FROM sector_rotation_snapshots WHERE universe='industry'")
+    const snapshots = [
+      rows.map(row => ({ ...row, observed_at: '2026-11-13T07:00:00.000000Z', strength: 40 })),
+      rows.map(row => ({ ...row, observed_at: '2026-11-13T07:05:00.000000Z', strength: 80 })),
+    ]
+    if (reverse) snapshots.reverse()
+    await db.batch(snapshots.flat().map(row => db.prepare(`INSERT INTO sector_rotation_snapshots
+      (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(() => '?').join(',')})`).bind(...Object.values(row))))
+    const response = await history(rotationContext('history', db, '?universe=industry&axis=strength'))
+    assert.equal(response.status, 200)
+    const matrix = await response.json()
+    assert.equal(matrix.rows.length, 35)
+    assert.ok(matrix.rows.every(row => row.values.length === 1 && row.values[0].score === 80))
+  }
 })
 
 test('rotation read APIs redact semantically corrupt stored audit JSON', async t => {
