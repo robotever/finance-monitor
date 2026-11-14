@@ -293,6 +293,58 @@ test('opportunity persistence keeps confirmed raw precision and caps only insuff
     ['882101.WI','882100.WI','882102.WI'])
 })
 
+test('opportunity half-point reconstruction agrees with Python and rejects inconsistent public scores', async t => {
+  const { validatePayload, sectorRankKey } = await import('../functions/_lib/market-dashboard.js')
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const values = [72.66666666666667, 4.666666666666667, 74.33333333333333,
+    66.33333333333333, 40.333333333333336]
+  const cases = [
+    { values, raw: 51.5, score: 52 },
+    { values: values.map(value => value + 1), raw: 52.5, score: 53 },
+    { values: values.map(value => value - 1), raw: 50.5, score: 51 },
+    { values: [42, 34.666666666666664, 64, 79.33333333333333, 56.666666666666664], raw: 53.5, score: 54 },
+    { values: values.map((value, index) => value - (index === 4 ? .00001 : 0)), score: 51 },
+    { values: values.map((value, index) => value + (index === 4 ? .00001 : 0)), score: 52 },
+  ]
+  const producer = JSON.parse(execFileSync('python3', ['-B', '-c', `
+import json, sys
+from pathlib import Path
+from tools.market_dashboard.scoring import score_normalized_components
+weights = json.loads(Path('config/market-dashboard.json').read_text())['sectorScoring']['weights']['opportunity']
+results = []
+for values in json.load(sys.stdin):
+    components = {name: {'value': value, 'coverage': 1} for name, value in zip(weights, values)}
+    scored = score_normalized_components(components, weights)
+    results.append({'raw': scored.raw, 'score': scored.score, 'completeness': scored.completeness})
+print(json.dumps(results, allow_nan=False))
+`], { cwd: new URL('..', import.meta.url), input: JSON.stringify(cases.map(item => item.values)), encoding: 'utf8' }))
+  const original = rotationPayload()
+  for (const [index, fixture] of cases.entries()) {
+    const expected = producer[index], candidate = clone(original), db = database(t)
+    assert.equal(expected.score, fixture.score)
+    assert.equal(expected.completeness, 100)
+    if (fixture.raw !== undefined) assert.equal(expected.raw, fixture.raw)
+    const row = configureOpportunity(candidate, '882100.WI', expected.raw,
+      { evidence: 2, publicScore: expected.score })
+    for (const [offset, name] of Object.keys(candidate.sectorRotation.auditDefinitions.weights.opportunity).entries()) {
+      setComponentValue(candidate, row, name, fixture.values[offset], 100)
+    }
+    for (const wrongScore of [expected.score - 1, expected.score + 1]) {
+      const invalid = clone(candidate)
+      invalid.sectorRotation.industries[0].opportunity = visibleSector(invalid, row.id).opportunity = wrongScore
+      assert.throws(() => validatePayload(invalid), /INVALID_PAYLOAD/)
+      assert.equal((await onRequestPost(publishContext(invalid, db))).status, 400)
+      assert.equal(db.execute('SELECT COUNT(*) AS count FROM market_dashboard_snapshots').results[0].count, 0)
+      assert.equal(db.execute('SELECT COUNT(*) AS count FROM sector_rotation_snapshots').results[0].count, 0)
+    }
+    const decoded = validatePayload(candidate).sectors.find(item => item.id === row.id)
+    assert.equal(sectorRankKey(decoded, 'opportunity', candidate.sectorRotation.auditDefinitions), expected.raw)
+    assert.equal((await onRequestPost(publishContext(candidate, db))).status, 201)
+    assert.deepEqual(db.execute('SELECT opportunity, opportunity_rank_key FROM sector_rotation_snapshots WHERE sector_id=?',
+      [row.id]).results, [{ opportunity: expected.score, opportunity_rank_key: expected.raw }])
+  }
+})
+
 test('opportunity evidence gates reject fabricated availability and accept exact boundaries', async t => {
   const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
   const cases = [

@@ -245,15 +245,48 @@ function validateAuditDefinitions(definitions) {
     Object.entries(ROTATION_GATES).every(([key, value]) => definitions.gates[key] === value))
 }
 
+// Sum bounded finite terms with an error-free expansion and a final ties-to-even
+// correction, matching the producer's math.fsum rather than rounding each addition.
+function preciseSum(values) {
+  const partials = []
+  for (let value of values) {
+    let index = 0
+    for (let other of partials) {
+      if (Math.abs(value) < Math.abs(other)) [value, other] = [other, value]
+      const high = value + other, low = other - (high - value)
+      if (low) partials[index++] = low
+      value = high
+    }
+    partials.length = index
+    partials.push(value)
+  }
+  let index = partials.length - 1, high = partials[index] ?? 0, low = 0
+  while (index > 0) {
+    const value = high, other = partials[--index]
+    high = value + other
+    low = other - (high - value)
+    if (low) break
+  }
+  if (index > 0 && Math.sign(low) === Math.sign(partials[index - 1])) {
+    const twiceLow = low * 2, rounded = high + twiceLow
+    if (rounded - high === twiceLow) high = rounded
+  }
+  return high
+}
+
 export function sectorRankKey(row, axis, definitions) {
   if (row[axis] === null) return null
   let total = 0, used = 0
+  const terms = []
   for (const [name, weight] of Object.entries(definitions.weights[axis])) {
-    const value = row.components[name]?.value
-    if (numeric(value)) { total += value * weight; used += weight }
+    const component = row.components[name], value = component?.value
+    if (numeric(value) && (axis !== 'opportunity' || component.coverage > 0)) {
+      total += value * weight; used += weight; terms.push([value, weight])
+    }
   }
   if (!used) return row[axis]
-  let score = total / used
+  let score = axis === 'opportunity'
+    ? preciseSum(terms.map(([value, weight]) => value * (weight / used))) : total / used
   if (axis === 'opportunity') {
     const gates = definitions.gates
     const improvements = ['fundsImprovement','breadthImprovement','momentumImprovement']
