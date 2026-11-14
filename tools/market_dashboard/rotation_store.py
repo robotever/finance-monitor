@@ -178,6 +178,31 @@ def _validated_state(value, config):
             _require(row.get('ranks') == by_id[(row['universe'], row['id'])]['ranks'])
             _require(row['metrics'].get('strengthRank') == row['ranks']['strength']
                      and row['metrics'].get('strengthPercentile') == percentile_rank(peers, row['_rawScores']['strength'], config))
+    histories = {}
+    for row in state['closes']:
+        previous = histories.setdefault((row['universe'], row['id']), [])
+        _require('leaderboard' in row)
+        for axis in ('strength', 'opportunity'):
+            stats, rank = row['leaderboard'][axis], row['ranks'][axis]
+            top = rank is not None and rank <= 10
+            # Only the earliest retained close may carry otherwise unavailable
+            # pre-window streak evidence. Every successor must reproduce it.
+            if previous:
+                prior = previous[-1]
+                expected_streak = prior['leaderboard'][axis]['topTenStreak']+1 if top else 0
+                prior_rank = prior['ranks'][axis]
+                expected_change = prior_rank-rank if prior_rank is not None and rank is not None else None
+                _require(stats['topTenStreak'] == expected_streak and stats['rankChange'] == expected_change)
+            else:
+                _require((stats['topTenStreak'] > 0) == top)
+                _require(rank is not None or stats['rankChange'] is None)
+            window = previous[-14:]+[row]
+            count = sum(point['ranks'][axis] is not None and point['ranks'][axis] <= 10 for point in window)
+            # An incomplete retained prefix cannot reveal the order of evicted
+            # hits. Its count is bounded, never used as a continuity anchor.
+            # Once all fifteen ranks are retained this becomes exact equality.
+            _require(count <= stats['topTenCount15d'] <= count+15-len(window))
+        previous.append(row)
     return state
 
 

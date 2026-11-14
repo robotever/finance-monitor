@@ -103,6 +103,84 @@ class StoreTests(unittest.TestCase):
                 with self.subTest(mutation=mutate), self.assertRaises(ValueError):
                     store.load_rotation_state(path, self.config)
 
+    def test_reload_rejects_forged_later_streak_before_retention_can_promote_it(self):
+        state = store.append_rotation_close({}, snapshot('2026-08-14'), self.config)
+        state = store.append_rotation_close(state, snapshot('2026-08-15'), self.config)
+        forged = deepcopy(state)
+        target = next(row for row in forged['closes']
+                      if row['marketDate'] == '2026-08-15' and row['id'] == '882100.WI')
+        target['leaderboard']['strength']['topTenStreak'] = 999
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'; path.write_text(json.dumps(forged))
+            with self.assertRaises(ValueError):
+                store.load_rotation_state(path, self.config)
+            with self.assertRaises(ValueError):
+                store.append_rotation_close(forged, snapshot('2026-11-13'), self.config)
+        self.assertEqual(next(row for row in state['closes'] if row['marketDate'] == '2026-08-15'
+                              and row['id'] == '882100.WI')['leaderboard']['strength']['topTenStreak'], 2)
+
+    def test_reload_checks_each_axis_count_and_rank_change_against_prior_closes(self):
+        state = store.append_rotation_close({}, snapshot('2026-08-14'), self.config)
+        state = store.append_rotation_close(state, snapshot('2026-08-15'), self.config)
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'
+            for axis, field, value in [('strength', 'rankChange', 1),
+                                       ('opportunity', 'topTenStreak', 1),
+                                       ('opportunity', 'rankChange', 0)]:
+                forged = deepcopy(state)
+                target = next(row for row in forged['closes']
+                              if row['marketDate'] == '2026-08-15' and row['id'] == '882100.WI')
+                target['leaderboard'][axis][field] = value
+                path.write_text(json.dumps(forged))
+                with self.subTest(axis=axis, field=field), self.assertRaises(ValueError):
+                    store.load_rotation_state(path, self.config)
+
+    def test_reload_rejects_count_forgery_when_fifteen_closes_are_reconstructible(self):
+        state = store.append_rotation_close({}, snapshot('2026-08-01'), self.config)
+        template = deepcopy(state['closes'])
+        state['closes'] = []
+        for index in range(15):
+            day = (date(2026, 8, 1)+timedelta(days=index)).isoformat()
+            for row in deepcopy(template):
+                row.update(marketDate=day, observedAt=day+'T15:00:02+08:00')
+                for axis in ('strength', 'opportunity'):
+                    rank = row['ranks'][axis]
+                    top = rank is not None and rank <= 10
+                    row['leaderboard'][axis].update(topTenStreak=index+1 if top else 0,
+                        topTenCount15d=index+1 if top else 0,
+                        rankChange=0 if index and rank is not None else None)
+                state['closes'].append(row)
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'; path.write_text(json.dumps(state))
+            self.assertEqual(len(store.load_rotation_state(path, self.config)['closes']), 1650)
+            for axis, forged_count in [('strength', 14), ('opportunity', 1)]:
+                forged = deepcopy(state)
+                target = next(row for row in forged['closes']
+                              if row['marketDate'] == '2026-08-15' and row['id'] == '882100.WI')
+                target['leaderboard'][axis]['topTenCount15d'] = forged_count
+                path.write_text(json.dumps(forged))
+                with self.subTest(axis=axis), self.assertRaises(ValueError):
+                    store.load_rotation_state(path, self.config)
+
+    def test_reload_preserves_only_earliest_anchor_through_repeated_retention(self):
+        state = store.append_rotation_close({}, snapshot('2026-08-14'), self.config)
+        state = store.append_rotation_close(state, snapshot('2026-08-15'), self.config)
+        for row in state['closes']:
+            if row['id'] == '882100.WI':
+                row['leaderboard']['strength'].update(topTenStreak=50 if row['marketDate'] == '2026-08-14' else 51,
+                                                     topTenCount15d=15, rankChange=0)
+        before = deepcopy(state)
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'; path.write_text(json.dumps(state))
+            recovered = store.load_rotation_state(path, self.config)
+            for day, expected in [('2026-11-13', 52), ('2026-11-16', 53)]:
+                recovered = store.append_rotation_close(recovered, snapshot(day), self.config)
+                current = next(row for row in recovered['closes'] if row['marketDate'] == day and row['id'] == '882100.WI')
+                self.assertEqual(current['leaderboard']['strength']['topTenStreak'], expected)
+                path.write_text(json.dumps(recovered))
+                recovered = store.load_rotation_state(path, self.config)
+        self.assertEqual(state, before)
+
     def test_price_history_cannot_smuggle_forward_flow_or_score_fields(self):
         price = store.build_price_backfill({'882100.WI': [dict(id='882100.WI', date='2026-10-01', close=100.)]}, 'sector-universe-v0.1')[0]
         state = store.append_rotation_close({}, snapshot(), self.config)
