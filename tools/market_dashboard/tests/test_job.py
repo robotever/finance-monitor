@@ -14,6 +14,8 @@ from urllib.error import HTTPError, URLError
 from tools.market_dashboard import job
 from tools.market_dashboard.concepts import load_concept_config
 from tools.market_dashboard.scoring import load_config
+from tools.market_dashboard.concepts import concept_definitions
+from tools.market_dashboard.sources import INDUSTRY_DEFINITIONS, SourceBatch
 
 
 NOW = datetime.fromisoformat('2026-11-13T10:15:00+08:00')
@@ -658,6 +660,243 @@ class JobTests(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertEqual(result.error_code, 'FIXTURE_PUBLISH_DISABLED')
             self.assertFalse((Path(directory) / 'market-dashboard/last-success.json').exists())
+
+
+def rotation_batches(config):
+    """Sanitized existing provider fixtures, stamped at a controlled clock."""
+    batches = job.collect_batches(config, fixture=True)
+    for group in ('breadth', 'styles', 'industries', 'concepts'):
+        for row in batches[group].rows:
+            row['_timestamp'] = config['sources']['now']
+    return batches
+
+
+class RotationShadowTests(unittest.TestCase):
+    def setUp(self):
+        self.config = load_config()
+        self.now = NOW.replace(hour=9, minute=50)
+        self.config.setdefault('sources', {})['now'] = self.now.isoformat()
+
+    def test_windows_do_not_backfill_and_use_shanghai_clock(self):
+        schedule = getattr(job, 'scheduled_rotation_session', None)
+        self.assertTrue(callable(schedule), 'rotation scheduler is missing')
+        for clock, expected in [('09:44:59', None), ('09:45:00', '09:45'),
+                ('09:55:00', '09:45'), ('09:55:01', None), ('11:29:59', None),
+                ('11:30:00', '11:30'), ('11:40:00', '11:30'), ('11:40:01', None),
+                ('14:00:00', '14:00'), ('14:10:00', '14:00'), ('14:10:01', None),
+                ('15:00:00', 'close'), ('15:30:00', 'close'), ('15:30:01', None)]:
+            now = datetime.fromisoformat('2026-11-13T'+clock+'+08:00')
+            with self.subTest(clock=clock):
+                self.assertEqual(schedule(now, {}, self.config), expected)
+                self.assertEqual(schedule(now.astimezone(job.timezone.utc), {}, self.config), expected)
+        self.assertIsNone(schedule(NOW.replace(day=14, hour=9, minute=50), {}, self.config))
+        holiday = deepcopy(self.config); holiday['schedule'] = {'tradingDates': ['2026-11-12']}
+        self.assertIsNone(schedule(self.now, {}, holiday))
+        self.assertIsNone(schedule(self.now, {'bucket': '2026-11-13:09:45'}, self.config))
+
+    def test_full_rotation_block_and_mixed_payload_are_derived_and_bounded(self):
+        builder = getattr(job, 'build_rotation_block', None)
+        self.assertTrue(callable(builder), 'rotation block builder is missing')
+        batches = rotation_batches(self.config)
+        block = builder(batches, [], self.config)
+        self.assertEqual(block['sectorScoringVersion'], 'sector-score-v0.2')
+        self.assertEqual(block['sectorUniverseVersion'], 'sector-universe-v0.1')
+        rows = block['industries'] + block['concepts']
+        self.assertEqual({row['id'] for row in block['industries']}, {code for code, _ in INDUSTRY_DEFINITIONS})
+        self.assertEqual({row['id'] for row in block['concepts']}, {code for code, _ in concept_definitions(load_concept_config())})
+        self.assertEqual((len(block['industries']), len(block['concepts'])), (35, 75))
+        for row in rows:
+            self.assertNotIn('heat', row)
+            self.assertIn('heatState', row)
+            self.assertIsNone(row['opportunity'])
+            self.assertLess(row['validCloses'], 20)
+            self.assertIn('components', row)
+            self.assertIn('axisCompleteness', row)
+        inputs = job.derive_inputs(batches, self.now, self.config)
+        payload = job.build_rotation_payload(inputs, [], block, self.config)
+        legacy = job.build_market_payload(inputs, [], self.config)
+        self.assertEqual(payload['schemaVersion'], 'market-dashboard-v3')
+        self.assertEqual(payload['concepts']['scoringVersion'], 'sector-score-v0.2')
+        self.assertEqual(payload['concepts']['selectionScoringVersion'], 'concept-score-v0.1')
+        self.assertEqual(block['auditDefinitions']['gates']['minimumCloses'], 20)
+        for group in ('global', 'aShare', 'styles'):
+            self.assertEqual(payload[group], legacy[group])
+        self.assertEqual(payload['sectorRotation'], block)
+        self.assertEqual(len(payload['concepts']['core']), 25)
+        self.assertEqual(len(payload['concepts']['dynamic']), 10)
+        for row in payload['industries'] + payload['concepts']['core'] + payload['concepts']['dynamic']:
+            self.assertIn('opportunity', row)
+            self.assertNotIn('heat', row)
+        encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()
+        self.assertLessEqual(len(encoded), 256*1024)
+        def check_keys(value):
+            if isinstance(value, dict):
+                self.assertFalse({'metrics', '_rawScores', '_units', '_timestamp', 'rawRows',
+                    'netFlow1d', 'amount1d', 'close', 'token', 'rawResponse'} & value.keys())
+                for child in value.values(): check_keys(child)
+            elif isinstance(value, list):
+                for child in value: check_keys(child)
+        check_keys(payload)
+        self.assertFalse(block['releaseEligible'])
+        self.assertIn('LIVE_HISTORY_UNVERIFIED', block['safeCodes'])
+        with patch.object(job, 'urlopen') as network:
+            result = job.publish_payload(payload, 'https://example.test/publish', 'synthetic')
+            self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
+            network.assert_not_called()
+
+    def test_rotation_rejects_missing_duplicate_unknown_future_or_nonwind_sector_rows(self):
+        builder = getattr(job, 'build_rotation_block', None)
+        self.assertTrue(callable(builder), 'rotation block builder is missing')
+        for mutation in ('missing', 'duplicate', 'unknown', 'future', 'nonwind', 'version'):
+            batches = rotation_batches(self.config)
+            if mutation == 'missing': batches['concepts'].rows.pop()
+            elif mutation == 'duplicate': batches['concepts'].rows[-1] = deepcopy(batches['concepts'].rows[0])
+            elif mutation == 'unknown': batches['industries'].rows[0]['id'] = 'unknown'
+            elif mutation == 'future': batches['concepts'].rows[0]['_timestamp'] = '2026-11-13T09:51:00+08:00'
+            elif mutation == 'version': self.config['sectorUniverseVersion'] = 'unknown'
+            else: batches['concepts'] = SourceBatch('MX', rows=batches['concepts'].rows, source_mode='mx')
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                builder(batches, [], self.config)
+        self.config = load_config()
+
+    def test_local_close_builder_rejects_after_exact_catchup_deadline(self):
+        self.config['sources']['now'] = '2026-11-13T15:30:01+08:00'
+        with self.assertRaises(ValueError):
+            job.build_rotation_block(rotation_batches(self.config), [], self.config)
+
+    def test_shadow_isolates_state_and_health_never_calls_production_publisher(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            production = root/'market-dashboard/last-success.json'
+            production.parent.mkdir(); production.write_text('{"mode":"published","private":"v2"}')
+            health = root/'service-health/market-dashboard.json'
+            health.parent.mkdir(); health.write_text('{"lastPublishStatus":"published"}')
+            before = production.read_bytes(), health.read_bytes()
+            result = job.run_job({'rotation_shadow': True}, {'now': self.now, 'state_root': root,
+                'collector': rotation_batches, 'publisher': lambda *a, **k: self.fail('shadow published')})
+            self.assertTrue(result.success, result.error_code)
+            self.assertEqual(result.status, 'rotation_shadow')
+            self.assertEqual((production.read_bytes(), health.read_bytes()), before)
+            shadow = root/'market-dashboard-shadow/last-success.json'
+            value = json.loads(shadow.read_text())
+            self.assertEqual(value['payload']['schemaVersion'], 'market-dashboard-v3')
+            self.assertEqual(value['rotation']['closes'], [])
+            self.assertEqual(shadow.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(shadow.parent.stat().st_mode & 0o777, 0o700)
+            self.assertTrue((shadow.parent/'health.json').exists())
+            duplicate = job.run_job({'rotation_shadow': True}, {'now': self.now, 'state_root': root,
+                'collector': lambda c: self.fail('duplicate collected')})
+            self.assertEqual(duplicate.status, 'duplicate')
+
+    def test_close_requires_every_sector_timestamp_and_does_not_advance_twice(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            now = self.now.replace(hour=15, minute=5)
+            def premature(config):
+                batches = rotation_batches(config)
+                batches['concepts'].rows[-1]['_timestamp'] = '2026-11-13T14:59:59+08:00'
+                return batches
+            deps = {'now': now, 'state_root': root, 'collector': premature}
+            bad = job.run_job({'rotation_shadow': True}, deps)
+            self.assertFalse(bad.success)
+            self.assertFalse((root/'market-dashboard-shadow/last-success.json').exists())
+            good = job.run_job({'rotation_shadow': True}, deps | {'collector': rotation_batches})
+            self.assertTrue(good.success, good.error_code)
+            state = root/'market-dashboard-shadow/last-success.json'
+            saved = state.read_bytes()
+            value = json.loads(saved)
+            self.assertEqual(len(value['rotation']['closes']), 110)
+            self.assertTrue(all(row['officialClose'] for row in value['rotation']['closes']))
+            self.assertTrue(value['payload']['sectorRotation'].get('officialClose'))
+            published_rows = value['payload']['sectorRotation']['industries']
+            for row in published_rows:
+                self.assertEqual(row['leaderboard']['strength']['topTenCount15d'],
+                                 int(row['ranks']['strength'] <= 10))
+            industry = next(row for row in value['rotation']['closes'] if row['id'] == '882100.WI')
+            self.assertNotEqual(industry['_rawScores']['strength'], industry['strength'])
+            again = job.run_job({'rotation_shadow': True, 'force': True}, deps | {
+                'now': now.replace(minute=25), 'collector': lambda c: self.fail('duplicate close collected')})
+            self.assertEqual(again.status, 'duplicate')
+            self.assertEqual(state.read_bytes(), saved)
+            late = job.run_job({'rotation_shadow': True, 'force': True}, deps | {
+                'now': now.replace(day=16, minute=31), 'collector': lambda c: self.fail('late collected')})
+            self.assertEqual(late.status, 'outside_schedule')
+
+    def test_local_audit_preserves_all_missing_reasons_without_repeated_text(self):
+        block = job.build_rotation_block(rotation_batches(self.config), [], self.config)
+        self.assertIsInstance(block.get('missingReasons'), list)
+        first = next(row for row in block['industries'] if row['id'] == '882100.WI')
+        self.assertTrue(first['missing'])
+        self.assertTrue(all(isinstance(index, int) for index in first['missing']))
+        expanded = [block['missingReasons'][index] for index in first['missing']]
+        self.assertIn('funding.flow5d.missingInput', expanded)
+        self.assertIn('position.position250d.insufficientPositionHistory', expanded)
+        self.assertEqual(first['components']['funding']['coverage'], .3)
+        self.assertIs(block.get('officialClose'), False)
+
+    def test_collection_failure_keeps_shadow_close_and_redacts_errors(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            deps = {'now': self.now, 'state_root': root, 'collector': rotation_batches}
+            self.assertTrue(job.run_job({'rotation_shadow': True}, deps).success)
+            path = root/'market-dashboard-shadow/last-success.json'
+            saved = path.read_bytes()
+            def broken(config):
+                raise RuntimeError('private-token upstream response /private/local/path')
+            result = job.run_job({'rotation_shadow': True}, deps | {
+                'now': self.now.replace(hour=11, minute=35), 'collector': broken})
+            self.assertEqual(result.error_code, 'COLLECTION_FAILED')
+            self.assertEqual(path.read_bytes(), saved)
+            health = (path.parent/'health.json').read_text()
+            self.assertNotIn('private-token', health)
+            self.assertNotIn('/private/local', health)
+
+    def test_live_shadow_respects_shared_provider_lock(self):
+        import fcntl
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock_path = root/'market-dashboard/job.lock'
+            lock_path.parent.mkdir()
+            with lock_path.open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = job.run_job({'rotation_shadow': True}, {'now': self.now, 'state_root': root,
+                    'collector': lambda c: self.fail('lock ignored')})
+            self.assertEqual(result.status, 'locked')
+            self.assertFalse((root/'market-dashboard-shadow').exists())
+
+    def test_fixture_cli_scores_shadow_at_fixed_key_window_without_writing(self):
+        with TemporaryDirectory() as directory, patch.dict(job.os.environ,
+                {'MARKET_DASHBOARD_STATE_ROOT': directory}), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(job.main(['--rotation-shadow', '--fixture', '--dry-run']), 0)
+            self.assertEqual(json.loads(output.getvalue())['status'], 'dry_run')
+            self.assertEqual(list(Path(directory).rglob('*')), [])
+
+    def test_report_is_read_only_metadata_and_skip_flag_cannot_publish(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = {'skip_rotation_publish': True}
+            result = job.run_job(args, {'now': self.now, 'state_root': root,
+                'collector': rotation_batches, 'publisher': lambda *a, **k: self.fail('skip published')})
+            self.assertEqual(result.status, 'rotation_shadow')
+            before = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            with patch.dict(job.os.environ, {'MARKET_DASHBOARD_STATE_ROOT': directory}), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(job.main(['--rotation-report']), 0)
+            summary = json.loads(output.getvalue())
+            self.assertEqual(set(summary), {'counts', 'versions', 'coverage', 'latencySeconds', 'safeCodes'})
+            self.assertEqual(summary['counts']['industries'], 35)
+            self.assertEqual(summary['counts']['concepts'], 75)
+            self.assertNotIn('882100', output.getvalue())
+            self.assertNotIn(directory, output.getvalue())
+            self.assertEqual(before, {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()})
+
+    def test_fixture_shadow_requires_dry_run_and_never_writes_state(self):
+        with TemporaryDirectory() as directory:
+            deps = {'now': self.now, 'state_root': Path(directory)}
+            result = job.run_job({'rotation_shadow': True, 'fixture': True}, deps)
+            self.assertEqual(result.error_code, 'FIXTURE_SHADOW_WRITE_DISABLED')
+            result = job.run_job({'rotation_shadow': True, 'fixture': True, 'dry_run': True}, deps)
+            self.assertTrue(result.success, result.error_code)
+            self.assertEqual(list(Path(directory).rglob('*')), [])
 
 
 class CloseFreshnessTests(unittest.TestCase):

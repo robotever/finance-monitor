@@ -132,9 +132,44 @@ class OperationsTests(unittest.TestCase):
                     self.assertFalse((Path(self.env['HOME']) / 'launchctl-calls').exists())
             link.unlink()
 
+    def test_opt_in_wrapper_runs_v2_then_private_shadow_and_can_be_disabled(self):
+        self.copy_ops()
+        package = self.repo / 'tools/market_dashboard'
+        package.mkdir(parents=True)
+        (self.repo / 'tools/__init__.py').touch()
+        (package / '__init__.py').touch()
+        (package / 'job.py').write_text(
+            'import json, os, sys\nfrom pathlib import Path\n'
+            'with Path(os.environ["TEST_CAPTURE"]).open("a") as f:\n'
+            ' f.write(json.dumps(sys.argv[1:])+"\\n")\n'
+            'print("safe-summary")\n')
+        (self.root / 'scripts/rotate_service_logs.py').write_text('def rotate(path): pass\n')
+        capture = self.root / 'calls.jsonl'
+        self.env.update(TEST_CAPTURE=str(capture), MARKET_DASHBOARD_ROTATION_SHADOW='1')
+        enabled = self.execute('run-market-dashboard.sh')
+        self.assertEqual(enabled.returncode, 0, enabled.stderr)
+        self.assertEqual([json.loads(line) for line in capture.read_text().splitlines()],
+                         [[], ['--rotation-shadow', '--skip-rotation-publish']])
+        shadow_log = self.root / 'logs/market-dashboard-shadow/job.log'
+        self.assertEqual(shadow_log.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(shadow_log.parent.stat().st_mode & 0o777, 0o700)
+        self.assertIn('safe-summary', shadow_log.read_text())
+        capture.unlink()
+        self.env['MARKET_DASHBOARD_ROTATION_SHADOW'] = '0'
+        disabled = self.execute('run-market-dashboard.sh')
+        self.assertEqual(disabled.returncode, 0, disabled.stderr)
+        self.assertEqual(capture.read_text().splitlines(), ['[]'])
+        # An explicit shadow command must not silently run a v2 publish first.
+        capture.unlink()
+        self.env['MARKET_DASHBOARD_ROTATION_SHADOW'] = '1'
+        explicit = self.execute('run-market-dashboard.sh', '--rotation-shadow', '--dry-run')
+        self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        self.assertEqual([json.loads(line) for line in capture.read_text().splitlines()],
+                         [['--rotation-shadow', '--dry-run']])
+
     def test_direct_job_test_module_includes_close_freshness_tests(self):
         result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.tests.test_job', '-v'],
-                                cwd=REPO, capture_output=True, text=True, timeout=30)
+                                cwd=REPO, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('CloseFreshnessTests.test_final_close_remains_fresh', result.stderr)
 

@@ -3,6 +3,10 @@
   "scoringVersion": "market-score-v0.1",
   "sectorScoringVersion": "sector-score-v0.2",
   "sectorUniverseVersion": "sector-universe-v0.1",
+  "rotationSchedule": {
+    "timezone": "Asia/Shanghai",
+    "windows": [["09:45", "09:55"], ["11:30", "11:40"], ["14:00", "14:10"], ["close", "15:30"]]
+  },
   "sectorScoring": {
     "weights": {
       "strength": {"priceTrend": 30, "funding": 25, "breadth": 25, "persistence": 20},
