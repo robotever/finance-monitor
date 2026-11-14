@@ -169,7 +169,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_direct_job_test_module_includes_close_freshness_tests(self):
         result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.tests.test_job', '-v'],
-                                cwd=REPO, capture_output=True, text=True, timeout=60)
+                                cwd=REPO, capture_output=True, text=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('CloseFreshnessTests.test_final_close_remains_fresh', result.stderr)
 

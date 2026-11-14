@@ -742,21 +742,67 @@ def _score_rotation_rows(current, prior_closes, config):
 
 
 def _rotation_projection(row, *, audit=True):
-    """Bounded normalized audit summary; all working precision stays private.
-
-    Component values + coverage reproduce the axis weighting. Shared configured
-    weights live once in auditDefinitions. Full nested leaves and unrounded
-    scores remain in the private close envelope for subsequent calculations.
-    """
+    """Project allowed derived fields; block assembly losslessly indexes audits."""
     fields = ('id', 'name', 'universe', 'observedAt', 'strength', 'opportunity', 'risk',
               'heatState', 'axisCompleteness', 'completeness', 'coldStart', 'validCloses',
               'improvementEvidence', 'ranks', 'leaderboard', 'officialClose')
     projected = {key: deepcopy(row[key]) for key in fields if key in row}
     if audit:
-        projected['components'] = {name: {'value': component['value'], 'coverage': component['coverage']}
-                                   for name, component in row['components'].items()}
+        projected['components'] = deepcopy(row['components'])
         projected['missing'] = row['missing']
     return projected
+
+
+COMPONENT_FIELDS = ('value', 'coverage', 'missing', 'usedWeight', 'totalWeight',
+                    'effectiveWeight', 'percentile', 'parts')
+
+
+def _index_rotation_audits(rows):
+    """Lossless normalized-component DAG, with exact floats and absent fields.
+
+    A node is [presence bitmask, present fields in COMPONENT_FIELDS order].
+    Missing values index missingReasons; parts are [part-name index, node index]
+    pairs. Children precede parents and identical complete nodes share an index.
+    No working score, historical metric or provider input enters this table.
+    """
+    reasons = {reason for row in rows for reason in row['missing']}
+    names = set()
+    def inventory(component):
+        _require(component.keys() <= set(COMPONENT_FIELDS))
+        reasons.update(component.get('missing', []))
+        for name, child in component.get('parts', {}).items():
+            names.add(name)
+            inventory(child)
+    for row in rows:
+        for component in row['components'].values():
+            inventory(component)
+    reasons, names = sorted(reasons), sorted(names)
+    reason_ids = {reason: index for index, reason in enumerate(reasons)}
+    name_ids = {name: index for index, name in enumerate(names)}
+    nodes, node_ids = [], {}
+    def encode(component):
+        mask, values = 0, []
+        for bit, key in enumerate(COMPONENT_FIELDS):
+            if key not in component:
+                continue
+            mask |= 1 << bit
+            value = component[key]
+            if key == 'missing':
+                value = [reason_ids[reason] for reason in value]
+            elif key == 'parts':
+                value = [[name_ids[name], encode(child)] for name, child in value.items()]
+            values.append(value)
+        node = [mask, *values]
+        identity = json.dumps(node, allow_nan=False, separators=(',', ':'))
+        if identity not in node_ids:
+            node_ids[identity] = len(nodes)
+            nodes.append(node)
+        return node_ids[identity]
+    for row in rows:
+        row['components'] = {name: encode(component) for name, component in row['components'].items()}
+        row['missing'] = [reason_ids[reason] for reason in row['missing']]
+    return {'componentEncoding': 'node-mask-v1', 'componentFields': list(COMPONENT_FIELDS),
+            'componentPartNames': names, 'componentNodes': nodes, 'missingReasons': reasons}
 
 
 def build_rotation_block(batches: dict, prior_closes: list[dict], config: dict) -> dict:
@@ -770,20 +816,15 @@ def build_rotation_block(batches: dict, prior_closes: list[dict], config: dict) 
     for row in rows:
         row['leaderboard'] = {axis: leaderboard_stats(closes, row['universe'], axis, row['id'])
                               for axis in ('strength', 'opportunity')}
-    missing_reasons = sorted({reason for row in rows for reason in row['missing']})
-    reason_index = {reason: index for index, reason in enumerate(missing_reasons)}
-    projected = []
-    for row in rows:
-        item = _rotation_projection(row)
-        item['missing'] = [reason_index[reason] for reason in row['missing']]
-        projected.append(item)
+    projected = [_rotation_projection(row) for row in rows]
+    audit_tables = _index_rotation_audits(projected)
     return {'sectorScoringVersion': config['sectorScoringVersion'],
             'sectorUniverseVersion': config['sectorUniverseVersion'],
             'observedAt': config['sources']['now'], 'marketDate': current[0]['marketDate'],
             'session': current[0]['session'], 'officialClose': official,
             'industries': [row for row in projected if row['universe'] == 'industry'],
             'concepts': [row for row in projected if row['universe'] == 'concept'],
-            'missingReasons': missing_reasons,
+            **audit_tables,
             'auditDefinitions': {'weights': config['sectorScoring']['weights'],
                 'componentWeights': config['sectorScoring']['componentWeights'],
                 'gates': config['sectorScoring']['gates'],
@@ -844,7 +885,7 @@ def _read_json(path):
     return data
 
 
-def _write_json(path, value):
+def _write_json(path, value, *, on_replace=None):
     """Same-directory atomic replace; runtime derived state only, private mode."""
     if path.is_symlink() or path.parent.is_symlink():
         raise ValueError('INVALID_STATE')
@@ -858,6 +899,8 @@ def _write_json(path, value):
             file.flush()
             os.fsync(file.fileno())
         temporary.replace(path)
+        if on_replace is not None:
+            on_replace()
         directory = os.open(path.parent, os.O_RDONLY)
         try:
             os.fsync(directory)
@@ -947,6 +990,7 @@ def _run_rotation_job(args, deps):
                 metadata=_rotation_report({'safeCodes': ['INVALID_STATE']}, config))
     lock = None
     stage, metadata = 'state', _rotation_report({}, config)
+    committed = False
     try:
         if not (fixture and dry_run):
             # Share the v2 provider lock, while every JSON write stays in shadow.
@@ -1008,11 +1052,22 @@ def _run_rotation_job(args, deps):
         history = [snapshot for snapshot in previous
                    if _timestamp(snapshot['observedAt']) >= now-timedelta(days=90)]
         history.append(build_market_payload(inputs, previous, config))
-        _write_json(path, {'bucket': bucket, 'mode': 'rotation_shadow', 'payload': payload,
-            'rotation': next_rotation, 'legacyHistory': history})
         _write_json(health_path, metadata)
+        # Health is preparatory. Replacing success is the final commit boundary;
+        # any failure before it leaves the official close available for retry.
+        def acknowledge_replace():
+            nonlocal committed
+            committed = True
+        _write_json(path, {'bucket': bucket, 'mode': 'rotation_shadow', 'payload': payload,
+            'rotation': next_rotation, 'legacyHistory': history}, on_replace=acknowledge_replace)
         return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
     except Exception as error:
+        if committed:
+            # Replacement already consumed this close. A later directory-fsync
+            # failure is a durability warning, never a failed/retryable close.
+            metadata = deepcopy(metadata)
+            metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + ['STATE_DURABILITY_UNCONFIRMED']))
+            return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
         code = 'INVALID_PAYLOAD' if isinstance(error, ValidationError) else {
             'state': 'INVALID_STATE', 'collect': 'COLLECTION_FAILED', 'score': 'SCORING_FAILED',
             'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
@@ -1218,6 +1273,8 @@ def main(argv=None):
                        synthetic=bool(args.fixture))
     if result.error_code:
         summary['errorCode'] = result.error_code
+    if result.metadata:
+        summary['safeCodes'] = result.metadata['safeCodes']
     print(json.dumps(summary, ensure_ascii=False, separators=(',', ':')))
     return 0 if result.success else 1
 

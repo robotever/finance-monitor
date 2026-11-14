@@ -35,7 +35,9 @@ npm run build
 
 ### 板块轮动影子验证（仅本地）
 
-v3 影子任务保留全球环境、A 股整体、六类风格的强度／热度／风险；35 个行业及全部 75 个概念改为强度／机会／风险和热度状态。可见概念仍为 25 个核心与 10 个动态席位，完整的 110 个板块放在 `sectorRotation`。该区块保存归一化组件摘要、各轴完整度、排名和正式收盘上榜统计；组件权重与热度阈值统一放在 `auditDefinitions`，每行 `missing` 的整数索引对应区块的 `missingReasons`，保留全部缺失原因并控制 JSON 正文不超过 256 KiB。完整精度、嵌套组件及历史百分位保留在本地私有收盘状态中。
+v3 影子任务保留全球环境、A 股整体、六类风格的强度／热度／风险；35 个行业及全部 75 个概念改为强度／机会／风险和热度状态。可见概念仍为 25 个核心与 10 个动态席位，完整的 110 个板块放在 `sectorRotation`。该区块保存完整归一化组件证据、各轴完整度、排名和正式收盘上榜统计；组件权重与热度阈值统一放在 `auditDefinitions`，每行 `missing` 的整数索引对应区块的 `missingReasons`，保留全部缺失原因并控制 JSON 正文不超过 256 KiB。私有收盘状态另保留未舍入工作分数和派生历史，供应商原始数据不进入载荷。
+
+完整组件采用 `componentEncoding=node-mask-v1`：每行 `components` 的值是 `componentNodes` 索引；节点数组首项为字段存在位掩码，其余值依照 `componentFields` 中置位字段的顺序排列。字段依次为 `value, coverage, missing, usedWeight, totalWeight, effectiveWeight, percentile, parts`。`missing` 仍索引 `missingReasons`，`parts` 为 `[componentPartNames 索引, 子节点索引]` 数组，子节点先于父节点。共享节点不舍入数值，区分字段缺失与显式 null，可完整恢复嵌套归一化值、历史分位、有效权重和缺失原因。
 
 LaunchAgent 保持已加载及每 5 分钟检查，无需卸载、重装或改间隔。影子任务只在北京时间 09:45–09:55、11:30–11:40、14:00–14:10、15:00–15:30 运行，包含端点，不补跑错过的盘中窗口。每个行业及概念批次的所有行都必须有当日有效时间；正式收盘还要求每行来源时间不早于 15:00，15:30 后不补收盘。`--force` 不绕过这些要求。节假日需提供已确认的 `schedule.tradingDates`；默认仍按工作日近似。
 
@@ -48,7 +50,7 @@ python3 -m tools.market_dashboard.job --rotation-report
 python3 -m tools.market_dashboard.job --rotation-shadow --fixture --dry-run
 ```
 
-命令使用与原任务相同的 `MARKET_DASHBOARD_STATE_ROOT`。影子快照、独立比较历史及健康摘要只写入父项目 `state/market-dashboard-shadow/`（目录 0700、文件 0600）；与 v2 共用采集锁，但不改 v2 的 `last-success.json` 或健康摘要。夹具模式必须加 `--dry-run`，避免污染真实验证状态。测试、夹具及回填的合成载荷一律禁止发布。
+命令使用与原任务相同的 `MARKET_DASHBOARD_STATE_ROOT`。影子快照、独立比较历史及健康摘要只写入父项目 `state/market-dashboard-shadow/`（目录 0700、文件 0600）；与 v2 共用采集锁，但不改 v2 的 `last-success.json` 或健康摘要。健康摘要先写，成功状态的原子替换是最终提交点：此前失败可重试收盘，替换后目录同步失败仍确认已安装的收盘，并在命令摘要返回 `STATE_DURABILITY_UNCONFIRMED`。夹具模式必须加 `--dry-run`，避免污染真实验证状态。测试、夹具及回填的合成载荷一律禁止发布。
 
 经本地验证后，操作者可在稳定 checkout 的父项目 `.env` 设置 `MARKET_DASHBOARD_ROTATION_SHADOW=1`。包装器在每次原 v2 调用后另跑一次本地影子任务；v2 生产更新继续运行。影子日志单独写入私有 `logs/market-dashboard-shadow/`，沿用 2 MB／三份备份的轮换策略。设置为 `0` 或移除该变量即可关闭影子运行，无需停止已加载的服务。显式传入影子命令只运行影子任务。本次代码变更不修改实际 `.env`、LaunchAgent 或生产服务。
 

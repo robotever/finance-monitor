@@ -671,6 +671,32 @@ def rotation_batches(config):
     return batches
 
 
+def decode_rotation_components(block, row):
+    """Independent wire decoder; bit positions and node links are public schema."""
+    if 'componentNodes' not in block:
+        return row['components']
+    fields = ('value', 'coverage', 'missing', 'usedWeight', 'totalWeight',
+              'effectiveWeight', 'percentile', 'parts')
+    if block['componentFields'] != list(fields):
+        raise AssertionError('Unexpected compact component fields')
+    def decode(index):
+        mask, *values = block['componentNodes'][index]
+        iterator = iter(values)
+        result = {}
+        for bit, key in enumerate(fields):
+            if mask & (1 << bit):
+                value = next(iterator)
+                if key == 'missing':
+                    value = [block['missingReasons'][item] for item in value]
+                elif key == 'parts':
+                    value = {block['componentPartNames'][name]: decode(child) for name, child in value}
+                result[key] = value
+        if len(result) != len(values):
+            raise AssertionError('Unexpected compact component values')
+        return result
+    return {name: decode(index) for name, index in row['components'].items()}
+
+
 class RotationShadowTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config()
@@ -831,8 +857,92 @@ class RotationShadowTests(unittest.TestCase):
         expanded = [block['missingReasons'][index] for index in first['missing']]
         self.assertIn('funding.flow5d.missingInput', expanded)
         self.assertIn('position.position250d.insufficientPositionHistory', expanded)
-        self.assertEqual(first['components']['funding']['coverage'], .3)
+        self.assertEqual(decode_rotation_components(block, first)['funding']['coverage'], .3)
         self.assertIs(block.get('officialClose'), False)
+
+    def test_health_or_success_write_failure_cannot_consume_official_close(self):
+        for failed_name in ('health.json', 'last-success.json'):
+            with self.subTest(failed_name=failed_name), TemporaryDirectory() as directory:
+                root = Path(directory)
+                production = root/'market-dashboard/last-success.json'
+                production.parent.mkdir(); production.write_text('{"mode":"published"}')
+                health = root/'service-health/market-dashboard.json'
+                health.parent.mkdir(); health.write_text('{"lastPublishStatus":"published"}')
+                before = production.read_bytes(), health.read_bytes()
+                deps = {'now': self.now.replace(hour=15, minute=5), 'state_root': root,
+                        'collector': rotation_batches}
+                write = job._write_json
+                def fail_write(path, value, **kwargs):
+                    if path.name == failed_name:
+                        raise OSError('synthetic persistence failure')
+                    return write(path, value, **kwargs)
+                with patch.object(job, '_write_json', side_effect=fail_write):
+                    failed = job.run_job({'rotation_shadow': True}, deps)
+                self.assertEqual(failed.error_code, 'STATE_WRITE_FAILED')
+                path = root/'market-dashboard-shadow/last-success.json'
+                self.assertFalse(path.exists(), 'failed run consumed the close')
+                self.assertEqual((production.read_bytes(), health.read_bytes()), before)
+                retry = job.run_job({'rotation_shadow': True}, deps)
+                self.assertEqual(retry.status, 'rotation_shadow')
+                self.assertEqual(len(json.loads(path.read_text())['rotation']['closes']), 110)
+
+    def test_directory_sync_error_after_close_replace_does_not_report_failed_close(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root/'market-dashboard-shadow/last-success.json'
+            fsync = job.os.fsync
+            def fail_after_replace(fd):
+                if path.exists():
+                    raise OSError('synthetic post-replace directory sync failure')
+                return fsync(fd)
+            deps = {'now': self.now.replace(hour=15, minute=5), 'state_root': root,
+                    'collector': rotation_batches}
+            with patch.object(job.os, 'fsync', side_effect=fail_after_replace):
+                result = job.run_job({'rotation_shadow': True}, deps)
+            self.assertTrue(path.exists())
+            self.assertTrue(result.success, 'installed close must be acknowledged as success')
+            self.assertEqual(result.status, 'rotation_shadow')
+            self.assertIn('STATE_DURABILITY_UNCONFIRMED', result.metadata['safeCodes'])
+            with patch.object(job, 'run_job', return_value=result), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(job.main(['--rotation-shadow']), 0)
+            self.assertIn('STATE_DURABILITY_UNCONFIRMED', json.loads(output.getvalue()).get('safeCodes', []))
+
+    def test_compact_audit_decodes_full_private_components_for_both_universes_and_sessions(self):
+        from tools.market_dashboard.tests.test_rotation import history
+        for hour, minute in ((9, 50), (15, 5)):
+            with self.subTest(hour=hour):
+                config = deepcopy(self.config)
+                now = self.now.replace(hour=hour, minute=minute)
+                config['sources']['now'] = now.isoformat()
+                batches = rotation_batches(config)
+                # Known units give both universes real normalized price/breadth
+                # leaves; the dated derived history exercises 60/250 percentiles.
+                for group in ('industries', 'concepts'):
+                    for index, row in enumerate(batches[group].rows):
+                        fields = {'最新涨跌幅(%)' if group == 'industries' else '涨跌幅': index/10,
+                            '5日涨跌幅': index/5, '20日涨跌幅': index/2,
+                            '最新换手率(%)' if group == 'industries' else '换手率': index+1}
+                        row.update(fields)
+                        row['_units'].update({key: '%' for key in fields})
+                        for key, value in [('上涨家数', index+1), ('下跌家数', 100-index), ('平盘家数', 1)]:
+                            row[key] = value; row['_units'][key] = '个'
+                current = job._rotation_inputs(batches, config)
+                prior = history(250, current)
+                # Add explicit official-close rank evidence for leaderboard stats.
+                for point in prior:
+                    point.update(officialClose=True, ranks={'strength': 1, 'opportunity': None, 'risk': 2})
+                block = job.build_rotation_block(batches, prior, config)
+                for universe, group in (('industry', 'industries'), ('concept', 'concepts')):
+                    target = next(row for row in current if row['universe'] == universe)
+                    expected = job.score_sector(target, prior, current, config)['components']
+                    actual = next(row for row in block[group] if row['id'] == target['id'])
+                    decoded = decode_rotation_components(block, actual)
+                    self.assertEqual(decoded, expected)
+                    self.assertIsNotNone(decoded['position']['parts']['position250d']['percentile'])
+                    self.assertIn('effectiveWeight', decoded['funding'])
+                payload = job.build_rotation_payload(job.derive_inputs(batches, now, config), [], block, config)
+                self.assertLessEqual(len(json.dumps(payload, ensure_ascii=False,
+                    allow_nan=False, separators=(',', ':')).encode()), 256*1024)
 
     def test_collection_failure_keeps_shadow_close_and_redacts_errors(self):
         with TemporaryDirectory() as directory:
