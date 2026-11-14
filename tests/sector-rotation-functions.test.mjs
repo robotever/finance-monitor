@@ -678,3 +678,48 @@ test('publication prunes only current-version intraday rows older than 90 days a
     { observed_at: '2026-01-01T07:00:00.000000Z', official_close: 1, scoring_version: 'sector-score-v0.2' },
   ])
 })
+
+test('schema-selected browser reads preserve v2 fallback and isolate histories across newer snapshots', async t => {
+  const { onRequestPost } = await import('../functions/api/market-dashboard/publish.js')
+  const { onRequestGet: latest } = await import('../functions/api/market-dashboard/latest.js')
+  const { onRequestGet: history } = await import('../functions/api/market-dashboard/history.js')
+  const { loadMarketDashboard, loadMarketHistory } = await import('../src/features/market-dashboard/api.mjs')
+  const db = database(t), v3 = rotationPayload()
+  const v2 = JSON.parse(execFileSync('python3', ['-B', '-c', `
+import json
+from tools.market_dashboard.job import run_job
+print(json.dumps(run_job({'fixture': True, 'dry_run': True}).payload))
+`], { encoding: 'utf8' }))
+  assert.equal((await onRequestPost(publishContext(v2, db))).status, 201)
+  assert.equal((await onRequestPost(publishContext(v3, db))).status, 201)
+  const fetcher = url => {
+    const request = new Request(new URL(url, 'https://example.test'))
+    return (new URL(request.url).pathname.endsWith('/latest') ? latest : history)({ request, env: { MARKET_DB: db } })
+  }
+  assert.equal((await (await latest({ env: { MARKET_DB: db } })).json()).schemaVersion, 'market-dashboard-v3')
+  // Explicit and default browser v2 reads must survive a newer shadow v3 snapshot.
+  for (const options of [{}, { schemaVersion: 'market-dashboard-v2' }]) {
+    assert.deepEqual((await loadMarketDashboard(fetcher, options)).data, v2)
+    const result = await loadMarketHistory('5d', fetcher, options)
+    assert.equal(result.error, null)
+    assert.deepEqual(result.data.snapshots.map(row => row.observedAt), ['2026-11-13T02:15:00.000000Z'])
+    assert.ok(result.data.snapshots.every(row => !Object.hasOwn(row.industries[0], 'opportunity')))
+  }
+  // Move v2 ahead of v3: explicit v3 must still use its own latest and anchor.
+  const newerV2 = structuredClone(v2)
+  newerV2.observedAt = '2026-11-14T07:00:00Z'
+  newerV2.marketDate = '2026-11-14'
+  assert.equal((await onRequestPost(publishContext(newerV2, db))).status, 201)
+  const v3Options = { schemaVersion: 'market-dashboard-v3' }
+  assert.deepEqual((await loadMarketDashboard(fetcher, v3Options)).data, v3)
+  const v3History = await loadMarketHistory('5d', fetcher, v3Options)
+  assert.equal(v3History.error, null)
+  assert.deepEqual(v3History.data.snapshots.map(row => [row.observedAt, row.schemaVersion]),
+    [['2026-11-13T07:00:00.000000Z', 'market-dashboard-v3']])
+  const v2History = await loadMarketHistory('5d', fetcher)
+  assert.equal(v2History.error, null)
+  assert.deepEqual(v2History.data.snapshots.map(row => row.observedAt),
+    ['2026-11-13T02:15:00.000000Z', '2026-11-14T07:00:00.000000Z'])
+  assert.deepEqual((await loadMarketDashboard(fetcher)).data, newerV2)
+  assert.deepEqual(await (await latest({ env: { MARKET_DB: db } })).json(), newerV2)
+})

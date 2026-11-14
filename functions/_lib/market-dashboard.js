@@ -30,6 +30,13 @@ export function jsonResponse(value, status = 200, cache = 'no-store') {
   } })
 }
 export function errorResponse(code, status) { return jsonResponse({ error: code }, status) }
+// Omitted selectors preserve the original newest-supported-version route behavior.
+// Null marks an invalid selector, distinct from the absent (undefined) selector.
+export function requestedMarketSchema(request) {
+  const values = request ? new URL(request.url).searchParams.getAll('schemaVersion') : []
+  if (values.length === 0) return undefined
+  return values.length === 1 && [SCHEMA_VERSION, ROTATION_SCHEMA_VERSION].includes(values[0]) ? values[0] : null
+}
 function requireValid(condition) { if (!condition) throw new Error('INVALID_PAYLOAD') }
 function record(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) }
 function shape(value, required, optional = []) {

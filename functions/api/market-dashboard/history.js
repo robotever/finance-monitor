@@ -1,5 +1,5 @@
 import { compactSnapshot, errorResponse, jsonResponse, ROTATION_SCHEMA_VERSION, SCHEMA_VERSION, SCORING_VERSION,
-  SECTOR_SCORING_VERSION, timestamp } from '../../_lib/market-dashboard.js'
+  SECTOR_SCORING_VERSION, requestedMarketSchema, timestamp } from '../../_lib/market-dashboard.js'
 
 const WINDOWS = { '1d': 1, '5d': 5, '20d': 20, '90d': 90 }
 
@@ -7,14 +7,17 @@ export async function onRequestGet({ request, env }) {
   const windows = new URL(request.url).searchParams.getAll('window')
   const window = windows.length === 0 ? '5d' : windows[0]
   if (windows.length > 1 || !Object.hasOwn(WINDOWS, window)) return errorResponse('INVALID_WINDOW', 400)
+  const schemaVersion = requestedMarketSchema(request)
+  if (schemaVersion === null) return errorResponse('INVALID_QUERY', 400)
   try {
     // Anchor to the last observation so offline collectors retain useful history.
     const latest = await env.MARKET_DB.prepare(`
       SELECT observed_at, schema_version, scoring_version FROM market_dashboard_snapshots
-      WHERE (schema_version = ? AND scoring_version = ?) OR (schema_version = ? AND scoring_version = ?)
+      WHERE ((schema_version = ? AND scoring_version = ?) OR (schema_version = ? AND scoring_version = ?))
+        AND (? IS NULL OR schema_version = ?)
       ORDER BY observed_at DESC, CASE WHEN schema_version = ? THEN 0 ELSE 1 END LIMIT 1
     `).bind(ROTATION_SCHEMA_VERSION, SECTOR_SCORING_VERSION, SCHEMA_VERSION, SCORING_VERSION,
-      ROTATION_SCHEMA_VERSION).first()
+      schemaVersion ?? null, schemaVersion ?? null, ROTATION_SCHEMA_VERSION).first()
     if (!latest) return errorResponse('NO_SNAPSHOT', 404)
     const anchor = timestamp(latest.observed_at)
     const lower = new Date(anchor.millis - WINDOWS[window] * 86400000).toISOString()

@@ -29,7 +29,7 @@ function history() {
 test('latest loads real Task 3 nullable 78-object payload without changing its metadata', async () => {
   const { loadMarketDashboard } = await api()
   const result = await loadMarketDashboard(async (url, init) => {
-    assert.equal(url, '/api/market-dashboard/latest')
+    assert.equal(url, '/api/market-dashboard/latest?schemaVersion=market-dashboard-v2')
     assert.ok(init.signal instanceof AbortSignal)
     return response(payload())
   })
@@ -108,7 +108,7 @@ test('caller cancellation is propagated and remains distinct from timeout and ne
 test('history validates requested window and compact snapshots including nullable score axes', async () => {
   const { loadMarketHistory } = await api()
   const result = await loadMarketHistory('5d', async url => {
-    assert.equal(url, '/api/market-dashboard/history?window=5d')
+    assert.equal(url, '/api/market-dashboard/history?window=5d&schemaVersion=market-dashboard-v2')
     return response(history())
   })
   assert.deepEqual(result.data, history())
@@ -124,7 +124,7 @@ test('history validates requested window and compact snapshots including nullabl
 
 test('partial history failure composes with latest success without discarding valid latest', async () => {
   const { loadMarketDashboard, loadMarketHistory } = await api()
-  const fetcher = async url => url.endsWith('/latest') ? response(payload()) : new Response('unavailable', { status: 503 })
+  const fetcher = async url => new URL(url, 'https://example.test').pathname.endsWith('/latest') ? response(payload()) : new Response('unavailable', { status: 503 })
   const [latest, past] = await Promise.all([loadMarketDashboard(fetcher), loadMarketHistory('5d', fetcher)])
   assert.equal(latest.data.aShare.strength, 75)
   assert.equal(latest.error, null)
@@ -320,5 +320,55 @@ test('detail requires every versioned audit root and required nested weights and
     p => { delete p.history[0].components.priceTrend.parts }, p => { delete p.history[0].components.activity.usedWeight }]) {
     const body = rotationDetail(); mutate(body)
     assert.equal((await loadSectorRotationDetail({ universe: 'industry', id: '882100.WI', fetcher: async () => response(body) })).error?.code, 'INVALID_SCHEMA')
+  }
+})
+
+test('market loaders explicitly request their validated schema and reject invalid selectors before transport', async () => {
+  const { loadMarketDashboard, loadMarketHistory } = await api()
+  const { compactSnapshot } = await import('../functions/_lib/market-dashboard.js')
+  const v3 = await v3Payload()
+  for (const schemaVersion of ['market-dashboard-v2', 'market-dashboard-v3']) {
+    const latest = schemaVersion === 'market-dashboard-v2' ? payload() : v3
+    const past = schemaVersion === 'market-dashboard-v2' ? history()
+      : { window: '5d', snapshots: [compactSnapshot({ payload_json: JSON.stringify(v3) })] }
+    const fetcher = async url => {
+      const parsed = new URL(url, 'https://example.test')
+      assert.deepEqual(parsed.searchParams.getAll('schemaVersion'), [schemaVersion])
+      return response(parsed.pathname.endsWith('/latest') ? latest : past)
+    }
+    assert.equal((await loadMarketDashboard(fetcher, { schemaVersion })).error, null)
+    assert.equal((await loadMarketHistory('5d', fetcher, { schemaVersion })).error, null)
+  }
+  for (const schemaVersion of ['', 'v3', 'market-dashboard-v4', null, 3]) {
+    const fetcher = () => { assert.fail('invalid selectors must not fetch') }
+    assert.equal((await loadMarketDashboard(fetcher, { schemaVersion })).error?.code, 'INVALID_QUERY')
+    assert.equal((await loadMarketHistory('5d', fetcher, { schemaVersion })).error?.code, 'INVALID_QUERY')
+  }
+})
+
+test('detail orders sub-millisecond observations strictly after normalizing UTC offsets', async () => {
+  const { loadSectorRotationDetail } = await api()
+  const options = { universe: 'industry', id: '882100.WI' }
+  const early = rotationDetail().history[0], late = structuredClone(early)
+  early.observedAt = '2026-11-13T15:00:00.000001+08:00'
+  late.observedAt = '2026-11-13T07:00:00.000002Z'
+  for (const [rows, accepted] of [[[early, late], true], [[late, early], false], [[early, early], false]]) {
+    const body = { ...rotationDetail(), history: rows }
+    const result = await loadSectorRotationDetail({ ...options, fetcher: async () => response(body) })
+    assert.equal(result.error?.code ?? null, accepted ? null : 'INVALID_SCHEMA')
+    if (accepted) assert.deepEqual(result.data.history.map(row => row.observedAt), [early.observedAt, late.observedAt])
+  }
+})
+
+test('v3 compact history preserves nondecreasing sub-millisecond chronology', async () => {
+  const { loadMarketHistory } = await api()
+  const { compactSnapshot } = await import('../functions/_lib/market-dashboard.js')
+  const early = compactSnapshot({ payload_json: JSON.stringify(await v3Payload()) }), late = structuredClone(early)
+  early.observedAt = '2026-11-13T15:00:00.000001+08:00'
+  late.observedAt = '2026-11-13T07:00:00.000002Z'
+  for (const [snapshots, accepted] of [[[early, late], true], [[late, early], false], [[early, early], true]]) {
+    const body = { window: '5d', snapshots }
+    const result = await loadMarketHistory('5d', async () => response(body), { schemaVersion: 'market-dashboard-v3' })
+    assert.equal(result.error?.code ?? null, accepted ? null : 'INVALID_SCHEMA')
   }
 })

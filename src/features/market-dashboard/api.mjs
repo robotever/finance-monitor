@@ -159,11 +159,15 @@ async function load(url, validate, fetcher, options) {
 
 // These independent results can be combined with Promise.all; history failure never clears latest.
 export function loadMarketDashboard(fetcher = fetch, options = {}) {
-  return load('/api/market-dashboard/latest', options.schemaVersion === 'market-dashboard-v3' ? validV3Latest : validLatest, fetcher, options)
+  const schemaVersion = options.schemaVersion === undefined ? 'market-dashboard-v2' : options.schemaVersion
+  if (!['market-dashboard-v2', 'market-dashboard-v3'].includes(schemaVersion)) return Promise.resolve(failure('INVALID_QUERY'))
+  return load(`/api/market-dashboard/latest?schemaVersion=${schemaVersion}`, schemaVersion === 'market-dashboard-v3' ? validV3Latest : validLatest, fetcher, options)
 }
 export function loadMarketHistory(window, fetcher = fetch, options = {}) {
   if (!WINDOWS.includes(window)) return Promise.resolve(failure('INVALID_WINDOW'))
-  return load(`/api/market-dashboard/history?window=${window}`, body => options.schemaVersion === 'market-dashboard-v3' ? validV3History(body, window) : validHistory(body, window), fetcher, options)
+  const schemaVersion = options.schemaVersion === undefined ? 'market-dashboard-v2' : options.schemaVersion
+  if (!['market-dashboard-v2', 'market-dashboard-v3'].includes(schemaVersion)) return Promise.resolve(failure('INVALID_QUERY'))
+  return load(`/api/market-dashboard/history?window=${window}&schemaVersion=${schemaVersion}`, body => schemaVersion === 'market-dashboard-v3' ? validV3History(body, window) : validHistory(body, window), fetcher, options)
 }
 
 const SECTOR_AXES = ['strength', 'opportunity', 'risk']
@@ -230,7 +234,7 @@ function validV3History(value, window) {
         && Array.isArray(concepts.core) && concepts.core.length === 25 && Array.isArray(concepts.dynamic) && concepts.dynamic.length === 10
         && unique([...concepts.core, ...concepts.dynamic]) && concepts.core.every(obj => CORE_CONCEPTS.includes(obj.id) && compactSector(obj, 'concept'))
         && concepts.dynamic.every(obj => !CORE_CONCEPTS.includes(obj.id) && compactSector(obj, 'concept'))
-        && (i === 0 || Date.parse(snapshot.observedAt) >= Date.parse(value.snapshots[i - 1].observedAt))
+        && (i === 0 || preciseTimestamp(snapshot.observedAt).utc >= preciseTimestamp(value.snapshots[i - 1].observedAt).utc)
     })
 }
 const CORE_CONCEPTS = ['884201.WI','8841678.WI','8841889.WI','884091.WI','8841665.WI','8841349.WI','8841337.WI','8841294.WI','8841237.WI','8841256.WI',
@@ -306,7 +310,7 @@ function validRotationDetail(value, options) {
     && value.universe === options.universe && value.id === options.id && value.days === options.days
     && Array.isArray(value.history) && value.history.length > 0 && new Set(value.history.map(row => row.marketDate)).size <= options.days
     && value.history.every((row, i) => validDetailRow(row, options)
-      && (i === 0 || Date.parse(row.observedAt) > Date.parse(value.history[i - 1].observedAt)))
+      && (i === 0 || preciseTimestamp(row.observedAt).utc > preciseTimestamp(value.history[i - 1].observedAt).utc))
 }
 function rotationLoad(endpoint, options, validate, query) {
   return load(`/api/sector-rotation/${endpoint}?${new URLSearchParams(query)}`, body => {

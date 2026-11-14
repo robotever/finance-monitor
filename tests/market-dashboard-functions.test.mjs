@@ -460,3 +460,26 @@ test('publish accepts a valid year 9999 observation when the future limit crosse
   candidate.marketDate = '9999-12-31'
   assert.equal((await publish(context(publishRequest(candidate), db))).status, 201)
 })
+
+test('market read handlers reject invalid and repeated schema selectors before storage', async () => {
+  for (const name of ['latest', 'history']) {
+    const read = await handler(name)
+    for (const query of ['?schemaVersion=', '?schemaVersion=v3', '?schemaVersion=market-dashboard-v4',
+      '?schemaVersion=market-dashboard-v2&schemaVersion=market-dashboard-v3',
+      '?schemaVersion=market-dashboard-v2&schemaVersion=market-dashboard-v2',
+      '?schemaVersion=market-dashboard-v3%27%20OR%201=1']) {
+      await errorResponse(await read(readContext(name, null, query)), 400, 'INVALID_QUERY')
+    }
+  }
+})
+
+test('explicit absent schemas return NO_SNAPSHOT instead of another version', async t => {
+  const db = database(t), publish = await handler('publish')
+  await publishAt(publish, db, OBSERVED)
+  for (const name of ['latest', 'history']) {
+    const read = await handler(name)
+    await errorResponse(await read(readContext(name, db, '?schemaVersion=market-dashboard-v3')), 404, 'NO_SNAPSHOT')
+    const response = await read(readContext(name, db, '?schemaVersion=market-dashboard-v2'))
+    assert.equal(response.status, 200)
+  }
+})
