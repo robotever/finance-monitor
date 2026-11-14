@@ -138,6 +138,20 @@ def _numeric_scores(row):
                 and not isinstance(row[axis], bool) and row[axis] == math.floor(raw[axis]+.5)) for axis in AXES)
 
 
+def _leaderboard_count_bounds(ranks, anchor_streak):
+    """Known ranks plus the earliest streak's proven hits and preceding break."""
+    evidence = [None]*15
+    for distance, rank in enumerate(reversed(ranks[-15:])):
+        evidence[distance] = isinstance(rank, int) and not isinstance(rank, bool) and 1 <= rank <= 10
+    distance = len(ranks)-1
+    for offset in range(distance, min(distance+anchor_streak, 15)):
+        evidence[offset] = True
+    if distance+anchor_streak < 15:
+        evidence[distance+anchor_streak] = False
+    minimum = sum(value is True for value in evidence)
+    return minimum, minimum+sum(value is None for value in evidence)
+
+
 def _validated_state(value, config):
     state = _empty(config)
     _require(isinstance(value, dict))
@@ -196,12 +210,13 @@ def _validated_state(value, config):
             else:
                 _require((stats['topTenStreak'] > 0) == top)
                 _require(rank is not None or stats['rankChange'] is None)
-            window = previous[-14:]+[row]
-            count = sum(point['ranks'][axis] is not None and point['ranks'][axis] <= 10 for point in window)
             # An incomplete retained prefix cannot reveal the order of evicted
-            # hits. Its count is bounded, never used as a continuity anchor.
-            # Once all fifteen ranks are retained this becomes exact equality.
-            _require(count <= stats['topTenCount15d'] <= count+15-len(window))
+            # hits. Keep all proof from the validated earliest streak, including
+            # its older hits after a later break. Counts never seed continuity.
+            ranks = [point['ranks'][axis] for point in previous]+[rank]
+            anchor = previous[0]['leaderboard'][axis]['topTenStreak'] if previous else stats['topTenStreak']
+            minimum, maximum = _leaderboard_count_bounds(ranks, anchor)
+            _require(minimum <= stats['topTenCount15d'] <= maximum)
         previous.append(row)
     return state
 
@@ -246,7 +261,10 @@ def leaderboard_stats(closes: list[dict], universe: str, axis: str, sector_id: s
         if isinstance(anchor, int) and not isinstance(anchor, bool) and anchor > 1:
             streak += anchor-1
     change = ranks[-2]-ranks[-1] if len(ranks) >= 2 and all(_number(v, 1) for v in ranks[-2:]) else None
-    return dict(axis=axis, topTenStreak=streak, topTenCount15d=sum(top(rank) for rank in ranks[-15:]), rankChange=change)
+    anchor = anchors.get(min(days)) if days else 0
+    anchor = anchor if isinstance(anchor, int) and not isinstance(anchor, bool) and anchor >= 0 else int(bool(ranks and top(ranks[0])))
+    count = _leaderboard_count_bounds(ranks, anchor)[0] if ranks else 0
+    return dict(axis=axis, topTenStreak=streak, topTenCount15d=count, rankChange=change)
 
 
 def append_rotation_close(state: dict, payload: dict, config: dict) -> dict:

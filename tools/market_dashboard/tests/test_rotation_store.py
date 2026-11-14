@@ -177,9 +177,59 @@ class StoreTests(unittest.TestCase):
                 recovered = store.append_rotation_close(recovered, snapshot(day), self.config)
                 current = next(row for row in recovered['closes'] if row['marketDate'] == day and row['id'] == '882100.WI')
                 self.assertEqual(current['leaderboard']['strength']['topTenStreak'], expected)
+                self.assertEqual(current['leaderboard']['strength']['topTenCount15d'], 15)
                 path.write_text(json.dumps(recovered))
                 recovered = store.load_rotation_state(path, self.config)
         self.assertEqual(state, before)
+
+    def test_short_prefix_count_must_respect_streak_proven_hits_and_break(self):
+        base = store.append_rotation_close({}, snapshot('2026-08-14'), self.config)
+        base = store.append_rotation_close(base, snapshot('2026-08-15'), self.config)
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'
+            for initial_streak, first_count, second_count in [(50, 15, 2), (50, 15, 14),
+                                                              (50, 14, 15), (7, 7, 7),
+                                                              (7, 14, 15)]:
+                forged = deepcopy(base)
+                for row in forged['closes']:
+                    if row['id'] == '882100.WI':
+                        first = row['marketDate'] == '2026-08-14'
+                        row['leaderboard']['strength'].update(topTenStreak=initial_streak if first else initial_streak+1,
+                            topTenCount15d=first_count if first else second_count, rankChange=0)
+                path.write_text(json.dumps(forged))
+                with self.subTest(streak=initial_streak, first=first_count, second=second_count), self.assertRaises(ValueError):
+                    store.load_rotation_state(path, self.config)
+            # A seven/eight-close streak still leaves genuinely unknown older
+            # hit order; both feasible count endpoints must remain accepted.
+            for first_count, second_count in [(7, 8), (14, 14)]:
+                legitimate = deepcopy(base)
+                for row in legitimate['closes']:
+                    if row['id'] == '882100.WI':
+                        first = row['marketDate'] == '2026-08-14'
+                        row['leaderboard']['strength'].update(topTenStreak=7 if first else 8,
+                            topTenCount15d=first_count if first else second_count, rankChange=0)
+                path.write_text(json.dumps(legitimate))
+                self.assertEqual(store.load_rotation_state(path, self.config), legitimate)
+
+    def test_short_prefix_count_keeps_earlier_streak_evidence_after_a_break(self):
+        state = store.append_rotation_close({}, snapshot('2026-08-14'), self.config)
+        anchor = next(row for row in state['closes'] if row['id'] == '882100.WI')
+        anchor['leaderboard']['strength'].update(topTenStreak=50, topTenCount15d=15, rankChange=0)
+        state = store.append_rotation_close(state, snapshot('2026-08-15'), self.config)
+        broken = snapshot('2026-08-16')
+        target = next(row for row in broken['sectors'] if row['id'] == '882100.WI')
+        target['strength'] = 0
+        target['_rawScores']['strength'] = .1
+        state = store.append_rotation_close(state, broken, self.config)
+        current = next(row for row in state['closes'] if row['marketDate'] == '2026-08-16' and row['id'] == '882100.WI')
+        with self.subTest(behavior='generated count retains earlier proven hits'):
+            self.assertEqual(current['leaderboard']['strength']['topTenStreak'], 0)
+            self.assertEqual(current['leaderboard']['strength']['topTenCount15d'], 14)
+        current['leaderboard']['strength']['topTenCount15d'] = 13
+        with TemporaryDirectory() as directory:
+            path = Path(directory)/'state.json'; path.write_text(json.dumps(state))
+            with self.subTest(behavior='reload rejects contradiction with earlier proven hits'), self.assertRaises(ValueError):
+                store.load_rotation_state(path, self.config)
 
     def test_price_history_cannot_smuggle_forward_flow_or_score_fields(self):
         price = store.build_price_backfill({'882100.WI': [dict(id='882100.WI', date='2026-10-01', close=100.)]}, 'sector-universe-v0.1')[0]
@@ -238,6 +288,13 @@ class LeaderboardTests(unittest.TestCase):
         self.assertEqual(store.leaderboard_stats(rows, 'industry', 'strength', '882100.WI')['topTenStreak'], 52)
         rows[1]['ranks']['strength'] = 11
         self.assertEqual(store.leaderboard_stats(rows, 'industry', 'strength', '882100.WI')['topTenStreak'], 1)
+
+    def test_invalid_rank_types_and_nonpositive_ranks_never_count_as_top_ten(self):
+        for rank in (True, False, 1.5, 0, -1):
+            with self.subTest(rank=rank):
+                value = store.leaderboard_stats(self.closes([1, rank]), 'industry', 'strength', '882100.WI')
+                self.assertEqual(value['topTenStreak'], 0)
+                self.assertEqual(value['topTenCount15d'], 1)
 
 
 class BackfillTests(unittest.TestCase):
