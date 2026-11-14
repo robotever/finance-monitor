@@ -264,7 +264,7 @@ def derive_sector_components(current: dict, prior_closes: list[dict], universe_c
 
 
 def classify_heat(components: dict, config: dict) -> str | None:
-    """Apply evidence gate, then crowded-first half-open activity thresholds.
+    """Gate crowded triggers independently, then apply activity thresholds.
 
     The 30..70 band without a 15-point improvement has no specified label and
     remains unclassified. A five-close mean does not invent a warming streak.
@@ -272,11 +272,13 @@ def classify_heat(components: dict, config: dict) -> str | None:
     thresholds = config['sectorScoring']['heat']
     activity, concentration = (components.get(key, {}) for key in ('activity','concentration'))
     value, concentration_value = activity.get('value'), concentration.get('value')
-    if not _number(value) or activity.get('coverage', 0)*100 < thresholds['minimumCompleteness']:
-        return None
-    if value >= thresholds['crowdedAt'] or (_number(concentration_value)
+    if (_number(concentration_value)
             and concentration.get('coverage', 0)*100 >= thresholds['minimumCompleteness']
             and concentration_value >= thresholds['concentrationCrowdedAt']):
+        return 'crowded'
+    if not _number(value) or activity.get('coverage', 0)*100 < thresholds['minimumCompleteness']:
+        return None
+    if value >= thresholds['crowdedAt']:
         return 'crowded'
     if value < thresholds['coldBelow']:
         return 'cold'
@@ -346,8 +348,6 @@ def rank_sector_scores(rows: list[dict], axis: str) -> list[dict]:
 
 
 def _view_value(row, field):
-    if field in ('strength','opportunity','risk'):
-        return _axis_value(row, field)
     if field.endswith('Change1d'):
         return (row.get('change1d') or {}).get(field[:-8])
     return row.get(field)
@@ -361,7 +361,7 @@ def _matches(value, bounds):
 
 
 def derive_current_views(rows: list[dict], config: dict) -> dict[str, list[dict]]:
-    """Independent predicates and explicit lexicographic sorting; no net score."""
+    """Public-score predicates with unrounded lexicographic axis sorting."""
     result = {}
     for name, rule in config['sectorScoring']['views'].items():
         def eligible(row):
@@ -371,7 +371,7 @@ def derive_current_views(rows: list[dict], config: dict) -> dict[str, list[dict]
         def order(row):
             keys = [row['universe']]
             for field in rule['sort']:
-                value = _view_value(row, field)
+                value = _axis_value(row, field) if field in ('strength','opportunity','risk') else _view_value(row, field)
                 keys.append(value if field == 'id' else -(value if _number(value) else -math.inf))
             return tuple(keys)
         result[name] = [dict(row) for row in sorted(filter(eligible, rows), key=order)]

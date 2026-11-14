@@ -227,6 +227,20 @@ class RotationTests(unittest.TestCase):
             with self.subTest(activity=activity,concentration=concentration):
                 self.assertEqual(rotation.classify_heat(components,self.config),want)
 
+    def test_crowded_heat_checks_each_triggers_own_evidence_coverage(self):
+        # A blanket activity gate wrongly hides a complete concentration signal;
+        # a blanket OR without coverage wrongly promotes incomplete signals.
+        for activity, activity_coverage, concentration, concentration_coverage, want in [
+                (60,.69,96,1,'crowded'), (None,0,95,1,'crowded'),
+                (90,1,None,0,'crowded'), (90,.69,96,.69,None),
+                (60,1,96,.69,None), (96,.69,94,1,None), (None,0,96,.69,None)]:
+            components={'activity':{'value':activity,'coverage':activity_coverage},
+                        'concentration':{'value':concentration,'coverage':concentration_coverage},
+                        'activityMean5d':{'value':50,'coverage':1}}
+            with self.subTest(activity=activity,activity_coverage=activity_coverage,
+                              concentration=concentration,concentration_coverage=concentration_coverage):
+                self.assertEqual(rotation.classify_heat(components,self.config),want)
+
     def test_nonfinite_invalid_negative_denominators_and_large_finite_values_are_safe(self):
         for value in [None,True,float('nan'),float('inf')]:
             self.rows[4]['metrics']['return20d']=value
@@ -329,6 +343,22 @@ class ViewTests(unittest.TestCase):
         self.assertEqual([r['id'] for r in rotation.derive_current_views([a,c,b],self.config)['potentialRotation']],['b','a'])
         c['heatState']='crowded'
         self.assertEqual([r['id'] for r in rotation.derive_current_views([c],self.config)['risingRisk']],['c'])
+
+    def test_view_predicates_use_published_scores_at_rounding_boundaries(self):
+        # Public 70 must satisfy >=70 and fail <70 even when its raw value is 69.8.
+        for changes, expected in [
+                ({'strength':69.8},{'potentialRotation':[],'confirmedMainline':['a'],'risingRisk':[]}),
+                ({'risk':69.8},{'potentialRotation':[],'confirmedMainline':[],'risingRisk':['a']}),
+                ({'opportunity':69.8},{'potentialRotation':['a'],'confirmedMainline':[],'risingRisk':[]})]:
+            with self.subTest(changes=changes):
+                result=rotation.derive_current_views([self.row('a',**changes)],self.config)
+                self.assertEqual({key:[row['id'] for row in rows] for key,rows in result.items()},expected)
+
+    def test_public_threshold_members_still_sort_by_unrounded_strength(self):
+        # Both publish strength 70, so sorting must not fall through to ID order.
+        rows=[self.row('a',strength=69.8),self.row('z',strength=70.2)]
+        views=rotation.derive_current_views(rows,self.config)
+        self.assertEqual([row['id'] for row in views['confirmedMainline']],['z','a'])
 
     def test_missing_working_precision_cannot_silently_become_a_rounded_rank(self):
         row=self.row('a')
