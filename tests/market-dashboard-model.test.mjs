@@ -190,3 +190,8 @@ test('concept freshness and industry rankings remain independent', async () => {
   assert.deepEqual(view.rankings.strength.map(item => item.id), ['b', 'a'])
   assert.deepEqual(view.conceptRankings.core.strength.map(item => item.id), ['8842000.WI'])
 })
+
+test('legacy presentation refuses v3 rather than silently presenting sector heat as unavailable', async () => {
+  const { deriveMarketDashboardView } = await model()
+  assert.throws(() => deriveMarketDashboardView(payload({ schemaVersion: 'market-dashboard-v3' }), now), /v2/)
+})
