@@ -945,6 +945,65 @@ class RotationShadowTests(unittest.TestCase):
             self.assertFalse(pending.exists())
             self.assertTrue((root/'market-dashboard-shadow/last-success.json').exists())
 
+    def test_reenabled_publish_does_not_replace_a_newer_shadow_snapshot_with_old_pending_state(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); payloads = []
+            failed = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token'}, {'now': self.now, 'state_root': root,
+                'collector': rotation_batches,
+                'publisher': lambda payload, *a, **k: (payloads.append(payload) or
+                    job.PublishResult(False, 503, 1, 'HTTP_503'))})
+            self.assertFalse(failed.success)
+            pending = root/'market-dashboard-shadow/pending-publication.json'
+            self.assertTrue(pending.exists())
+            newer_time = self.now.replace(hour=11, minute=35)
+            newer = job.run_job({'rotation_shadow': True}, {'now': newer_time, 'state_root': root,
+                'collector': rotation_batches})
+            self.assertTrue(newer.success, newer.error_code)
+            state = root/'market-dashboard-shadow/last-success.json'
+            newer_state = json.loads(state.read_text())
+            self.assertEqual(newer_state['bucket'], '2026-11-13:11:30')
+            recovered = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token'}, {'now': self.now.replace(hour=14, minute=5),
+                'state_root': root, 'collector': lambda config: self.fail('pending recollected'),
+                'publisher': lambda payload, *a, **k: (payloads.append(payload) or
+                    job.PublishResult(True, 200, 1))})
+            self.assertTrue(recovered.success, recovered.error_code)
+            self.assertEqual(payloads[0], payloads[1])
+            self.assertFalse(pending.exists())
+            self.assertEqual(json.loads(state.read_text()), newer_state)
+
+    def test_accepted_publish_replays_identically_after_local_success_write_fails(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); payloads = []
+            original_write = job._write_json
+            failed_once = False
+            def interrupted(path, value, **kwargs):
+                nonlocal failed_once
+                if path.name == 'last-success.json' and path.parent.name == 'market-dashboard-shadow' and not failed_once:
+                    failed_once = True
+                    raise OSError('synthetic local persistence failure')
+                return original_write(path, value, **kwargs)
+            def accepted(payload, *args, **kwargs):
+                payloads.append(payload)
+                return job.PublishResult(True, 201, 1)
+            with patch.object(job, '_write_json', side_effect=interrupted):
+                first = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                    'token': 'private-token'}, {'now': self.now, 'state_root': root,
+                    'collector': rotation_batches, 'publisher': accepted})
+            self.assertFalse(first.success)
+            self.assertEqual(first.error_code, 'STATE_WRITE_FAILED')
+            pending = root/'market-dashboard-shadow/pending-publication.json'
+            self.assertTrue(pending.exists())
+            retry = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token'}, {'now': self.now.replace(hour=11, minute=35),
+                'state_root': root, 'collector': lambda config: self.fail('pending recollected'),
+                'publisher': accepted})
+            self.assertTrue(retry.success, retry.error_code)
+            self.assertEqual(payloads[0], payloads[1])
+            self.assertFalse(pending.exists())
+            self.assertTrue((root/'market-dashboard-shadow/last-success.json').exists())
+
     def test_close_requires_every_sector_timestamp_and_does_not_advance_twice(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

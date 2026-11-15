@@ -173,7 +173,9 @@ class OperationsTests(unittest.TestCase):
 
     def test_feature_flag_updater_is_atomic_idempotent_and_preserves_private_mode(self):
         target = self.root / '.env'
-        target.write_text('PRIVATE_TOKEN=retained\nMARKET_DASHBOARD_ROTATION_SHADOW=0\n')
+        target.write_text('PRIVATE_TOKEN=retained\nexport MARKET_DASHBOARD_ROTATION_SHADOW=0\n'
+                          '  MARKET_DASHBOARD_ROTATION_PUBLISH = 0\n'
+                          'MARKET_DASHBOARD_ROTATION_SHADOW=0\n')
         target.chmod(0o600)
         command = [sys.executable, str(OPS / 'set-market-dashboard-flags.py'), str(target),
                    'MARKET_DASHBOARD_ROTATION_SHADOW=1', 'MARKET_DASHBOARD_ROTATION_PUBLISH=1']
@@ -199,6 +201,31 @@ class OperationsTests(unittest.TestCase):
                                  capture_output=True, text=True)
         self.assertNotEqual(invalid.returncode, 0)
         self.assertEqual(outside.read_text(), 'PRIVATE_TOKEN=retained\n')
+
+    def test_feature_flag_updater_normalizes_wrapper_supported_dotenv_syntax_end_to_end(self):
+        self.copy_ops()
+        package = self.repo / 'tools/market_dashboard'
+        package.mkdir(parents=True)
+        (self.repo / 'tools/__init__.py').touch()
+        (package / '__init__.py').touch()
+        (package / 'job.py').write_text(
+            'import json, os, sys\nfrom pathlib import Path\n'
+            'Path(os.environ["TEST_CAPTURE"]).write_text(json.dumps(sys.argv[1:]))\n')
+        (self.root / 'scripts/rotate_service_logs.py').write_text('def rotate(path): pass\n')
+        target = self.root / '.env'
+        target.write_text('export MARKET_DASHBOARD_ROTATION_SHADOW=0\n'
+                          ' MARKET_DASHBOARD_ROTATION_PUBLISH = 0\n')
+        target.chmod(0o600)
+        update = subprocess.run([sys.executable,
+            str(self.repo / 'ops/macos/set-market-dashboard-flags.py'), str(target),
+            'MARKET_DASHBOARD_ROTATION_SHADOW=1', 'MARKET_DASHBOARD_ROTATION_PUBLISH=1'],
+            capture_output=True, text=True)
+        self.assertEqual(update.returncode, 0, update.stderr)
+        self.env['TEST_CAPTURE'] = str(self.root / 'capture.json')
+        result = self.execute('run-market-dashboard.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((self.root / 'capture.json').read_text()),
+                         ['--with-rotation', '--rotation-publish'])
 
     def test_direct_job_test_module_includes_close_freshness_tests(self):
         result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.tests.test_job', '-v'],

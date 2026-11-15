@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -14,6 +15,18 @@ ALLOWED = {
     "MARKET_DASHBOARD_ROTATION_SHADOW",
     "MARKET_DASHBOARD_ROTATION_PUBLISH",
 }
+
+
+def dotenv_key(raw: str) -> str | None:
+    """Return a logical key using the wrapper's accepted assignment grammar."""
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        return None
+    if line.startswith("export "):
+        line = line[7:].lstrip()
+    key, separator, _ = line.partition("=")
+    key = key.strip()
+    return key if separator and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) else None
 
 
 def fail(message: str) -> "NoReturn":
@@ -45,7 +58,7 @@ def main(arguments: list[str]) -> int:
     output: list[str] = []
     replaced: set[str] = set()
     for line in lines:
-        key = line.split("=", 1)[0] if "=" in line else ""
+        key = dotenv_key(line)
         if key in updates:
             if key not in replaced:
                 output.append(f"{key}={updates[key]}")

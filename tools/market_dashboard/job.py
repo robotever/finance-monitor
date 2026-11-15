@@ -1138,7 +1138,13 @@ def _run_rotation_job(args, deps):
             def acknowledge_pending_replace():
                 nonlocal committed
                 committed = True
-            _write_json(path, pending_publication, on_replace=acknowledge_pending_replace)
+            current_state = _read_json(path)
+            current_payload = current_state.get('payload') if current_state else None
+            current_is_newer = (isinstance(current_payload, dict)
+                and isinstance(current_payload.get('observedAt'), str)
+                and _timestamp(current_payload['observedAt']) > _timestamp(payload['observedAt']))
+            if not current_is_newer:
+                _write_json(path, pending_publication, on_replace=acknowledge_pending_replace)
             try:
                 record_operation(event)
             except (OSError, ValueError, TypeError):
