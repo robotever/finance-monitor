@@ -512,6 +512,70 @@ class RotationOperationalTests(unittest.TestCase):
             self.assertEqual(metadata['rotationSession'], '09:45')
             self.assertEqual(metadata['rotationCloseSuccesses'], 1)
 
+    def release_evidence(self):
+        from tools.market_dashboard import rotation_diagnostics
+        rows, dates, config = RotationDiagnosticTests().sample()
+        config['schedule'] = {'tradingDates': dates}
+        events = [self.event(marketDate=day, observedAt=day+'T15:05:00+08:00',
+                             sourceAt=day+'T15:00:00+08:00') for day in dates[:9]]
+        # Synthetic-only attestation exercises all other gates; never saved live.
+        report = rotation_diagnostics.diagnose(rows, dates, config, live_verified=True)
+        return events, dates, config, report
+
+    def test_unskipped_or_missing_publication_evidence_fails_even_with_nine_good_closes(self):
+        api = self.api(); events, dates, config, report = self.release_evidence()
+        ordinary_failure = self.event(marketDate=dates[-1], observedAt=dates[-1]+'T15:05:00+08:00',
+            sourceAt=dates[-1]+'T15:00:00+08:00', success=False, safeErrorCode='COLLECTION_FAILED')
+        self.assertTrue(api.evaluate_release(api._envelope(events+[ordinary_failure], config), dates, report)['evidenceGatesPassed'])
+        for skipped in (False, None):
+            with self.subTest(publicationSkipped=skipped):
+                unsafe = ordinary_failure | {'success': True, 'safeErrorCode': None}
+                if skipped is None: unsafe.pop('publicationSkipped')
+                else: unsafe['publicationSkipped'] = skipped
+                ledger = api._envelope(events+[unsafe], config)
+                self.assertIs(ledger['events'][-1]['success'], False)
+                assessment = api.evaluate_release(ledger, dates, report)
+                self.assertEqual(assessment['successfulCloses'], 9)
+                self.assertIn('PUBLICATION_SKIPPED', assessment['failedGates'])
+                self.assertFalse(assessment['evidenceGatesPassed'])
+                self.assertEqual(assessment['productionMode'], 'v2')
+
+    def test_historical_disclosed_metrics_must_be_finite_including_one_day_spread(self):
+        from copy import deepcopy
+        api = self.api(); events, dates, config, report = self.release_evidence()
+        ledger = api._envelope(events, config)
+        self.assertTrue(api.evaluate_release(ledger, dates, report)['evidenceGatesPassed'])
+        corruptions = [('spread', value) for value in ('not-a-number', None, True, float('nan'), float('inf'), -float('inf'))]
+        corruptions += [('rankCorrelation', float('inf')), ('hitRate', float('nan')), ('maximumDrawdown', float('inf'))]
+        for field, value in corruptions:
+            with self.subTest(field=field, value=value):
+                changed = deepcopy(report); changed['universes']['industry']['horizons']['1'][field] = value
+                result = api.evaluate_release(ledger, dates, changed)
+                self.assertIn('HISTORICAL_DIAGNOSTICS_INDUSTRY', result['failedGates'])
+                self.assertFalse(result['evidenceGatesPassed'])
+                self.assertNotIn('HISTORICAL_DIAGNOSTICS_CONCEPT', result['failedGates'])
+
+    def test_historical_qualification_requires_present_positive_finite_leave_one_out_proof(self):
+        from copy import deepcopy
+        api = self.api(); events, dates, config, report = self.release_evidence()
+        ledger = api._envelope(events, config)
+        for field in ('minimumLeaveOneDateSpread', 'minimumLeaveOneSectorSpread'):
+            for value in ('absent', -10, 0, None, float('nan'), float('inf'), 'wrong'):
+                with self.subTest(field=field, value=value):
+                    changed = deepcopy(report)
+                    for horizon in ('3', '5'):
+                        point = changed['universes']['industry']['horizons'][horizon]
+                        if value == 'absent': point.pop(field)
+                        else: point[field] = value
+                    result = api.evaluate_release(ledger, dates, changed)
+                    self.assertIn('HISTORICAL_SPREAD_INDUSTRY', result['failedGates'])
+                    self.assertIn('HISTORICAL_DIAGNOSTICS_INDUSTRY', result['failedGates'])
+                    self.assertFalse(result['evidenceGatesPassed'])
+        # A separate good horizon must not hide a stale true boolean at 3d.
+        changed = deepcopy(report)
+        changed['universes']['industry']['horizons']['3']['minimumLeaveOneDateSpread'] = -1
+        self.assertIn('HISTORICAL_DIAGNOSTICS_INDUSTRY', api.evaluate_release(ledger, dates, changed)['failedGates'])
+
     def test_invalid_historical_report_shapes_return_safe_failed_gates(self):
         api = self.api()
         for report in ({'universes': []}, {'universes': {'industry': {'horizons': {'3': None}}}},
@@ -530,6 +594,7 @@ class RotationOperationalTests(unittest.TestCase):
             sourceAt=d+'T15:00:00+08:00') for d in dates[:9]], config)
         report = {'liveVerified': True, 'versions': ledger['versions'], 'universes': {
             u: {'listTurnover': .1, 'horizons': {h: {'validDates': 5, 'spread': 1, 'nonDominated': True,
+                'minimumLeaveOneDateSpread': .8, 'minimumLeaveOneSectorSpread': .7,
                 'rankCorrelation': .1, 'hitRate': .6, 'maximumDrawdown': 2, 'dates': [
                     {'marketDate': d, 'status': 'VALID'} for d in dates[:5]]} for h in ('1', '3', '5')}}
             for u in ('industry', 'concept')}}
@@ -557,6 +622,7 @@ class RotationOperationalTests(unittest.TestCase):
             ledger = api.read_ledger(path, config)
             historical = {'liveVerified': True, 'versions': ledger['versions'], 'universes': {
                 u: {'listTurnover': .1, 'horizons': {h: {'validDates': 10, 'spread': 1, 'nonDominated': True,
+                'minimumLeaveOneDateSpread': .8, 'minimumLeaveOneSectorSpread': .7,
                     'rankCorrelation': .2, 'hitRate': .6, 'maximumDrawdown': 1,
                     'dates': [{'marketDate': d, 'status': 'VALID'} for d in dates]} for h in ('1', '3', '5')}}
                 for u in ('industry', 'concept')}}

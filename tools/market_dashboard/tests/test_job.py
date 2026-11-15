@@ -886,6 +886,86 @@ class RotationShadowTests(unittest.TestCase):
                 self.assertEqual(retry.status, 'rotation_shadow')
                 self.assertEqual(len(json.loads(path.read_text())['rotation']['closes']), 110)
 
+    def test_committed_close_persists_ledger_warning_and_clears_it_after_audit_recovery(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); config = deepcopy(self.config)
+            config['schedule'] = {'tradingDates': ['2026-11-13']}
+            success_path = root/'market-dashboard-shadow/last-success.json'
+            health_path = root/'market-dashboard-shadow/health.json'
+            production = root/'market-dashboard/last-success.json'
+            production.parent.mkdir(); production.write_text('{"mode":"published"}')
+            production_health = root/'service-health/market-dashboard.json'
+            production_health.parent.mkdir(); production_health.write_text('{"lastPublishStatus":"published"}')
+            before = production.read_bytes(), production_health.read_bytes()
+            deps = {'now': self.now.replace(hour=15, minute=5), 'config': config, 'state_root': root,
+                    'collector': rotation_batches, 'publisher': lambda *a, **k: self.fail('shadow published')}
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=OSError('private audit failure')):
+                result = job.run_job({'rotation_shadow': True}, deps)
+            self.assertTrue(result.success)
+            committed = success_path.read_bytes()
+            durable = json.loads(health_path.read_text())
+            self.assertEqual(durable['rotationSafeErrorCode'], 'LEDGER_WRITE_FAILED')
+            self.assertIn('LEDGER_WRITE_FAILED', durable['safeCodes'])
+            report = job.run_job({'rotation_report': True}, deps)
+            self.assertEqual(report.metadata['rotationSafeErrorCode'], 'LEDGER_WRITE_FAILED')
+            self.assertEqual(report.metadata['rotationCloseSuccesses'], 0)
+            recovered = job.run_job({'rotation_shadow': True}, deps | {'collector': lambda c: self.fail('recollected committed close')})
+            self.assertEqual(recovered.status, 'duplicate')
+            self.assertEqual(success_path.read_bytes(), committed)
+            report = job.run_job({'rotation_report': True}, deps)
+            self.assertIsNone(report.metadata['rotationSafeErrorCode'])
+            self.assertNotIn('LEDGER_WRITE_FAILED', report.metadata['safeCodes'])
+            self.assertIn('LIVE_HISTORY_UNVERIFIED', report.metadata['safeCodes'])
+            self.assertEqual(report.metadata['rotationCloseSuccesses'], 1)
+            self.assertEqual((production.read_bytes(), production_health.read_bytes()), before)
+
+    def test_readonly_report_detects_committed_pending_audit_when_warning_cannot_be_written(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); config = deepcopy(self.config)
+            config['schedule'] = {'tradingDates': ['2026-11-13']}
+            success_path = root/'market-dashboard-shadow/last-success.json'
+            health_path = root/'market-dashboard-shadow/health.json'
+            deps = {'now': self.now.replace(hour=15, minute=5), 'config': config, 'state_root': root,
+                    'collector': rotation_batches}
+            write = job._write_json
+            def fail_post_commit_health(path, value, **kwargs):
+                if path.name == 'health.json' and success_path.exists():
+                    raise OSError('warning disk unavailable')
+                return write(path, value, **kwargs)
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=OSError('audit disk unavailable')), \
+                 patch.object(job, '_write_json', side_effect=fail_post_commit_health):
+                result = job.run_job({'rotation_shadow': True}, deps)
+            self.assertTrue(result.success)
+            self.assertIsNone(json.loads(health_path.read_text())['rotationSafeErrorCode'])
+            before = {str(path): path.read_bytes() for path in root.rglob('*') if path.is_file()}
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=AssertionError('readonly repaired ledger')), \
+                 patch.object(job, '_write_json', side_effect=AssertionError('readonly wrote health')):
+                report = job.run_job({'rotation_report': True}, deps)
+            self.assertTrue(report.success)
+            self.assertEqual(report.metadata['rotationSafeErrorCode'], 'LEDGER_WRITE_FAILED')
+            self.assertIn('LEDGER_WRITE_FAILED', report.metadata['safeCodes'])
+            self.assertEqual(report.metadata['rotationCloseSuccesses'], 0)
+            self.assertEqual(before, {str(path): path.read_bytes() for path in root.rglob('*') if path.is_file()})
+            self.assertFalse((health_path.parent/'rotation-ledger.json').exists())
+            self.assertNotIn('disk unavailable', json.dumps(report.metadata))
+
+    def test_repeated_pending_audit_failure_preserves_proof_and_safe_durable_warning(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root/'market-dashboard-shadow/last-success.json'
+            deps = {'now': self.now.replace(hour=15, minute=5), 'state_root': root, 'collector': rotation_batches}
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=OSError('private audit failure')):
+                self.assertTrue(job.run_job({'rotation_shadow': True}, deps).success)
+                committed = path.read_bytes()
+                failed_repair = job.run_job({'rotation_shadow': True}, deps | {
+                    'now': deps['now'].replace(day=16, hour=9, minute=50),
+                    'collector': lambda c: self.fail('pending proof was overwritten by collection')})
+            self.assertEqual(failed_repair.error_code, 'LEDGER_WRITE_FAILED')
+            self.assertEqual(path.read_bytes(), committed)
+            self.assertEqual(json.loads((path.parent/'health.json').read_text())['rotationSafeErrorCode'], 'LEDGER_WRITE_FAILED')
+            report = job.run_job({'rotation_report': True}, deps)
+            self.assertEqual(report.metadata['rotationSafeErrorCode'], 'LEDGER_WRITE_FAILED')
+
     def test_directory_sync_error_after_close_replace_does_not_report_failed_close(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

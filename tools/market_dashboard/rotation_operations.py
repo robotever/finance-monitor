@@ -202,6 +202,14 @@ def _mapping(value):
     return value if isinstance(value, dict) else {}
 
 
+def _positive_non_dominated(point):
+    point = _mapping(point)
+    return (point.get('nonDominated') is True
+            and isinstance(point.get('validDates'), int) and number(point['validDates'], 2, 100000)
+            and all(number(point.get(key), 0, math.inf) and point[key] > 0
+                    for key in ('spread', 'minimumLeaveOneDateSpread', 'minimumLeaveOneSectorSpread')))
+
+
 def evaluate_release(ledger, official_dates, historical):
     """Evidence assessment only. No return value can authorize production changes."""
     failed = []
@@ -222,7 +230,7 @@ def evaluate_release(ledger, official_dates, historical):
         failed.append('CANDIDATE_COMPLETENESS')
     if any(e.get('safeErrorCode') in {'IDENTITY_MISMATCH', 'UNIT_MISMATCH', 'FUTURE_TIMESTAMP', 'INVALID_PAYLOAD', 'INVALID_STATE'} for e in events): failed.append('IDENTITY_UNIT_TIME')
     if any(not number(e.get('latencySeconds'), 0, 600) for e in valid if e.get('session') == 'close'): failed.append('CLOSE_LATENCY')
-    if not valid or any(e.get('publicationSkipped') is not True for e in valid): failed.append('PUBLICATION_SKIPPED')
+    if not events or any(e.get('publicationSkipped') is not True for e in events): failed.append('PUBLICATION_SKIPPED')
     historical = historical if isinstance(historical, dict) else {}
     if historical.get('liveVerified') is not True or historical.get('versions') != ledger.get('versions'):
         failed.append('LIVE_HISTORY_EVIDENCE')
@@ -233,16 +241,22 @@ def evaluate_release(ledger, official_dates, historical):
         for horizon in ('1', '3', '5'):
             point = _mapping(horizons.get(horizon))
             rows = point.get('dates', [])
-            complete = complete and isinstance(rows, list) and bool(rows) and isinstance(point.get('validDates'), int)
+            complete = complete and isinstance(rows, list) and bool(rows) and isinstance(point.get('validDates'), int) and not isinstance(point['validDates'], bool)
             complete = complete and all(isinstance(row, dict) and isinstance(row.get('marketDate'), str) for row in rows)
             complete = complete and len({row['marketDate'] for row in rows}) == len(rows)
             complete = complete and sum(row.get('status') == 'VALID' for row in rows) == point.get('validDates')
-            complete = complete and all(key in point for key in ('rankCorrelation', 'spread', 'hitRate', 'maximumDrawdown'))
+            complete = complete and all(key in point for key in ('rankCorrelation', 'spread', 'hitRate', 'maximumDrawdown',
+                'minimumLeaveOneDateSpread', 'minimumLeaveOneSectorSpread', 'nonDominated'))
             complete = complete and (point.get('rankCorrelation') is None or number(point['rankCorrelation'], -1, 1))
+            complete = complete and number(point.get('spread'), -math.inf, math.inf)
             complete = complete and number(point.get('hitRate'), 0, 1) and number(point.get('maximumDrawdown'))
+            complete = complete and isinstance(point.get('nonDominated'), bool)
+            complete = complete and all(point.get(key) is None or number(point[key], -math.inf, math.inf)
+                for key in ('minimumLeaveOneDateSpread', 'minimumLeaveOneSectorSpread'))
+            complete = complete and (point.get('nonDominated') is not True or _positive_non_dominated(point))
         if not complete:
             failed.append('HISTORICAL_DIAGNOSTICS_'+universe.upper())
-        if not any(number(_mapping(horizons.get(h)).get('spread'), 0, 100000) and horizons[h]['spread'] > 0 and horizons[h].get('nonDominated') is True and number(horizons[h].get('validDates'), 2, 100000) for h in ('3', '5')):
+        if not any(_positive_non_dominated(horizons.get(h)) for h in ('3', '5')):
             failed.append('HISTORICAL_SPREAD_'+universe.upper())
     return {'evidenceGatesPassed': not failed, 'failedGates': failed, 'officialDates': dates,
         'successfulCloses': len(closes), 'productionMode': 'v2', 'productionSwitchApproved': False}

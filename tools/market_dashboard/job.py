@@ -963,6 +963,22 @@ def _rotation_report(health, config):
                                  if isinstance(code, str) and code in allowed_codes})}
 
 
+def _pending_rotation_operation(state, ledger):
+    """Return a committed operation absent from the ledger, without mutating it."""
+    pending = state.get('shadowOperation')
+    if pending is None:
+        return None
+    _require(isinstance(pending, dict))
+    return pending if not any(all(row.get(field) == pending.get(field)
+        for field in ('marketDate', 'session', 'observedAt', 'success', 'safeErrorCode'))
+        for row in ledger.get('events', [])) else None
+
+
+def _rotation_audit_warning(metadata):
+    return {**metadata, 'rotationSafeErrorCode': 'LEDGER_WRITE_FAILED',
+            'safeCodes': sorted(set(metadata['safeCodes']) | {'LEDGER_WRITE_FAILED'})}
+
+
 def _run_rotation_job(args, deps):
     """Private collection/assembly only. No publisher is reachable in this path."""
     arg = (lambda key, default=None: args.get(key, default)) if isinstance(args, dict) else (lambda key, default=None: getattr(args, key, default))
@@ -986,7 +1002,10 @@ def _run_rotation_job(args, deps):
     if arg('rotation_report', False):
         try:
             metadata = _rotation_report(_read_json(health_path), config)
-            metadata['rotationCloseSuccesses'] = len(rotation_operations.read_ledger(ledger_path, config)['successfulCloseDates'])
+            ledger = rotation_operations.read_ledger(ledger_path, config)
+            metadata['rotationCloseSuccesses'] = len(ledger['successfulCloseDates'])
+            if _pending_rotation_operation(_read_json(path), ledger) is not None:
+                metadata = _rotation_audit_warning(metadata)
             return JobResult(True, 'rotation_report', metadata=metadata)
         except (ValueError, TypeError, OSError):
             return JobResult(False, 'rotation_report', error_code='INVALID_STATE',
@@ -999,9 +1018,19 @@ def _run_rotation_job(args, deps):
 
     def record_operation(event):
         nonlocal metadata
-        ledger = rotation_operations.update_ledger(ledger_path, event, config)
-        metadata.update(rotation_operations.health_for_event(event, ledger))
-        _write_json(health_path, metadata)
+        try:
+            ledger = rotation_operations.update_ledger(ledger_path, event, config)
+            metadata.update(rotation_operations.health_for_event(event, ledger))
+            metadata['safeCodes'] = [code for code in metadata['safeCodes'] if code != 'LEDGER_WRITE_FAILED']
+            _write_json(health_path, metadata)
+        except (OSError, ValueError, TypeError):
+            # Health warning persistence does not depend on a writable ledger.
+            metadata = _rotation_audit_warning(metadata)
+            try:
+                _write_json(health_path, metadata)
+            except (OSError, ValueError, TypeError):
+                pass  # A read-only report also detects the committed pending proof.
+            raise
 
     try:
         if not (fixture and dry_run):
@@ -1019,13 +1048,11 @@ def _run_rotation_job(args, deps):
         rotation_state = {} if fixture else load_rotation_state(path, config)
         if not fixture and health_path.exists():
             metadata = _rotation_report(_read_json(health_path), config)
-        pending = state.get('shadowOperation')
-        if pending and not dry_run and not any(all(row.get(field) == pending.get(field)
-                for field in ('marketDate', 'session', 'observedAt', 'success', 'safeErrorCode'))
-                for row in ledger.get('events', [])):
+        pending = _pending_rotation_operation(state, ledger)
+        if pending is not None and not dry_run:
             # Reconcile before any later session replaces the recovery proof.
             # If audit repair fails, leave the earlier success file untouched.
-            stage = 'persist'
+            stage = 'audit'
             record_operation(pending)
             stage = 'state'
         key = scheduled_rotation_session(now, {}, config)
@@ -1037,7 +1064,7 @@ def _run_rotation_job(args, deps):
                 try:
                     record_operation(state['shadowOperation'])
                 except (OSError, ValueError, TypeError):
-                    metadata['safeCodes'] = ['LEDGER_WRITE_FAILED']
+                    pass  # record_operation already persisted/marked the safe warning.
             return JobResult(True, 'duplicate', metadata=metadata)
         if key is None:
             return JobResult(True, 'outside_schedule')
@@ -1100,8 +1127,7 @@ def _run_rotation_job(args, deps):
         try:
             record_operation(event)
         except (OSError, ValueError, TypeError):
-            metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + ['LEDGER_WRITE_FAILED']))
-            metadata['rotationSafeErrorCode'] = 'LEDGER_WRITE_FAILED'
+            pass  # The close stays committed; record_operation marked its audit warning.
         return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
     except Exception as error:
         if committed:
@@ -1113,10 +1139,11 @@ def _run_rotation_job(args, deps):
             return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
         code = 'INVALID_PAYLOAD' if isinstance(error, ValidationError) else {
             'state': 'INVALID_STATE', 'collect': 'COLLECTION_FAILED', 'score': 'SCORING_FAILED',
-            'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
+            'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED',
+            'audit': 'LEDGER_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
         if isinstance(error, sources.SourceError) and error.code in rotation_operations.SAFE_CODES:
             code = error.code
-        metadata['safeCodes'] = [code]
+        metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + [code])) if code == 'LEDGER_WRITE_FAILED' else [code]
         metadata['rotationSafeErrorCode'] = code
         if not dry_run:
             try:
