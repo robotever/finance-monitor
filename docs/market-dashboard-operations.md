@@ -152,9 +152,19 @@ Secret 更新后核验目标环境已使用新绑定，先在 preview 检查新 
 
 每日将安全汇总记录在项目运维记录，不将原始响应、token 或完整本机环境写入 Vault。通过条件是每个应有 bucket 成功或有解释/恢复记录、行数身份与字段单位稳定、收盘成功、没有未处置额度/时延问题，且完整度与 stale 披露符合真实可用性；不能通过降低阈值、补零或隐藏缺失达标。
 
-## v3 shadow operational health and release review (Task 8, local only)
+## v3 collection, shared quota and controlled publication
 
-The existing `MARKET_DASHBOARD_ROTATION_SHADOW=1` wrapper opt-in runs v2 first and private shadow second; `0` or removal disables shadow without stopping v2. This task does not set that variable, alter a loaded LaunchAgent, run migrations or deploy. Keep the existing service label and 300-second interval when a later approved stable-checkout operation enables the opt-in.
+`MARKET_DASHBOARD_ROTATION_SHADOW=1` now selects one combined Python cycle. At 09:45、11:30、14:00 and close the rotation leg runs first; a legacy v2 bucket in the same wake reuses the exact in-memory provider batches. The wrapper no longer starts a second provider process, so overlap does not add a second Wind collection. Removing the variable or setting it to `0` restores the original v2-only invocation without reinstalling the LaunchAgent.
+
+`MARKET_DASHBOARD_ROTATION_PUBLISH=1` is honored only inside that combined opt-in and adds `--rotation-publish`. The validated v3 body is first written to private `pending-publication.json`, then sent through the existing authenticated HTTPS publisher. A failed/ambiguous response does not replace `last-success.json`; the next wake retries the identical derived payload without recollecting, so D1 idempotency keeps the operation safe. After a confirmed response the private success state and ledger commit, then the pending file is removed. Neither file contains credentials or provider responses.
+
+The already collected Wind breadth timestamp is the current-session proof. A prior-date observation writes a private `market-dashboard/trading-calendar.json` negative cache and suppresses later provider calls that Shanghai date; current-date evidence is injected into that run's official-date set. This avoids guessed future holiday tables and a separate calendar quota call. It may spend one probe on a closed weekday, but it cannot publish the previous trading day's data as current.
+
+Production visibility is an observation beta, not a release-gate pass. `releaseEligible=false`, cold-start state and safe codes remain authoritative until the independent evaluation accumulates evidence.
+
+## v3 shadow operational health and release review (Task 8 history)
+
+The initial Task 8 implementation ran v2 and the private shadow as separate processes. That historical behavior is superseded by the combined-cycle procedure above; the service label and 300-second wake interval remain unchanged.
 
 Shadow `health.json`, the CLI summary and read-only `--rotation-report` expose `rotationMode`, `rotationSession`, `rotationCoverage` (universe median completeness), `rotationUniverseCounts`, `rotationLatencySeconds`, `rotationCloseSuccesses`, `rotationSafeErrorCode`, plus safe source/observation timestamps. They never expose provider rows, private sector lists or credentials. `rotationCloseSuccesses` counts distinct dates in the explicitly configured official calendar; it is zero without that calendar. Original v2 health files remain unchanged.
 

@@ -1,4 +1,4 @@
-"""Private shadow ledger and fail-closed release evidence; never publish or enable."""
+"""Private rotation ledger and fail-closed release evidence."""
 from datetime import date, datetime
 import argparse
 import json
@@ -16,7 +16,7 @@ from .concepts import concept_definitions, load_concept_config
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 VERSIONS = ('sectorScoringVersion', 'sectorUniverseVersion')
 SAFE_CODES = frozenset({'INVALID_STATE', 'COLLECTION_FAILED', 'INVALID_PAYLOAD', 'SCORING_FAILED',
-    'STATE_WRITE_FAILED', 'WINDOW_EXPIRED', 'STATE_DURABILITY_UNCONFIRMED', 'LEDGER_WRITE_FAILED',
+    'STATE_WRITE_FAILED', 'PUBLISH_FAILED', 'WINDOW_EXPIRED', 'STATE_DURABILITY_UNCONFIRMED', 'LEDGER_WRITE_FAILED',
     'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED', 'IDENTITY_MISMATCH', 'UNIT_MISMATCH',
     'FUTURE_TIMESTAMP', 'CALENDAR_UNVERIFIED'})
 SESSIONS = ('09:45', '11:30', '14:00', 'close')
@@ -106,10 +106,13 @@ def _event(value, config):
     selected = {u: list(dict.fromkeys(i for i in lists.get(u, []) if isinstance(i, str) and i in ids))[:10]
                 if isinstance(lists.get(u, []), list) else [] for u, ids in definitions.items()}
     count = value.get('candidateCount')
+    skipped, published = value.get('publicationSkipped') is True, value.get('published') is True
+    if skipped and published:
+        raise ValueError('INVALID_STATE')
     return {'marketDate': day, 'session': value['session'], 'observedAt': observed, 'sourceAt': source,
-        'success': value.get('success') is True and code is None and value.get('publicationSkipped') is True,
+        'success': value.get('success') is True and code is None and (skipped or published),
         'officialClose': official, 'officialMarketDate': day in calendar_dates(config.get('schedule', {}).get('tradingDates', [])),
-        'publicationSkipped': value.get('publicationSkipped') is True, 'counts': _counts(value.get('counts')),
+        'publicationSkipped': skipped, 'published': published, 'counts': _counts(value.get('counts')),
         'medianCompleteness': value.get('medianCompleteness') if number(value.get('medianCompleteness')) else None,
         'minimumCandidateCompleteness': value.get('minimumCandidateCompleteness') if number(value.get('minimumCandidateCompleteness')) else None,
         'candidateCount': count if isinstance(count, int) and number(count, 0, 110) else 0,
@@ -175,7 +178,8 @@ def update_ledger(path, event, config):
     return ledger
 
 
-def event_from_block(block, now, source_at, config, *, success=True, code=None, session=None, scored_rows=None):
+def event_from_block(block, now, source_at, config, *, success=True, code=None, session=None,
+                     scored_rows=None, published=False):
     from .rotation import derive_current_views
     rows = block.get('industries', []) + block.get('concepts', [])
     candidates = derive_current_views(scored_rows if scored_rows is not None else rows, config).get('potentialRotation', []) if rows else []
@@ -183,7 +187,8 @@ def event_from_block(block, now, source_at, config, *, success=True, code=None, 
     return _event({'marketDate': now.astimezone(SHANGHAI).date().isoformat(),
         'session': session or block.get('session', 'close'), 'observedAt': now.isoformat(), 'sourceAt': source_at,
         'success': success, 'officialClose': block.get('officialClose') is True,
-        'publicationSkipped': True, 'counts': {'industries': len(block.get('industries', [])), 'concepts': len(block.get('concepts', []))},
+        'publicationSkipped': not published, 'published': published,
+        'counts': {'industries': len(block.get('industries', [])), 'concepts': len(block.get('concepts', []))},
         'medianCompleteness': median([row['completeness'] for row in rows]) if rows else None,
         'candidateCount': len(candidates), 'minimumCandidateCompleteness': min((row['completeness'] for row in candidates), default=None),
         'latencySeconds': (now-timestamp(source_at)).total_seconds() if source_at else None,

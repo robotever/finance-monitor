@@ -895,6 +895,56 @@ class RotationShadowTests(unittest.TestCase):
                 'collector': lambda c: self.fail('duplicate collected')})
             self.assertEqual(duplicate.status, 'duplicate')
 
+    def test_rotation_publish_success_commits_only_after_authenticated_transport(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); published = []
+            def publisher(payload, url, token, timeout, **kwargs):
+                published.append((payload, url, token, timeout))
+                return job.PublishResult(True, 201, 1)
+            result = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token', 'timeout': 8}, {'now': self.now, 'state_root': root,
+                'collector': rotation_batches, 'publisher': publisher})
+            self.assertTrue(result.success, result.error_code)
+            self.assertEqual(result.status, 'rotation_published')
+            self.assertEqual(result.publish_result.status_code, 201)
+            self.assertEqual(len(published), 1)
+            self.assertEqual(published[0][0]['schemaVersion'], 'market-dashboard-v3')
+            self.assertEqual(published[0][1:], ('https://example.test/publish', 'private-token', 8))
+            self.assertTrue((root/'market-dashboard-shadow/last-success.json').exists())
+            self.assertFalse((root/'market-dashboard-shadow/pending-publication.json').exists())
+            ledger = json.loads((root/'market-dashboard-shadow/rotation-ledger.json').read_text())
+            self.assertTrue(ledger['events'][0]['published'])
+            self.assertFalse(ledger['events'][0]['publicationSkipped'])
+            self.assertNotIn('private-token', repr(result))
+
+    def test_failed_rotation_publish_keeps_pending_payload_and_retry_does_not_recollect(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory); payloads = []
+            def failed(payload, *args, **kwargs):
+                payloads.append(payload)
+                return job.PublishResult(False, 503, 3, 'HTTP_503')
+            first = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token'}, {'now': self.now, 'state_root': root,
+                'collector': rotation_batches, 'publisher': failed})
+            self.assertFalse(first.success)
+            self.assertEqual(first.status, 'publish')
+            self.assertEqual(first.error_code, 'PUBLISH_FAILED')
+            self.assertFalse((root/'market-dashboard-shadow/last-success.json').exists())
+            pending = root/'market-dashboard-shadow/pending-publication.json'
+            self.assertTrue(pending.exists())
+            def recovered(payload, *args, **kwargs):
+                payloads.append(payload)
+                return job.PublishResult(True, 200, 1)
+            retry = job.run_job({'rotation_publish': True, 'url': 'https://example.test/publish',
+                'token': 'private-token'}, {'now': self.now.replace(minute=55), 'state_root': root,
+                'collector': lambda config: self.fail('pending publication recollected'),
+                'publisher': recovered})
+            self.assertTrue(retry.success, retry.error_code)
+            self.assertEqual(retry.status, 'rotation_published')
+            self.assertEqual(payloads[0], payloads[1])
+            self.assertFalse(pending.exists())
+            self.assertTrue((root/'market-dashboard-shadow/last-success.json').exists())
+
     def test_close_requires_every_sector_timestamp_and_does_not_advance_twice(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

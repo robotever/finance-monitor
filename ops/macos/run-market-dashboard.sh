@@ -83,6 +83,8 @@ try:
         # One process runs rotation first and lets v2 reuse the same lazy batch.
         # MARKET_DASHBOARD_ROTATION_SHADOW=0 restores the unchanged v2-only path.
         arguments = ['--with-rotation']
+        if os.environ.get('MARKET_DASHBOARD_ROTATION_PUBLISH') == '1':
+            arguments.append('--rotation-publish')
     os.execvpe(python, command + arguments, os.environ)
 except Exception:
     # Never print a dotenv line, credential, provider exception or exec arguments.

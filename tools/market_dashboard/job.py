@@ -1044,7 +1044,7 @@ def _rotation_audit_warning(metadata):
 
 
 def _run_rotation_job(args, deps):
-    """Private collection/assembly only. No publisher is reachable in this path."""
+    """Collect/assemble rotation data; publication requires an explicit flag."""
     arg = (lambda key, default=None: args.get(key, default)) if isinstance(args, dict) else (lambda key, default=None: getattr(args, key, default))
     fixture, dry_run = arg('fixture', False), arg('dry_run', False)
     if fixture and not dry_run and not arg('rotation_report', False):
@@ -1062,6 +1062,7 @@ def _run_rotation_job(args, deps):
         return JobResult(False, 'configuration', error_code='INVALID_CONFIG')
     shadow = state_root / 'market-dashboard-shadow'
     path, health_path = shadow/'last-success.json', shadow/'health.json'
+    pending_path = shadow/'pending-publication.json'
     ledger_path = shadow/'rotation-ledger.json'
     if arg('rotation_report', False):
         try:
@@ -1078,6 +1079,7 @@ def _run_rotation_job(args, deps):
     stage, metadata = 'state', _rotation_report({'safeCodes': [
         'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED']}, config)
     committed = False
+    publish_result = None
     event, ledger, key = None, None, None
 
     def record_operation(event):
@@ -1114,6 +1116,36 @@ def _run_rotation_job(args, deps):
         rotation_state = {} if fixture else load_rotation_state(path, config)
         if not fixture and health_path.exists():
             metadata = _rotation_report(_read_json(health_path), config)
+        pending_publication = {} if fixture else _read_json(pending_path)
+        if pending_publication and arg('rotation_publish', False):
+            stage = 'publish'
+            _require(pending_publication.get('mode') == 'rotation_published'
+                     and isinstance(pending_publication.get('payload'), dict)
+                     and isinstance(pending_publication.get('shadowOperation'), dict))
+            payload = pending_publication['payload']
+            publish_result = deps.get('publisher', publish_payload)(payload,
+                arg('url') or os.environ.get('MARKET_DASHBOARD_PUBLISH_URL', ''),
+                arg('token') or os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN', ''),
+                arg('timeout', 20), config=config)
+            if not publish_result.success:
+                metadata['safeCodes'] = ['PUBLISH_FAILED']
+                metadata['rotationSafeErrorCode'] = 'PUBLISH_FAILED'
+                _write_json(health_path, metadata)
+                return JobResult(False, 'publish', payload, error_code='PUBLISH_FAILED',
+                                 publish_result=publish_result, metadata=metadata)
+            event = pending_publication['shadowOperation']
+            stage = 'persist'
+            def acknowledge_pending_replace():
+                nonlocal committed
+                committed = True
+            _write_json(path, pending_publication, on_replace=acknowledge_pending_replace)
+            try:
+                record_operation(event)
+            except (OSError, ValueError, TypeError):
+                pass
+            pending_path.unlink(missing_ok=True)
+            return JobResult(True, 'rotation_published', payload, publish_result=publish_result,
+                             metadata=metadata)
         pending = _pending_rotation_operation(state, ledger)
         if pending is not None and not dry_run:
             # Reconcile before any later session replaces the recovery proof.
@@ -1176,7 +1208,7 @@ def _run_rotation_job(args, deps):
                          if row['marketDate'] == inputs['marketDate']] if key == 'close' else None
         event = rotation_operations.event_from_block(block, now,
             min((row['observedAt'] for row in current), key=_timestamp), config, session=key,
-            scored_rows=scored_closes)
+            scored_rows=scored_closes, published=arg('rotation_publish', False))
         metadata.update(rotation_operations.health_for_event(event, ledger))
         if dry_run:
             return JobResult(True, 'dry_run', payload, metadata=metadata)
@@ -1188,18 +1220,36 @@ def _run_rotation_job(args, deps):
                    if _timestamp(snapshot['observedAt']) >= now-timedelta(days=90)]
         history.append(build_market_payload(inputs, previous, config))
         _write_json(health_path, metadata)
+        mode = 'rotation_published' if arg('rotation_publish', False) else 'rotation_shadow'
+        prepared = {'bucket': bucket, 'mode': mode, 'payload': payload,
+            'rotation': next_rotation, 'legacyHistory': history, 'shadowOperation': event}
+        if arg('rotation_publish', False):
+            _write_json(pending_path, prepared)
+            stage = 'publish'
+            publish_result = deps.get('publisher', publish_payload)(payload,
+                arg('url') or os.environ.get('MARKET_DASHBOARD_PUBLISH_URL', ''),
+                arg('token') or os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN', ''),
+                arg('timeout', 20), config=config)
+            if not publish_result.success:
+                metadata['safeCodes'] = ['PUBLISH_FAILED']
+                metadata['rotationSafeErrorCode'] = 'PUBLISH_FAILED'
+                _write_json(health_path, metadata)
+                return JobResult(False, 'publish', payload, error_code='PUBLISH_FAILED',
+                                 publish_result=publish_result, metadata=metadata)
+            stage = 'persist'
         # Health is preparatory. Replacing success is the final commit boundary;
         # any failure before it leaves the official close available for retry.
         def acknowledge_replace():
             nonlocal committed
             committed = True
-        _write_json(path, {'bucket': bucket, 'mode': 'rotation_shadow', 'payload': payload,
-            'rotation': next_rotation, 'legacyHistory': history, 'shadowOperation': event}, on_replace=acknowledge_replace)
+        _write_json(path, prepared, on_replace=acknowledge_replace)
         try:
             record_operation(event)
         except (OSError, ValueError, TypeError):
             pass  # The close stays committed; record_operation marked its audit warning.
-        return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
+        if arg('rotation_publish', False):
+            pending_path.unlink(missing_ok=True)
+        return JobResult(True, mode, payload, publish_result=publish_result, metadata=metadata)
     except Exception as error:
         if committed:
             # Replacement already consumed this close. A later directory-fsync
@@ -1210,7 +1260,7 @@ def _run_rotation_job(args, deps):
             return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
         code = 'INVALID_PAYLOAD' if isinstance(error, ValidationError) else {
             'state': 'INVALID_STATE', 'collect': 'COLLECTION_FAILED', 'score': 'SCORING_FAILED',
-            'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED',
+            'validate': 'INVALID_PAYLOAD', 'publish': 'PUBLISH_FAILED', 'persist': 'STATE_WRITE_FAILED',
             'audit': 'LEDGER_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
         if isinstance(error, sources.SourceError) and error.code in rotation_operations.SAFE_CODES:
             code = error.code
@@ -1228,7 +1278,7 @@ def _run_rotation_job(args, deps):
                 record_operation(failed_event)
             except (OSError, ValueError, TypeError):
                 pass
-        return JobResult(False, stage, error_code=code, metadata=metadata)
+        return JobResult(False, stage, error_code=code, publish_result=publish_result, metadata=metadata)
     finally:
         if lock is not None:
             lock.close()
@@ -1246,7 +1296,7 @@ def run_job(args, deps=None):
     """
     deps = deps or {}
     arg = (lambda key, default=None: args.get(key, default)) if isinstance(args, dict) else (lambda key, default=None: getattr(args, key, default))
-    if any(arg(key, False) for key in ('rotation_shadow', 'rotation_report', 'skip_rotation_publish')):
+    if any(arg(key, False) for key in ('rotation_shadow', 'rotation_publish', 'rotation_report', 'skip_rotation_publish')):
         return _run_rotation_job(args, deps)
     fixture, dry_run, skip_publish = arg('fixture', False), arg('dry_run', False), arg('skip_publish', False)
     if fixture and not (dry_run or skip_publish):
@@ -1442,6 +1492,7 @@ def main(argv=None):
     parser.add_argument('--token', help='Publication Bearer token (prefer MARKET_DASHBOARD_PUBLISH_TOKEN)')
     parser.add_argument('--timeout', type=float, default=20)
     parser.add_argument('--rotation-shadow', action='store_true', help='Assemble v3 locally in private shadow state; never publish')
+    parser.add_argument('--rotation-publish', action='store_true', help='Publish validated v3, then commit its private success state')
     parser.add_argument('--skip-rotation-publish', action='store_true', help='Select the shadow-only path; production publication is unavailable')
     parser.add_argument('--rotation-report', action='store_true', help='Read private shadow metadata only; no collection or state writes')
     parser.add_argument('--with-rotation', action='store_true', help='Run rotation then v2 with one shared provider collection')

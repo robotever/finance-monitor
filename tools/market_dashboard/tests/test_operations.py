@@ -153,6 +153,12 @@ class OperationsTests(unittest.TestCase):
         self.assertFalse((self.root / 'logs/market-dashboard-shadow/job.log').exists())
         self.assertIn('safe-summary', (self.root / 'logs/market-dashboard/job.log').read_text())
         capture.unlink()
+        self.env['MARKET_DASHBOARD_ROTATION_PUBLISH'] = '1'
+        publishing = self.execute('run-market-dashboard.sh')
+        self.assertEqual(publishing.returncode, 0, publishing.stderr)
+        self.assertEqual([json.loads(line) for line in capture.read_text().splitlines()],
+                         [['--with-rotation', '--rotation-publish']])
+        capture.unlink()
         self.env['MARKET_DASHBOARD_ROTATION_SHADOW'] = '0'
         disabled = self.execute('run-market-dashboard.sh')
         self.assertEqual(disabled.returncode, 0, disabled.stderr)
