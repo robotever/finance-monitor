@@ -12,6 +12,7 @@ from statistics import mean
 
 from .concepts import concept_definitions, load_concept_config
 from .rotation_operations import VERSIONS, calendar_dates, timestamp
+from .rotation_store import SCHEMA as ROTATION_SCHEMA, load_rotation_state
 from .scoring import load_config
 from .sources import INDUSTRY_DEFINITIONS
 
@@ -111,7 +112,13 @@ def _validate(rows, dates, config):
             raise ValueError('DUPLICATE_CLOSE')
         seen.add(key)
         grouped[universe, day][identity] = row
-    return grouped, versions
+    accepted = sum(len(values) for values in grouped.values())
+    exact = {}
+    for universe, identities in definitions.items():
+        exact[universe] = sum(set(grouped[universe, day]) == identities for day in dates)
+    audit = {'inputRows': len(rows), 'acceptedRows': accepted,
+             'skippedRows': len(rows) - accepted, 'exactUniverseDates': exact}
+    return grouped, versions, audit
 
 
 def _native_coverage(eligible, dates):
@@ -161,7 +168,7 @@ def _slice_summary(samples):
     return result
 
 
-def _summary(samples, date_results):
+def _summary(samples, date_results, horizon):
     finite_ics = [sample['rankIc'] for sample in samples if sample['rankIc'] is not None]
     ic_deviation = None
     if len(finite_ics) >= 2:
@@ -178,9 +185,15 @@ def _summary(samples, date_results):
         values = [_spread(sample, identity) for sample in samples]
         if values and all(value is not None for value in values):
             leave_sectors.append(mean(values))
+    independent, last_index = 0, None
+    for index, point in enumerate(date_results):
+        if point['status'] == 'VALID' and (last_index is None or index >= last_index + horizon):
+            independent += 1
+            last_index = index
     return {
         'validDates': len(samples),
-        'evidenceStatus': 'SUFFICIENT_FOR_REVIEW' if len(samples) >= 20 else 'INSUFFICIENT_EVIDENCE',
+        'effectiveIndependentDates': independent,
+        'evidenceStatus': 'SUFFICIENT_FOR_REVIEW' if independent >= 20 else 'INSUFFICIENT_EVIDENCE',
         'meanRankIc': mean(finite_ics) if finite_ics else None,
         'icPositiveRate': mean(value > 0 for value in finite_ics) if finite_ics else None,
         'icInformationRatio': mean(finite_ics) / ic_deviation if ic_deviation else None,
@@ -238,7 +251,7 @@ def _evaluate_eligible(universe, eligible, grouped, dates):
             samples.append(sample)
             result.update(status='VALID', rankIc=rank_ic, spread=spread,
                           hitRate=hit_rate, topGroupDrawdown=drawdown)
-        horizons[str(horizon)] = _summary(samples, date_results)
+        horizons[str(horizon)] = _summary(samples, date_results, horizon)
     return horizons
 
 
@@ -258,10 +271,13 @@ def _turnover(eligible, dates):
 
 def _evaluate_signal(universe, signal, grouped, dates):
     eligible = _eligible(universe, signal, grouped, dates)
-    return {'direction': 'lower-is-better' if signal == 'risk' else 'higher-is-better',
+    result = {'direction': 'higher-is-better',
             'nativeCoverage': _native_coverage(eligible, dates),
             'topQuintileTurnover': _turnover(eligible, dates),
             'horizons': _evaluate_eligible(universe, eligible, grouped, dates)}
+    if signal == 'risk':
+        result['rawDirection'] = 'higher-is-worse'
+    return result
 
 
 def _comparison(universe, model, baseline, grouped, dates):
@@ -344,7 +360,7 @@ def _risk_diagnostics(universe, grouped, dates):
 def evaluate(rows: list[dict], official_dates: list[str], config: dict) -> dict:
     """Evaluate current scores without fitting or mutating the supplied rows."""
     dates = calendar_dates(official_dates)
-    grouped, versions = _validate(rows, dates, config)
+    grouped, versions, audit = _validate(rows, dates, config)
     universes = {}
     for universe in ('industry', 'concept'):
         signals = {
@@ -361,9 +377,12 @@ def evaluate(rows: list[dict], official_dates: list[str], config: dict) -> dict:
         'evidenceStatus': 'CALCULATION_ONLY',
         'liveVerified': False,
         'officialDates': dates,
+        'inputAudit': audit,
+        'method': {'tieRule': 'SCORE_DESC_THEN_SECTOR_ID',
+                   'overlapEvidence': 'GREEDY_NON_OVERLAPPING_SCORE_DATES'},
         'universes': universes,
         'limitations': ['NO_AUTOMATIC_WEIGHT_TUNING', 'NO_TRANSACTION_COSTS',
-                        'CANONICAL_STATE_DOES_NOT_REPROVE_PROVIDER_ARRIVAL'],
+                        'NO_OVERLAP_ADJUSTMENT', 'CANONICAL_STATE_DOES_NOT_REPROVE_PROVIDER_ARRIVAL'],
     }
 
 
@@ -384,21 +403,21 @@ def render_markdown(report: dict) -> str:
         f"- 评分版本：`{versions.get('sectorScoringVersion', 'unknown')}`",
         f"- 板块范围版本：`{versions.get('sectorUniverseVersion', 'unknown')}`",
         f"- 官方日期数：{len(report.get('officialDates', []))}",
-        '- 解释门槛：每个市场范围、维度和周期至少20个成熟评分日；不足时仍展示指标，但标记样本不足。',
+        '- 解释门槛：每个市场范围、维度和周期至少20个非重叠证据日；不足时仍展示指标，但标记样本不足。',
     ]
     labels = {'strength': '强度', 'opportunity': '机会', 'risk': '风险（反向后）'}
     for universe, universe_label in (('industry', '行业板块'), ('concept', '概念板块')):
         lines.extend(['', f'## {universe_label}', '',
-                      '| 维度 | 周期 | 有效日期 | Rank IC | IC正值率 | 多空分组差 | 命中率 | 最大回撤 | 证据 |',
-                      '|---|---:|---:|---:|---:|---:|---:|---:|---|'])
+                      '| 维度 | 周期 | 有效日期 | 非重叠证据日 | Rank IC | IC正值率 | 多空分组差 | 命中率 | 最大回撤 | 证据 |',
+                      '|---|---:|---:|---:|---:|---:|---:|---:|---:|---|'])
         signals = report.get('universes', {}).get(universe, {}).get('signals', {})
         for signal in ('strength', 'opportunity', 'risk'):
             for horizon in map(str, HORIZONS):
                 result = signals.get(signal, {}).get('horizons', {}).get(horizon, {})
                 evidence = result.get('evidenceStatus', 'INSUFFICIENT_EVIDENCE')
                 readable = '样本不足（INSUFFICIENT_EVIDENCE）' if evidence == 'INSUFFICIENT_EVIDENCE' else evidence
-                lines.append('| {} | {}日 | {} | {} | {} | {} | {} | {} | {} |'.format(
-                    labels[signal], horizon, result.get('validDates', 0),
+                lines.append('| {} | {}日 | {} | {} | {} | {} | {} | {} | {} | {} |'.format(
+                    labels[signal], horizon, result.get('validDates', 0), result.get('effectiveIndependentDates', 0),
                     _display(result.get('meanRankIc')), _display(result.get('icPositiveRate')),
                     _display(result.get('meanSpread')), _display(result.get('meanHitRate')),
                     _display(result.get('worstTopGroupDrawdown')), readable))
@@ -417,6 +436,8 @@ def render_markdown(report: dict) -> str:
     lines.extend(['', '## 解释限制', '',
                   '- 正Rank IC表示分数方向与后续相对收益方向一致，不等于可交易收益。',
                   '- 概念板块存在成分重叠；当前版本尚未做重叠校正和交易成本估计。',
+                  '- 3／5／10日结果会重叠；描述指标保留全部成熟日期，证据门槛按贪心选择的非重叠评分日计算。',
+                  '- 分数并列时按板块ID稳定排序，极端大量并列时分组结果可能受该规则影响。',
                   '- 原始高风险组的损失率和回撤差在JSON的 `riskDiagnostics` 中单独披露。',
                   '- 评价程序不自动修改权重；新公式必须升级评分版本并与旧版并行比较。', ''])
     return '\n'.join(lines)
@@ -430,14 +451,18 @@ def main(argv=None):
     parser.add_argument('--format', choices=('json', 'markdown'), default='json')
     args = parser.parse_args(argv)
     try:
-        envelope = json.loads(args.state.read_text())
         dates = json.loads(args.calendar.read_text())
+        config = load_config(args.config)
+        envelope = json.loads(args.state.read_text())
         if not isinstance(envelope, dict):
             raise ValueError('INVALID_STATE')
-        state = envelope.get('rotation', envelope)
-        if not isinstance(state, dict) or not isinstance(state.get('closes'), list):
+        preview = envelope.get('rotation', envelope)
+        if (not isinstance(preview, dict) or preview.get('schemaVersion') != ROTATION_SCHEMA
+                or any(preview.get(key) != config[key] for key in VERSIONS)
+                or not isinstance(preview.get('closes'), list)):
             raise ValueError('INVALID_STATE')
-        report = evaluate(state['closes'], dates, load_config(args.config))
+        state = load_rotation_state(args.state, config)
+        report = evaluate(state['closes'], dates, config)
         output = render_markdown(report) if args.format == 'markdown' else json.dumps(
             report, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
         print(output)

@@ -9,7 +9,8 @@ import unittest
 
 from tools.market_dashboard.scoring import load_config
 from tools.market_dashboard.sources import INDUSTRY_DEFINITIONS
-from tools.market_dashboard import rotation_evaluation
+from tools.market_dashboard.concepts import concept_definitions, load_concept_config
+from tools.market_dashboard import rotation_evaluation, rotation_store
 
 
 def trading_dates(count=12):
@@ -46,6 +47,35 @@ def sample_rows(count=12):
                 },
             })
     return rows, dates, config, identities
+
+
+def canonical_state(day='2026-10-01'):
+    rows = []
+    for universe, definitions in [('industry', INDUSTRY_DEFINITIONS),
+                                  ('concept', concept_definitions(load_concept_config()))]:
+        for identity, name in definitions:
+            rows.append({
+                'id': identity, 'name': name, 'universe': universe,
+                'marketDate': day, 'session': 'close',
+                'observedAt': day + 'T15:00:02+08:00',
+                'strength': 80, 'opportunity': None, 'risk': 20,
+                '_rawScores': {'strength': 80.49, 'opportunity': None, 'risk': 20.1},
+                'completeness': 80,
+                'components': {'breadth': {'value': 50.0, 'coverage': 1.0, 'missing': []}},
+                'metrics': {'return20d': 2.0, 'relativeStrength20d': 0.0, 'flowRatio1d': None},
+                'heatState': 'active', 'missing': ['flow.missingInput'],
+                'sectorScoringVersion': 'sector-score-v0.2',
+                'sectorUniverseVersion': 'sector-universe-v0.1',
+            })
+    payload = {
+        'schemaVersion': 'market-dashboard-v3',
+        'sectorScoringVersion': 'sector-score-v0.2',
+        'sectorUniverseVersion': 'sector-universe-v0.1',
+        'marketDate': day, 'session': 'close',
+        'observedAt': day + 'T15:05:00+08:00', 'officialClose': True,
+        'sectors': rows,
+    }
+    return rotation_store.append_rotation_close({}, payload, load_config())
 
 
 class RotationEvaluationCoreTests(unittest.TestCase):
@@ -159,9 +189,25 @@ class RotationEvaluationRobustnessTests(unittest.TestCase):
         returns = risk['horizons']['1']
         diagnostics = risk['riskDiagnostics']['horizons']['1']
         self.assertGreater(returns['meanRankIc'], 0)
+        self.assertEqual(risk['direction'], 'higher-is-better')
+        self.assertEqual(risk['rawDirection'], 'higher-is-worse')
         self.assertEqual(diagnostics['highMinusLowNegativeReturnRate'], 1)
         self.assertGreater(diagnostics['highMinusLowMaximumDrawdown'], 0)
         self.assertEqual(diagnostics['interpretation'], 'HIGHER_RAW_RISK_IDENTIFIES_WORSE_OUTCOMES')
+
+    def test_overlapping_horizons_disclose_effective_independent_evidence(self):
+        rows, dates, config, _ = sample_rows(31)
+
+        report = rotation_evaluation.evaluate(rows, dates, config)
+
+        horizons = report['universes']['industry']['signals']['strength']['horizons']
+        self.assertEqual(horizons['1']['effectiveIndependentDates'], 30)
+        self.assertEqual(horizons['1']['evidenceStatus'], 'SUFFICIENT_FOR_REVIEW')
+        self.assertEqual(horizons['3']['effectiveIndependentDates'], 10)
+        self.assertEqual(horizons['3']['evidenceStatus'], 'INSUFFICIENT_EVIDENCE')
+        self.assertIn('NO_OVERLAP_ADJUSTMENT', report['limitations'])
+        self.assertEqual(report['inputAudit']['inputRows'], len(rows))
+        self.assertEqual(report['method']['tieRule'], 'SCORE_DESC_THEN_SECTOR_ID')
 
 
 class RotationEvaluationCliTests(unittest.TestCase):
@@ -178,8 +224,8 @@ class RotationEvaluationCliTests(unittest.TestCase):
             )
 
     def test_cli_emits_parseable_json_and_human_markdown_without_writing_files(self):
-        rows, dates, _, _ = sample_rows()
-        state = {'rotation': {'closes': rows}}
+        dates = ['2026-10-01']
+        state = {'rotation': canonical_state()}
 
         json_result = self.run_cli(state, dates)
         markdown_result = self.run_cli(state, dates, '--format', 'markdown')
@@ -189,8 +235,18 @@ class RotationEvaluationCliTests(unittest.TestCase):
         self.assertEqual(markdown_result.returncode, 0, markdown_result.stderr)
         self.assertIn('# 板块评分评价报告', markdown_result.stdout)
         self.assertIn('仅用于计算检验', markdown_result.stdout)
-        self.assertIn('| 维度 | 周期 | 有效日期 | Rank IC |', markdown_result.stdout)
+        self.assertIn('| 维度 | 周期 | 有效日期 | 非重叠证据日 | Rank IC |', markdown_result.stdout)
         self.assertIn('样本不足', markdown_result.stdout)
+
+    def test_cli_rejects_partial_noncanonical_state_even_when_evaluate_accepts_fixture(self):
+        rows, dates, config, _ = sample_rows()
+        self.assertEqual(rotation_evaluation.evaluate(rows, dates, config)['schemaVersion'],
+                         'sector-score-evaluation-v1')
+
+        result = self.run_cli({'rotation': {'closes': rows}}, dates)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)['safeErrorCode'], 'INVALID_EVALUATION_INPUT')
 
     def test_cli_invalid_input_returns_format_appropriate_safe_error_without_traceback(self):
         json_result = self.run_cli([], ['2026-10-01'])
