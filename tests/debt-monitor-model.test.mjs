@@ -94,7 +94,7 @@ test('European spreads use the latest common dates and calculate spread change',
       { date: '2026-08-01', value: 3.1 },
       { date: '2026-09-01', value: 3.4 },
     ],
-  })
+  }, new Date('2026-11-12T00:00:00Z'))
 
   assert.deepEqual(dashboard.europe.franceGermanySpread, {
     date: '2026-09-01', value: 80, previousValue: 60, change: 20, stale: false,
