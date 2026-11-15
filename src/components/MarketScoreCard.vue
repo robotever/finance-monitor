@@ -8,6 +8,12 @@
       <div v-for="index in 3" :key="index" class="fv-skeleton" />
       <span>加载评分中…</span>
     </div>
+    <template v-else-if="sector">
+      <div class="sector-rotation__scores"><div v-for="axis in sectorAxes" :key="axis.key"><span>{{ axis.label }}</span><strong>{{ sector[axis.key] ?? '—' }}</strong></div></div>
+      <p><span class="market-badge" :class="`heat-${sector.heatState}`">{{ sector.heatStateLabel }}</span><span v-if="sector.coldStartLabel" class="market-badge">{{ sector.coldStartLabel }}</span></p>
+      <p class="sector-rotation__meta">完整度 {{ sector.completeness }}% · {{ sector.evidenceLabel }}</p>
+      <p class="sector-rotation__meta">{{ sector.leaderboardLabels.opportunity }}</p>
+    </template>
     <template v-else-if="item">
       <div class="market-score-axes">
         <div v-for="axis in axes" :key="axis.key" class="market-score" :class="[axis.key, band(item[axis.key])]">
@@ -52,8 +58,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MarketScoreAxis, MarketScoreView } from '@/features/market-dashboard/types'
-const props = defineProps<{ item?: MarketScoreView; title: string; observedAt?: string; compact?: boolean; loading?: boolean; error?: string }>()
+import type { MarketScoreAxis, MarketScoreView, SectorRowView } from '@/features/market-dashboard/types'
+const props = defineProps<{ item?: MarketScoreView; sector?: SectorRowView; title: string; observedAt?: string; compact?: boolean; loading?: boolean; error?: string }>()
+const sectorAxes = [{ key: 'strength', label: '强度' }, { key: 'opportunity', label: '机会' }, { key: 'risk', label: '风险' }] as const
 const axes: { key: MarketScoreAxis; label: string }[] = [{ key: 'strength', label: '强度' }, { key: 'heat', label: '热度' }, { key: 'risk', label: '风险' }]
 const comparisons = [{ key: 'change1d', label: '上次 / 1日' }, { key: 'change5d', label: '5日' }] as const
 const frequencyLabel = computed(() => ({ intraday: '盘中', daily: '日频', monthly: '月频' })[props.item?.frequency ?? 'intraday'])

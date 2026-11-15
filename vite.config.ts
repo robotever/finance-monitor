@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
@@ -18,8 +18,16 @@ function proxy(target: string, referer?: string) {
 
 const rw = (prefix: string) => ({ rewrite: (p: string) => p.replace(new RegExp(`^${prefix}`), '') })
 
-export default defineConfig({
-  plugins: [vue()],
+export default defineConfig(({ mode }) => ({
+  plugins: [vue(), {
+    name: 'sector-acceptance-metadata',
+    transformIndexHtml(html) {
+      const env = loadEnv(mode, process.cwd(), 'VITE_')
+      if (mode !== 'sector-acceptance' || env.VITE_SECTOR_ROTATION_ACCEPTANCE !== 'true') return html
+      return html.replace('<title>NewsMonitor · 实时热榜聚合</title>', '<title>板块轮动临时验收 · 测试数据</title>')
+        .replace('<!-- build metadata -->', '<meta name="description" content="临时验收环境，全部为合成测试数据，不代表真实市场信号。" />\n    <meta name="robots" content="noindex,nofollow" />')
+    },
+  }],
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   server: {
     port: 5173,
@@ -38,4 +46,4 @@ export default defineConfig({
       '/proxy-fred':         { ...proxy('https://fred.stlouisfed.org', 'https://fred.stlouisfed.org'), ...rw('/proxy-fred') },
     },
   },
-})
+}))

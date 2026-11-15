@@ -151,3 +151,13 @@ Secret 更新后核验目标环境已使用新绑定，先在 preview 检查新 
 | 当日结论/证据定位 | 基线已建立，非灰度通过 | 待人工签核 | 待人工签核 | 待人工签核 |
 
 每日将安全汇总记录在项目运维记录，不将原始响应、token 或完整本机环境写入 Vault。通过条件是每个应有 bucket 成功或有解释/恢复记录、行数身份与字段单位稳定、收盘成功、没有未处置额度/时延问题，且完整度与 stale 披露符合真实可用性；不能通过降低阈值、补零或隐藏缺失达标。
+
+## v3 shadow operational health and release review (Task 8, local only)
+
+The existing `MARKET_DASHBOARD_ROTATION_SHADOW=1` wrapper opt-in runs v2 first and private shadow second; `0` or removal disables shadow without stopping v2. This task does not set that variable, alter a loaded LaunchAgent, run migrations or deploy. Keep the existing service label and 300-second interval when a later approved stable-checkout operation enables the opt-in.
+
+Shadow `health.json`, the CLI summary and read-only `--rotation-report` expose `rotationMode`, `rotationSession`, `rotationCoverage` (universe median completeness), `rotationUniverseCounts`, `rotationLatencySeconds`, `rotationCloseSuccesses`, `rotationSafeErrorCode`, plus safe source/observation timestamps. They never expose provider rows, private sector lists or credentials. `rotationCloseSuccesses` counts distinct dates in the explicitly configured official calendar; it is zero without that calendar. Original v2 health files remain unchanged.
+
+The private `state/market-dashboard-shadow/rotation-ledger.json` records each session's counts, median/candidate completeness, oldest close source time, maximum source latency, publication-skipped state, retained safe failures and per-universe top-ten opportunity churn. Successful closes are recorded only after `last-success.json` commits; an interrupted ledger write is repaired from that file before a later session replaces it. Ledger and shadow state are 0600 inside a 0700 directory. `LEDGER_WRITE_FAILED` means audit persistence needs retry; it does not authorize recollection of an already committed close. Read-only reporting does not repair files.
+
+Use the [shadow verification record](verification/2026-11-14-sector-rotation-shadow.md) for the ten-date live template, offline diagnostic/evaluation commands, exact gates and metric definitions. Historical schema/quota/20/60/250 coverage, ten real trading days and production-switch approval remain unsatisfied. Both read-only tools refuse to authorize production changes; the historical CLI always reports `liveVerified=false`. Synthetic tests and calculations must never be entered as live results.

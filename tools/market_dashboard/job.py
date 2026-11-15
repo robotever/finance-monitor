@@ -16,11 +16,13 @@ import os
 import re
 import time
 
-from . import sources
-from .concepts import (build_concept_payload, core_concept_ids,
+from . import sources, rotation_operations
+from .concepts import (build_concept_payload, concept_definitions, core_concept_ids,
                        load_concept_config)
 from .scoring import load_config, build_dashboard_payload, percentile_rank, score_family
 from .sources import STYLE_DEFINITIONS, INDUSTRY_DEFINITIONS
+from .rotation import score_sector, rank_sector_scores
+from .rotation_store import load_rotation_state, append_rotation_close, leaderboard_stats
 
 
 SHANGHAI = ZoneInfo('Asia/Shanghai')
@@ -53,6 +55,27 @@ def should_collect(now, state, config):
     minute = local.hour * 60 + local.minute
     scheduled = 570 <= minute < 690 or 780 <= minute < 900 or 900 <= minute <= 930
     return scheduled and state.get('bucket') != _bucket(now)
+
+
+def scheduled_rotation_session(now: datetime, state: dict, config: dict) -> str | None:
+    """Inclusive key windows, with exact end instants and no missed-window replay.
+
+    Returns the key time (or ``close``), rather than the legacy 15-minute bucket.
+    A shadow success stores ``YYYY-MM-DD:<key>`` independently of v2 state.
+    Force never bypasses these windows or official-close eligibility.
+    """
+    local = _local(now)
+    dates = config.get('schedule', {}).get('tradingDates')
+    if local.weekday() >= 5 or dates is not None and str(local.date()) not in dates:
+        return None
+    seconds = local.hour * 3600 + local.minute * 60 + local.second + local.microsecond / 1e6
+    settings = config['rotationSchedule']
+    for key, end in settings['windows']:
+        start_hour, start_minute = map(int, ('15:00' if key == 'close' else key).split(':'))
+        end_hour, end_minute = map(int, end.split(':'))
+        if start_hour*3600 + start_minute*60 <= seconds <= end_hour*3600 + end_minute*60:
+            return None if state.get('bucket') == f'{local.date()}:{key}' else key
+    return None
 
 
 
@@ -667,6 +690,179 @@ def build_market_payload(inputs, previous, config):
     return payload
 
 
+def _rotation_inputs(batches, config):
+    """Canonical unit-checked inputs, never a rolling-flow history substitute."""
+    now = _timestamp(config['sources']['now'])
+    local = _local(now)
+    session = 'close' if local.hour >= 15 else 'intraday'
+    supported = load_config()
+    _require(all(config[key] == supported[key] for key in ('sectorScoringVersion', 'sectorUniverseVersion')))
+    broad = batches['breadth'].rows[0] if batches['breadth'].rows else {}
+    market_amount = _money(broad, '成交额') if _fresh(broad, now) else None
+    result = []
+    for universe, group, definitions in [('industry', 'industries', INDUSTRY_DEFINITIONS),
+            ('concept', 'concepts', concept_definitions(load_concept_config()))]:
+        batch = batches.get(group)
+        _require(batch is not None and batch.source == 'Wind' and batch.source_mode == 'wind')
+        rows = batch.rows
+        _require(len(rows) == len(definitions)
+                 and {row.get('id') for row in rows} == {code for code, _ in definitions})
+        names = dict(definitions)
+        for row in rows:
+            _require(_fresh(row, now))  # every sector timestamp, including both concept batches
+            timestamp = _timestamp(row['_timestamp'])
+            _require(_local(timestamp).date() == local.date())
+            if session == 'close':
+                _require(local.hour == 15 and local <= local.replace(minute=30, second=0, microsecond=0)
+                         and _local(timestamp).hour == 15)
+            industry = universe == 'industry'
+            metrics = {key: _value(row, field, units=('%',)) for key, field in {
+                'return1d': '最新涨跌幅(%)' if industry else '涨跌幅',
+                'return5d': '5日涨跌幅', 'return20d': '20日涨跌幅',
+                'turnover': '最新换手率(%)' if industry else '换手率'}.items()}
+            metrics.update(amount1d=_money(row, '最新成交额(亿元)' if industry else '成交额'),
+                netFlow1d=_money(row, '最新主力净流入额(亿元)' if industry else '当日主力净流入额'),
+                netFlow5d=_money(row, '近5日主力净流入额'),
+                netFlow20d=_money(row, '近20日主力净流入额'), marketAmount=market_amount)
+            # No verified same-period amount fields exist yet. Do not divide a
+            # 5/20-day rolling flow by today's amount or infer old observations.
+            for key, field in [('advancing', '上涨家数'), ('declining', '下跌家数'), ('unchanged', '平盘家数')]:
+                value = _value(row, field, units=('个', '家'))
+                metrics[key] = value if value is not None and value >= 0 else None
+            result.append(dict(id=row['id'], name=names[row['id']], universe=universe,
+                observedAt=timestamp.isoformat(), marketDate=str(local.date()), session=session, metrics=metrics))
+    return result
+
+
+def _score_rotation_rows(current, prior_closes, config):
+    rows = [score_sector(row, prior_closes, current, config) for row in current]
+    for axis in ('strength', 'opportunity', 'risk'):
+        rows = rank_sector_scores(rows, axis)
+    return rows
+
+
+def _rotation_projection(row, *, audit=True):
+    """Project allowed derived fields; block assembly losslessly indexes audits."""
+    fields = ('id', 'name', 'universe', 'observedAt', 'strength', 'opportunity', 'risk',
+              'heatState', 'axisCompleteness', 'completeness', 'coldStart', 'validCloses',
+              'improvementEvidence', 'ranks', 'leaderboard', 'officialClose')
+    projected = {key: deepcopy(row[key]) for key in fields if key in row}
+    if audit:
+        projected['components'] = deepcopy(row['components'])
+        projected['missing'] = row['missing']
+    return projected
+
+
+COMPONENT_FIELDS = ('value', 'coverage', 'missing', 'usedWeight', 'totalWeight',
+                    'effectiveWeight', 'percentile', 'parts')
+
+
+def _index_rotation_audits(rows):
+    """Lossless normalized-component DAG, with exact floats and absent fields.
+
+    A node is [presence bitmask, present fields in COMPONENT_FIELDS order].
+    Missing values index missingReasons; parts are [part-name index, node index]
+    pairs. Children precede parents and identical complete nodes share an index.
+    No working score, historical metric or provider input enters this table.
+    """
+    reasons = {reason for row in rows for reason in row['missing']}
+    names = set()
+    def inventory(component):
+        _require(component.keys() <= set(COMPONENT_FIELDS))
+        reasons.update(component.get('missing', []))
+        for name, child in component.get('parts', {}).items():
+            names.add(name)
+            inventory(child)
+    for row in rows:
+        for component in row['components'].values():
+            inventory(component)
+    reasons, names = sorted(reasons), sorted(names)
+    reason_ids = {reason: index for index, reason in enumerate(reasons)}
+    name_ids = {name: index for index, name in enumerate(names)}
+    nodes, node_ids = [], {}
+    def encode(component):
+        mask, values = 0, []
+        for bit, key in enumerate(COMPONENT_FIELDS):
+            if key not in component:
+                continue
+            mask |= 1 << bit
+            value = component[key]
+            if key == 'missing':
+                value = [reason_ids[reason] for reason in value]
+            elif key == 'parts':
+                value = [[name_ids[name], encode(child)] for name, child in value.items()]
+            values.append(value)
+        node = [mask, *values]
+        identity = json.dumps(node, allow_nan=False, separators=(',', ':'))
+        if identity not in node_ids:
+            node_ids[identity] = len(nodes)
+            nodes.append(node)
+        return node_ids[identity]
+    for row in rows:
+        row['components'] = {name: encode(component) for name, component in row['components'].items()}
+        row['missing'] = [reason_ids[reason] for reason in row['missing']]
+    return {'componentEncoding': 'node-mask-v1', 'componentFields': list(COMPONENT_FIELDS),
+            'componentPartNames': names, 'componentNodes': nodes, 'missingReasons': reasons}
+
+
+def build_rotation_block(batches: dict, prior_closes: list[dict], config: dict) -> dict:
+    """Local v3 full-universe block; not a production publication interface."""
+    current = _rotation_inputs(batches, config)
+    rows = _score_rotation_rows(current, prior_closes, config)
+    official = current[0]['session'] == 'close'
+    for row in rows:
+        row['officialClose'] = official
+    closes = prior_closes + rows if official else prior_closes
+    for row in rows:
+        row['leaderboard'] = {axis: leaderboard_stats(closes, row['universe'], axis, row['id'])
+                              for axis in ('strength', 'opportunity')}
+    projected = [_rotation_projection(row) for row in rows]
+    audit_tables = _index_rotation_audits(projected)
+    return {'sectorScoringVersion': config['sectorScoringVersion'],
+            'sectorUniverseVersion': config['sectorUniverseVersion'],
+            'observedAt': config['sources']['now'], 'marketDate': current[0]['marketDate'],
+            'session': current[0]['session'], 'officialClose': official,
+            'industries': [row for row in projected if row['universe'] == 'industry'],
+            'concepts': [row for row in projected if row['universe'] == 'concept'],
+            **audit_tables,
+            'auditDefinitions': {'weights': config['sectorScoring']['weights'],
+                'componentWeights': config['sectorScoring']['componentWeights'],
+                'gates': config['sectorScoring']['gates'],
+                'heat': config['sectorScoring']['heat']},
+            # Task 1 did not verify live history/quota. No config flag unlocks
+            # public opportunity output or production release in this task.
+            'releaseEligible': False, 'safeCodes': ['LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED']}
+
+
+def build_rotation_payload(inputs, previous, block, config):
+    """Preserve legacy global/A-share/style semantics in an isolated v3 body."""
+    legacy = build_market_payload(inputs, previous, config)
+    validate_payload(legacy, config)
+    payload = deepcopy(legacy)
+    payload['schemaVersion'] = 'market-dashboard-v3'
+    payload['sectorScoringVersion'] = config['sectorScoringVersion']
+    payload['sectorUniverseVersion'] = config['sectorUniverseVersion']
+    payload['sectorRotation'] = block
+    payload['concepts']['selectionScoringVersion'] = payload['concepts']['scoringVersion']
+    payload['concepts']['scoringVersion'] = config['sectorScoringVersion']
+    payload['industries'] = [_rotation_projection(row, audit=False) for row in block['industries']]
+    concepts = {row['id']: row for row in block['concepts']}
+    for key in ('core', 'dynamic'):
+        selected = []
+        for old in legacy['concepts'][key]:
+            row = _rotation_projection(concepts[old['id']], audit=False)
+            if key == 'dynamic':
+                row.update({field: old[field] for field in ('selectionScore', 'selectedOn', 'retainedTradingDays')})
+            selected.append(row)
+        payload['concepts'][key] = selected
+    objects = [payload['global'], payload['aShare'], *payload['styles'], *block['industries'], *block['concepts']]
+    payload['dataStatus'] = {'completeness': math.floor(sum(row['completeness'] for row in objects)/len(objects)+.5),
+        'stale': legacy['dataStatus']['stale'],
+        'missing': ['sectorRotation:LIVE_HISTORY_UNVERIFIED', 'sectorRotation:LIVE_QUOTA_UNVERIFIED']}
+    _require(len(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()) <= 256*1024)
+    return payload
+
+
 
 @dataclass(frozen=True)
 class JobResult:
@@ -675,9 +871,12 @@ class JobResult:
     payload: dict | None = None
     error_code: str | None = None
     publish_result: PublishResult | None = None
+    metadata: dict | None = None
 
 
 def _read_json(path):
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('INVALID_STATE')
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
@@ -686,20 +885,50 @@ def _read_json(path):
     return data
 
 
-def _write_json(path, value):
+def _write_json(path, value, *, on_replace=None):
     """Same-directory atomic replace; runtime derived state only, private mode."""
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('INVALID_STATE')
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with NamedTemporaryFile(mode='w', dir=path.parent, prefix='.dashboard-', delete=False) as file:
             temporary = Path(file.name)
+            os.fchmod(file.fileno(), 0o600)
             json.dump(value, file, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
             file.flush()
             os.fsync(file.fileno())
         temporary.replace(path)
+        if on_replace is not None:
+            on_replace()
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def prepare_rotation_state(inputs, state, config):
+    """Task 4 supplies canonical full-universe sectorRows, never provider rows.
+
+    This prepares private history only. It cannot publish or commit; run_job
+    includes it in the legacy success file only after successful publication.
+    Absent rows retain v2 isolation. Intraday rows never advance a leaderboard.
+    """
+    if 'sectorRows' not in inputs or inputs.get('session') != 'close':
+        return state
+    current = inputs['sectorRows']
+    prior = state.get('priceHistory', []) + state.get('closes', [])
+    # Forward-collected evidence supersedes price-only backfill on overlap.
+    prior = list({(row['universe'], row['id'], row['marketDate']): row for row in prior}.values())
+    scored = [score_sector(row, prior, current, config) for row in current]
+    return append_rotation_close(state, dict(schemaVersion='market-dashboard-v3',
+        **{key: config[key] for key in ('sectorScoringVersion', 'sectorUniverseVersion')},
+        observedAt=inputs['observedAt'], marketDate=inputs['marketDate'], session='close',
+        officialClose=True, sectors=scored), config)
 
 
 def _source_modes(batches):
@@ -714,6 +943,226 @@ def _safe_error(code, fallback):
     return code if isinstance(code, str) and re.fullmatch(r'(HTTP_[1-5][0-9]{2}|NETWORK_ERROR|INVALID_PAYLOAD|TRANSPORT_ERROR|INVALID_PUBLISH_CONFIG)', code) else fallback
 
 
+def _rotation_report(health, config):
+    """Whitelist even persisted metadata; never print rows, identifiers or paths."""
+    counts = health.get('counts', {})
+    coverage = health.get('coverage')
+    latency = health.get('latencySeconds')
+    allowed_codes = {'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED', 'INVALID_STATE',
+        'COLLECTION_FAILED', 'INVALID_PAYLOAD', 'SCORING_FAILED', 'STATE_WRITE_FAILED', 'WINDOW_EXPIRED',
+        *rotation_operations.SAFE_CODES}
+    return {**rotation_operations.safe_health(health), 'counts': {key: counts.get(key, 0) if isinstance(counts, dict)
+                and isinstance(counts.get(key, 0), int) and not isinstance(counts.get(key, 0), bool)
+                and 0 <= counts.get(key, 0) <= maximum else 0
+                for key, maximum in [('industries', 35), ('concepts', 75)]},
+            'versions': {'schemaVersion': 'market-dashboard-v3',
+                **{key: config[key] for key in ('scoringVersion', 'sectorScoringVersion', 'sectorUniverseVersion')}},
+            'coverage': coverage if _numeric(coverage) else None,
+            'latencySeconds': latency if _numeric(latency, 0, 86400) else None,
+            'safeCodes': sorted({code for code in health.get('safeCodes', [])
+                                 if isinstance(code, str) and code in allowed_codes})}
+
+
+def _pending_rotation_operation(state, ledger):
+    """Return a committed operation absent from the ledger, without mutating it."""
+    pending = state.get('shadowOperation')
+    if pending is None:
+        return None
+    _require(isinstance(pending, dict))
+    return pending if not any(all(row.get(field) == pending.get(field)
+        for field in ('marketDate', 'session', 'observedAt', 'success', 'safeErrorCode'))
+        for row in ledger.get('events', [])) else None
+
+
+def _rotation_audit_warning(metadata):
+    return {**metadata, 'rotationSafeErrorCode': 'LEDGER_WRITE_FAILED',
+            'safeCodes': sorted(set(metadata['safeCodes']) | {'LEDGER_WRITE_FAILED'})}
+
+
+def _run_rotation_job(args, deps):
+    """Private collection/assembly only. No publisher is reachable in this path."""
+    arg = (lambda key, default=None: args.get(key, default)) if isinstance(args, dict) else (lambda key, default=None: getattr(args, key, default))
+    fixture, dry_run = arg('fixture', False), arg('dry_run', False)
+    if fixture and not dry_run and not arg('rotation_report', False):
+        return JobResult(False, 'configuration', error_code='FIXTURE_SHADOW_WRITE_DISABLED')
+    try:
+        config = deepcopy(deps.get('config') or load_config(arg('config')))
+        now = deps.get('now') or (FIXTURE_NOW.replace(hour=9, minute=50) if fixture else datetime.now(timezone.utc))
+        now = now() if callable(now) else now
+        _local(now)
+        config.setdefault('sources', {})['now'] = now.isoformat()
+        state_root = Path(deps.get('state_root') or os.environ.get('MARKET_DASHBOARD_STATE_ROOT')
+                         or Path(__file__).resolve().parents[2].parent / 'state')
+        _require(not state_root.is_symlink())
+    except (ValueError, TypeError, KeyError, OSError):
+        return JobResult(False, 'configuration', error_code='INVALID_CONFIG')
+    shadow = state_root / 'market-dashboard-shadow'
+    path, health_path = shadow/'last-success.json', shadow/'health.json'
+    ledger_path = shadow/'rotation-ledger.json'
+    if arg('rotation_report', False):
+        try:
+            metadata = _rotation_report(_read_json(health_path), config)
+            ledger = rotation_operations.read_ledger(ledger_path, config)
+            metadata['rotationCloseSuccesses'] = len(ledger['successfulCloseDates'])
+            if _pending_rotation_operation(_read_json(path), ledger) is not None:
+                metadata = _rotation_audit_warning(metadata)
+            return JobResult(True, 'rotation_report', metadata=metadata)
+        except (ValueError, TypeError, OSError):
+            return JobResult(False, 'rotation_report', error_code='INVALID_STATE',
+                metadata=_rotation_report({'safeCodes': ['INVALID_STATE']}, config))
+    lock = None
+    stage, metadata = 'state', _rotation_report({'safeCodes': [
+        'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED']}, config)
+    committed = False
+    event, ledger, key = None, None, None
+
+    def record_operation(event):
+        nonlocal metadata
+        try:
+            ledger = rotation_operations.update_ledger(ledger_path, event, config)
+            metadata.update(rotation_operations.health_for_event(event, ledger))
+            metadata['safeCodes'] = [code for code in metadata['safeCodes'] if code != 'LEDGER_WRITE_FAILED']
+            _write_json(health_path, metadata)
+        except (OSError, ValueError, TypeError):
+            # Health warning persistence does not depend on a writable ledger.
+            metadata = _rotation_audit_warning(metadata)
+            try:
+                _write_json(health_path, metadata)
+            except (OSError, ValueError, TypeError):
+                pass  # A read-only report also detects the committed pending proof.
+            raise
+
+    try:
+        if not (fixture and dry_run):
+            # Share the v2 provider lock, while every JSON write stays in shadow.
+            directory = state_root/'market-dashboard'
+            _require(not directory.is_symlink() and not (directory/'job.lock').is_symlink())
+            directory.mkdir(parents=True, exist_ok=True)
+            lock = (directory/'job.lock').open('a')
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return JobResult(True, 'locked')
+        ledger = rotation_operations.read_ledger(ledger_path, config) if not fixture else {'successfulCloseDates': []}
+        state = {} if fixture else _read_json(path)
+        rotation_state = {} if fixture else load_rotation_state(path, config)
+        if not fixture and health_path.exists():
+            metadata = _rotation_report(_read_json(health_path), config)
+        pending = _pending_rotation_operation(state, ledger)
+        if pending is not None and not dry_run:
+            # Reconcile before any later session replaces the recovery proof.
+            # If audit repair fails, leave the earlier success file untouched.
+            stage = 'audit'
+            record_operation(pending)
+            stage = 'state'
+        key = scheduled_rotation_session(now, {}, config)
+        bucket = f'{_local(now).date()}:{key}'
+        if key is not None and state.get('bucket') == bucket:
+            # Repair an interrupted audit write from the authoritative committed
+            # snapshot before returning duplicate. Never recollect or republish.
+            if state.get('shadowOperation') and not dry_run:
+                try:
+                    record_operation(state['shadowOperation'])
+                except (OSError, ValueError, TypeError):
+                    pass  # record_operation already persisted/marked the safe warning.
+            return JobResult(True, 'duplicate', metadata=metadata)
+        if key is None:
+            return JobResult(True, 'outside_schedule')
+        stage = 'collect'
+        batches = deps['collector'](config) if 'collector' in deps else collect_batches(config, fixture=fixture)
+        if fixture:
+            for group in ('breadth', 'styles', 'industries', 'concepts'):
+                for row in batches[group].rows:
+                    row['_timestamp'] = now.isoformat()
+        if callable(deps.get('now')):
+            now = deps['now']()
+        elif 'now' not in deps and not fixture:
+            now = datetime.now(timezone.utc)
+        if scheduled_rotation_session(now, {}, config) != key or f'{_local(now).date()}:{key}' != bucket:
+            raise sources.SourceError('WINDOW_EXPIRED')
+        config['sources']['now'] = now.isoformat()
+        stage = 'score'
+        current = _rotation_inputs(batches, config)
+        prior = rotation_state.get('priceHistory', []) + rotation_state.get('closes', [])
+        prior = list({(row['universe'], row['id'], row['marketDate']): row for row in prior}.values())
+        block = build_rotation_block(batches, prior, config)
+        inputs = derive_inputs(batches, now, config)
+        inputs['sectorRows'] = current
+        # At 11:30 the legacy job's session is intraday; only a validated 15:00
+        # sector batch may enter the store's official-close accumulator.
+        next_rotation = prepare_rotation_state(inputs, rotation_state, config)
+        previous = state.get('legacyHistory', [])
+        _require(isinstance(previous, list))
+        for snapshot in previous:
+            validate_payload(snapshot, config)
+        stage = 'validate'
+        payload = build_rotation_payload(inputs, previous, block, config)
+        metadata = _rotation_report({'counts': {'industries': 35, 'concepts': 75},
+            'coverage': sum(row['completeness'] for row in block['industries']+block['concepts'])/110,
+            'latencySeconds': max((now-_timestamp(row['observedAt'])).total_seconds() for row in current),
+            'safeCodes': block['safeCodes']}, config)
+        scored_closes = [row for row in next_rotation.get('closes', [])
+                         if row['marketDate'] == inputs['marketDate']] if key == 'close' else None
+        event = rotation_operations.event_from_block(block, now,
+            min((row['observedAt'] for row in current), key=_timestamp), config, session=key,
+            scored_rows=scored_closes)
+        metadata.update(rotation_operations.health_for_event(event, ledger))
+        if dry_run:
+            return JobResult(True, 'dry_run', payload, metadata=metadata)
+        stage = 'persist'
+        _require(not shadow.is_symlink())
+        shadow.mkdir(parents=True, exist_ok=True, mode=0o700)
+        shadow.chmod(0o700)
+        history = [snapshot for snapshot in previous
+                   if _timestamp(snapshot['observedAt']) >= now-timedelta(days=90)]
+        history.append(build_market_payload(inputs, previous, config))
+        _write_json(health_path, metadata)
+        # Health is preparatory. Replacing success is the final commit boundary;
+        # any failure before it leaves the official close available for retry.
+        def acknowledge_replace():
+            nonlocal committed
+            committed = True
+        _write_json(path, {'bucket': bucket, 'mode': 'rotation_shadow', 'payload': payload,
+            'rotation': next_rotation, 'legacyHistory': history, 'shadowOperation': event}, on_replace=acknowledge_replace)
+        try:
+            record_operation(event)
+        except (OSError, ValueError, TypeError):
+            pass  # The close stays committed; record_operation marked its audit warning.
+        return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
+    except Exception as error:
+        if committed:
+            # Replacement already consumed this close. A later directory-fsync
+            # failure is a durability warning, never a failed/retryable close.
+            metadata = deepcopy(metadata)
+            metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + ['STATE_DURABILITY_UNCONFIRMED']))
+            metadata['rotationSafeErrorCode'] = 'STATE_DURABILITY_UNCONFIRMED'
+            return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
+        code = 'INVALID_PAYLOAD' if isinstance(error, ValidationError) else {
+            'state': 'INVALID_STATE', 'collect': 'COLLECTION_FAILED', 'score': 'SCORING_FAILED',
+            'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED',
+            'audit': 'LEDGER_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
+        if isinstance(error, sources.SourceError) and error.code in rotation_operations.SAFE_CODES:
+            code = error.code
+        metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + [code])) if code == 'LEDGER_WRITE_FAILED' else [code]
+        metadata['rotationSafeErrorCode'] = code
+        if not dry_run:
+            try:
+                _require(not shadow.is_symlink())
+                shadow.mkdir(parents=True, exist_ok=True, mode=0o700)
+                shadow.chmod(0o700)
+                failed_event = event or rotation_operations.event_from_block(
+                    {'session': key if key in rotation_operations.SESSIONS else 'close'}, now, None, config,
+                    success=False, code=code)
+                failed_event = {**failed_event, 'success': False, 'safeErrorCode': code}
+                record_operation(failed_event)
+            except (OSError, ValueError, TypeError):
+                pass
+        return JobResult(False, stage, error_code=code, metadata=metadata)
+    finally:
+        if lock is not None:
+            lock.close()
+
+
 def run_job(args, deps=None):
     """Collect → score → validate → publish under a nonblocking process lock.
 
@@ -726,6 +1175,8 @@ def run_job(args, deps=None):
     """
     deps = deps or {}
     arg = (lambda key, default=None: args.get(key, default)) if isinstance(args, dict) else (lambda key, default=None: getattr(args, key, default))
+    if any(arg(key, False) for key in ('rotation_shadow', 'rotation_report', 'skip_rotation_publish')):
+        return _run_rotation_job(args, deps)
     fixture, dry_run, skip_publish = arg('fixture', False), arg('dry_run', False), arg('skip_publish', False)
     if fixture and not (dry_run or skip_publish):
         return JobResult(False, 'configuration', error_code='FIXTURE_PUBLISH_DISABLED')
@@ -750,12 +1201,15 @@ def run_job(args, deps=None):
     try:
         if not (dry_run and fixture):
             state_path.parent.mkdir(parents=True, exist_ok=True)
+            if (state_path.parent / 'job.lock').is_symlink():
+                raise ValueError('INVALID_STATE')
             lock = (state_path.parent / 'job.lock').open('a')
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return JobResult(True, 'locked')
         state = {} if fixture else _read_json(state_path)
+        rotation_state = {} if fixture else load_rotation_state(state_path, config)
         old_health = {} if fixture else _read_json(health_path)
         last_status = old_health.get('lastPublishStatus', 'published' if state else 'never')
         if last_status not in ('published', 'failed', 'never', 'skipped'):
@@ -787,6 +1241,7 @@ def run_job(args, deps=None):
         _local(now)
         stage = 'score'
         inputs = derive_inputs(batches, now, config, concept_config)
+        next_rotation_state = prepare_rotation_state(inputs, rotation_state, config)
         previous = state.get('history', [])
         previous = previous if isinstance(previous, list) else []
         if 'builder' in deps:
@@ -841,7 +1296,8 @@ def run_job(args, deps=None):
                 continue
         history.append(payload)
         _write_json(state_path, {'bucket': _bucket(now), 'mode': 'published',
-                    'observedAt': now.isoformat(), 'payload': payload, 'history': history})
+                    'observedAt': now.isoformat(), 'payload': payload, 'history': history,
+                    'rotation': next_rotation_state})
         _write_json(health_path, {'stage': 'complete', 'observedAt': now.isoformat(), 'sourceCounts': counts,
                     'completeness': completeness, 'lastPublishStatus': 'published', 'errorCode': None})
         return JobResult(True, 'published', payload, publish_result=PublishResult(True, result.status_code, result.attempts))
@@ -873,8 +1329,14 @@ def main(argv=None):
     parser.add_argument('--url', help='HTTPS publication URL (or MARKET_DASHBOARD_PUBLISH_URL)')
     parser.add_argument('--token', help='Publication Bearer token (prefer MARKET_DASHBOARD_PUBLISH_TOKEN)')
     parser.add_argument('--timeout', type=float, default=20)
+    parser.add_argument('--rotation-shadow', action='store_true', help='Assemble v3 locally in private shadow state; never publish')
+    parser.add_argument('--skip-rotation-publish', action='store_true', help='Select the shadow-only path; production publication is unavailable')
+    parser.add_argument('--rotation-report', action='store_true', help='Read private shadow metadata only; no collection or state writes')
     args = parser.parse_args(argv)
     result = run_job(args)
+    if args.rotation_report:
+        print(json.dumps(result.metadata or {}, ensure_ascii=False, separators=(',', ':')))
+        return 0 if result.success else 1
     summary = {'status': result.status, 'success': result.success}
     if result.payload:
         summary.update(observedAt=result.payload['observedAt'], session=result.payload['session'],
@@ -886,6 +1348,9 @@ def main(argv=None):
                        synthetic=bool(args.fixture))
     if result.error_code:
         summary['errorCode'] = result.error_code
+    if result.metadata:
+        summary['safeCodes'] = result.metadata['safeCodes']
+        summary.update(rotation_operations.safe_health(result.metadata))
     print(json.dumps(summary, ensure_ascii=False, separators=(',', ':')))
     return 0 if result.success else 1
 

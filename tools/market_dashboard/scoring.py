@@ -119,6 +119,34 @@ def compute_completeness(components, config=None):
     return weighted_score(components, config).completeness
 
 
+def score_normalized_components(components, weights):
+    """Combine sector audit components without changing legacy score semantics.
+
+    A present component retains its configured weight in the score; its nested
+    coverage contributes proportionally to completeness. Missing components
+    remain in the expected denominator. Inputs and configuration are untouched.
+    """
+    total = used = effective = 0.
+    terms = []
+    for key, weight in weights.items():
+        if not _number(weight) or weight < 0:
+            raise ValueError('Component weight must be finite and nonnegative')
+        total += weight
+        component = components.get(key) or {}
+        value, coverage = component.get('value'), component.get('coverage', 1)
+        if not _number(coverage) or not 0 <= coverage <= 1:
+            raise ValueError('Component coverage must be between zero and one')
+        if not _number(value) or not coverage or not weight:
+            continue
+        terms.append((min(100., max(0., value)), weight))
+        used += weight
+        effective += weight * coverage
+    raw = math.fsum(value * (weight / used) for value, weight in terms) if used else None
+    return ScoreResult(_round(raw) if raw is not None else None, raw,
+                       _round(effective / total * 100) if total else 0,
+                       used, total, False)
+
+
 def score_family(family, inputs, config=None):
     """Score one object using configured component IDs and authoritative weights.
 

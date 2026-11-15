@@ -278,7 +278,7 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(calls[0][2:5], ['call', 'index_data', 'get_index_price_indicators'])
         params = json.loads(calls[0][-1])
         self.assertEqual(params['windcode'].split(','), [code for code, _ in sources.INDUSTRY_DEFINITIONS])
-        self.assertEqual(params['indexes'], '最新交易日,交易时间,中文简称,涨跌幅,成交额,换手率,5日涨跌幅,20日涨跌幅,当日主力净流入额,上涨家数,下跌家数')
+        self.assertEqual(params['indexes'], '最新交易日,交易时间,中文简称,涨跌幅,成交额,换手率,5日涨跌幅,20日涨跌幅,当日主力净流入额,上涨家数,下跌家数,近5日主力净流入额,近20日主力净流入额,平盘家数')
         self.assertEqual(len(batch.rows), 35)
         self.assertEqual(batch.rows[0]['最新成交额(亿元)'], table['rows'][0][4])
         self.assertEqual(batch.rows[0]['_units']['最新成交额(亿元)'], '亿元')

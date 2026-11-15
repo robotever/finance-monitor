@@ -87,3 +87,35 @@ test('concept radar defaults to dynamic ten, switches to core 25 and scopes summ
   const dashboardSource = readFileSync(new URL('../src/components/MarketResearchDashboard.vue', import.meta.url), 'utf8')
   assert.ok(dashboardSource.indexOf('<ConceptRadar') > dashboardSource.indexOf('<IndustryHeatmap'))
 })
+
+test('sector cards use opportunity and heat state while global cards retain legacy heat', async () => {
+  const { deriveSectorRotationView } = await import('../src/features/market-dashboard/model.mjs')
+  const sector = deriveSectorRotationView({ scoringVersion: 'sector-score-v0.2', universeVersion: 'sector-universe-v0.1', universe: 'industry', view: 'potential', observedAt: observed, marketDate: '2026-11-13', session: 'intraday', sectors: [{ id: '882100.WI', name: '测试行业', strength: 60, opportunity: null, risk: 30, heatState: 'warming', completeness: 60, coldStart: true, ranks: { strength: 1, opportunity: null, risk: 2 }, leaderboard: Object.fromEntries(['strength','opportunity'].map(axis => [axis, { axis, topTenStreak: 0, topTenCount15d: 0, rankChange: null }])) }] }).rows[0]
+  for (const name of ['IndustryHeatmap','ConceptRadar']) {
+    const html = await render(name, { rotationItems: [sector], observedAt: observed })
+    for (const label of ['强度','机会','风险','升温','证据不足','冷启动']) assert.ok(html.includes(label), `${name}: ${label}`)
+    assert.ok(!html.includes('热度分'))
+  }
+  const html = await render('MarketScoreCard', { sector, title: '测试行业' })
+  assert.match(html, /机会/); assert.match(html, /升温/); assert.ok(!html.includes('热度'))
+  const legacy = await render('MarketScoreCard', { item: view().global, title: '全局' })
+  assert.match(legacy, /热度/); assert.ok(!legacy.includes('机会'))
+})
+
+test('v3 sector cards retain compact expansions, named sections and separate core/dynamic concept tabs', async () => {
+  const { deriveSectorRotationView } = await import('../src/features/market-dashboard/model.mjs')
+  const make = id => ({ id, name: id, strength: 60, opportunity: 80, risk: 30, heatState: 'warming', completeness: 80, coldStart: true, ranks: { strength: 1, opportunity: 2, risk: 3 }, leaderboard: Object.fromEntries(['strength','opportunity'].map(axis => [axis, { axis, topTenStreak: 2, topTenCount15d: 4, rankChange: 1 }])) })
+  const rows = deriveSectorRotationView({ scoringVersion: 'sector-score-v0.2', universeVersion: 'sector-universe-v0.1', universe: 'concept', view: 'potential', observedAt: observed, marketDate: '2026-11-13', session: 'intraday', sectors: Array.from({ length: 35 }, (_, i) => make(`884${100 + i}.WI`)) }).rows
+  const props = { rotationItems: rows, rotationCore: rows.slice(0,25), rotationDynamic: rows.slice(25), observedAt: observed }
+  const dynamic = await render('ConceptRadar', props)
+  assert.equal((dynamic.match(/data-concept=/g) ?? []).length,10)
+  assert.match(dynamic, /id="market-concept-title"/)
+  assert.match(dynamic, /动态热点 10/); assert.match(dynamic, /核心概念 25/)
+  const core = await render('ConceptRadar', { ...props, initialTab:'core' })
+  assert.equal((core.match(/data-concept=/g) ?? []).length,25)
+  assert.match(core, /查看板块详情/)
+  const industries = await render('IndustryHeatmap', { rotationItems: rows, observedAt: observed })
+  assert.equal((industries.match(/data-industry=/g) ?? []).length,35)
+  assert.match(industries, /id="market-industry-title"/)
+  assert.match(industries, /<summary>/)
+})

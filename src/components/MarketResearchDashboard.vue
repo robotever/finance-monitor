@@ -1,7 +1,8 @@
 <template>
-  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading">
+  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading" :data-environment="acceptanceEnabled ? 'sector-acceptance' : undefined">
+    <div v-if="acceptanceEnabled" class="sector-acceptance-banner" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>v0.1 / 试运行 · 强度 · 热度 · 风险</span></h2></div>
+      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ acceptanceEnabled ? '临时验收 · 测试数据' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -10,11 +11,11 @@
         <span>{{ dashboard.session === 'close' ? '收盘确认' : '盘中快照' }}</span>
         <span :class="{ 'market-badge is-missing': dashboard.dataStatus.completeness < 70 }">完整度 {{ dashboard.dataStatus.completeness }}%<template v-if="dashboard.dataStatus.completeness < 70"> · 证据不足</template></span>
         <span class="market-badge" :class="{ 'is-stale': dashboard.freshness.stale }">{{ dashboard.freshness.label }}</span>
-        <span class="market-status__version">{{ dashboard.schemaVersion }} / {{ dashboard.scoringVersion }}</span>
+        <span class="market-status__version">{{ v3Active ? v3Latest?.schemaVersion : dashboard.schemaVersion }} / {{ dashboard.scoringVersion }}</span>
       </template>
       <span v-else>{{ loading ? '正在读取最新研究快照…' : '等待有效研究快照' }}</span>
     </div>
-    <div v-if="latestError" class="market-notice market-dashboard__notice" role="status"><strong>{{ dashboard ? '刷新失败 · 保留本次会话最后成功快照' : latestError.code === 'NO_SNAPSHOT' ? '暂无研究快照' : '研究数据暂不可用' }}</strong><span>{{ latestError.message }}<template v-if="dashboard"> · 最后成功读取 {{ formatDate(lastSuccessAt) }}</template></span></div>
+    <div v-if="latestError && !v3Active" class="market-notice market-dashboard__notice" role="status"><strong>{{ dashboard ? '刷新失败 · 保留本次会话最后成功快照' : latestError.code === 'NO_SNAPSHOT' ? '暂无研究快照' : '研究数据暂不可用' }}</strong><span>{{ latestError.message }}<template v-if="dashboard"> · 最后成功读取 {{ formatDate(lastSuccessAt) }}</template></span></div>
     <details v-if="dashboard?.dataStatus.missing.length" class="market-notice market-dashboard__missing"><summary>输入缺失 {{ dashboard.dataStatus.missing.length }} 项 · 展开查看</summary><p>{{ dashboard.dataStatus.missing.join('、') }}</p></details>
     <div class="market-dashboard__body">
       <div class="market-primary-grid">
@@ -29,31 +30,122 @@
           <p v-else-if="!historyError">{{ loading ? '历史加载中…' : '暂无历史轨迹' }}</p>
         </div>
         <MarketStyleGrid :items="dashboard.styles" :observed-at="dashboard.observedAt" />
-        <IndustryHeatmap :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
-        <ConceptRadar :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
+        <SectorRotationBoard v-if="v3Active" :latest="rotationLatest" :history="rotationHistory" :loading="rotationLoading" :error="rotationError" @change="changeRotation" @select-sector="openSector" />
+        <IndustryHeatmap v-if="v3Active" :rotation-items="v3Industries" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
+        <ConceptRadar v-if="v3Active" :rotation-items="v3Concepts" :rotation-core="v3CoreConcepts" :rotation-dynamic="v3DynamicConcepts" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
+        <IndustryHeatmap v-if="!v3Active" :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
+        <ConceptRadar v-if="!v3Active" :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
       </template>
       <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股、六类风格与 35 个行业将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
+    <SectorRotationDetail v-if="v3Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
     <footer class="market-dashboard__footer"><span>统一评分 0–100 · 高强度不等于低风险</span><span>缺失项以 — 表示 · 研究参考，非买卖建议</span></footer>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { loadMarketDashboard, loadMarketHistory } from '@/features/market-dashboard/api.mjs'
-import { deriveMarketDashboardView } from '@/features/market-dashboard/model.mjs'
-import type { MarketDashboardPayload, MarketHistoryPayload, MarketLoadError } from '@/features/market-dashboard/types'
+import { loadMarketDashboard, loadMarketHistory, loadSectorRotationLatest, loadSectorRotationHistory, loadSectorRotationDetail } from '@/features/market-dashboard/api.mjs'
+import { acceptanceFetch, isSectorAcceptanceMode } from '@/features/market-dashboard/acceptance.mjs'
+import { deriveMarketDashboardView, deriveSectorRotationView } from '@/features/market-dashboard/model.mjs'
+import type { MarketDashboardPayload, MarketHistoryPayload, MarketHistoryV3Payload, MarketLoadError } from '@/features/market-dashboard/types'
 import MarketScoreCard from './MarketScoreCard.vue'
 import MarketStyleGrid from './MarketStyleGrid.vue'
 import IndustryHeatmap from './IndustryHeatmap.vue'
 import ConceptRadar from './ConceptRadar.vue'
+import SectorRotationBoard from './SectorRotationBoard.vue'
+import SectorRotationDetail from './SectorRotationDetail.vue'
+import type { MarketDashboardV3Payload, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail as DetailPayload, SectorUniverse, SectorView, SectorLeaderboardAxis, SectorMatrixCell } from '@/features/market-dashboard/types'
+const acceptanceEnabled = import.meta.env.MODE === 'sector-acceptance' && isSectorAcceptanceMode()
+const dashboardFetch = acceptanceEnabled ? acceptanceFetch : undefined
+// Explicit shadow builds on loopback only. Ordinary production builds always keep v2.
+const shadowEnabled = import.meta.env.VITE_SECTOR_ROTATION_RELEASE === 'true'
+  && import.meta.env.MODE === 'rotation-shadow'
+  && typeof window !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+const v3Latest = shallowRef<MarketDashboardV3Payload | null>(null)
+const v3Active = computed(() => !!v3Latest.value && (acceptanceEnabled || shadowEnabled && v3Latest.value.sectorRotation.releaseEligible === true))
+const rotationLatest = shallowRef<SectorRotationLatest | null>(null)
+const rotationHistory = shallowRef<SectorRotationHistory | null>(null)
+const rotationLoading = ref(false), rotationError = ref('')
+const rotationSelection = ref<{ universe: SectorUniverse; view: SectorView; axis: SectorLeaderboardAxis }>({ universe: 'concept', view: 'potential', axis: 'strength' })
+function projectedRows(universe: SectorUniverse) {
+  const payload = v3Latest.value
+  if (!payload) return []
+  const rows = universe === 'industry' ? payload.industries : [...payload.concepts.dynamic, ...payload.concepts.core]
+  return deriveSectorRotationView({ universe, view: 'potential', observedAt: payload.observedAt, marketDate: payload.marketDate, session: payload.session,
+    scoringVersion: payload.sectorScoringVersion, universeVersion: payload.sectorUniverseVersion,
+    sectors: rows.map(row => ({ ...row, change1d: { strength: null, opportunity: null, risk: null } })) }).rows
+}
+const v3Industries = computed(() => projectedRows('industry')), v3Concepts = computed(() => projectedRows('concept'))
+function conceptSelection(kind: 'core' | 'dynamic') {
+  const rows = new Map(v3Concepts.value.map(row => [row.id, row]))
+  return (v3Latest.value?.concepts[kind] ?? []).flatMap(item => rows.has(item.id) ? [rows.get(item.id)!] : [])
+}
+const v3CoreConcepts = computed(() => conceptSelection('core'))
+const v3DynamicConcepts = computed(() => conceptSelection('dynamic'))
+let rotationController: AbortController | undefined, detailController: AbortController | undefined
+const detailOpen = ref(false), detailLoading = ref(false), detailName = ref(''), detailError = ref('')
+const detailPayload = shallowRef<DetailPayload | null>(null), selectedCell = shallowRef<SectorMatrixCell>()
+const detailView = computed(() => {
+  if (!detailPayload.value || !v3Latest.value) return null
+  try { return deriveSectorRotationView({ observedAt: v3Latest.value.observedAt, marketDate: v3Latest.value.marketDate, session: v3Latest.value.session, view: 'potential', universe: detailPayload.value.universe,
+    scoringVersion: v3Latest.value.sectorScoringVersion, universeVersion: v3Latest.value.sectorUniverseVersion, sectors: [] }, null, { detail: detailPayload.value }).detail } catch { return null }
+})
+async function changeRotation(selection = rotationSelection.value) {
+  if (!v3Active.value) return
+  rotationSelection.value = selection
+  rotationController?.abort()
+  const request = new AbortController(); rotationController = request
+  rotationLoading.value = true; rotationError.value = ''; rotationLatest.value = null; rotationHistory.value = null
+  const options = { ...selection, signal: request.signal, fetcher: dashboardFetch }
+  const [current, past] = await Promise.all([loadSectorRotationLatest(options), loadSectorRotationHistory(options)])
+  if (disposed || request.signal.aborted) return
+  rotationLoading.value = false
+  if (current.data) {
+    try { deriveSectorRotationView(current.data, past.data); rotationLatest.value = current.data; rotationHistory.value = past.data }
+    catch { rotationError.value = '数据版本不一致，请刷新后重试' }
+  } else rotationError.value = current.error?.message ?? '暂无有效轮动数据'
+  if (past.error) rotationError.value ||= `历史暂不可用 · ${past.error.message}`
+}
+async function openSector(selection: { universe: SectorUniverse; id: string; name: string; cell?: SectorMatrixCell }) {
+  detailController?.abort()
+  const request = new AbortController(); detailController = request
+  detailName.value = selection.name; selectedCell.value = selection.cell; detailPayload.value = null
+  detailError.value = ''; detailLoading.value = true; detailOpen.value = true
+  const result = await loadSectorRotationDetail({ ...selection, signal: request.signal, fetcher: dashboardFetch })
+  if (disposed || request.signal.aborted) return
+  detailLoading.value = false; detailPayload.value = result.data
+  detailError.value = result.error?.message ?? ''
+  if (result.data && !detailView.value) detailError.value = '详情版本不一致，请重新打开'
+}
+function closeDetail() { detailOpen.value = false; detailController?.abort() }
+async function refreshShadow(signal: AbortSignal) {
+  if (!shadowEnabled && !acceptanceEnabled) return
+  const result = await loadMarketDashboard(dashboardFetch, { signal, schemaVersion: 'market-dashboard-v3' })
+  if (disposed || signal.aborted) return
+  v3Latest.value = result.data
+  if (acceptanceEnabled) latestError.value = result.error
+  if (v3Active.value) await changeRotation()
+  else { closeDetail(); detailPayload.value = null; rotationController?.abort(); rotationLatest.value = null; rotationHistory.value = null }
+}
+
 const latest = shallowRef<MarketDashboardPayload | null>(null)
-const history = shallowRef<MarketHistoryPayload | null>(null)
+const history = shallowRef<MarketHistoryPayload | MarketHistoryV3Payload | null>(null)
 const latestError = ref<MarketLoadError | null>(null)
 const historyError = ref<MarketLoadError | null>(null)
 const lastSuccessAt = ref('')
 const now = ref(new Date())
 const loading = ref(true)
-const dashboard = computed(() => latest.value ? deriveMarketDashboardView(latest.value, now.value) : undefined)
+const dashboard = computed(() => {
+  const v3 = v3Active.value ? v3Latest.value : null
+  if (!v3) return latest.value ? deriveMarketDashboardView(latest.value, now.value) : undefined
+  // The v3 contract intentionally retains these three legacy object families.
+  // Project only those families; sector rows never enter the legacy presenter.
+  return deriveMarketDashboardView({ schemaVersion: 'market-dashboard-v2', scoringVersion: v3.scoringVersion,
+    observedAt: v3.observedAt, marketDate: v3.marketDate, session: v3.session, dataStatus: v3.dataStatus,
+    global: v3.global, aShare: v3.aShare, styles: v3.styles, industries: [],
+    concepts: { selectionVersion: v3.concepts.selectionVersion, scoringVersion: 'concept-score-v0.1',
+      selectedAt: v3.concepts.selectedAt, core: [], dynamic: [] } }, now.value)
+})
 const historySeries = [{ key: 'global', label: '全球' }, { key: 'aShare', label: 'A 股' }] as const
 let controller: AbortController | undefined
 let freshnessTimer: ReturnType<typeof setInterval> | undefined
@@ -66,13 +158,14 @@ async function refresh() {
   const options = { signal: controller.signal }
   // Keep the independent latest result responsive even if history times out.
   await Promise.all([
-    loadMarketDashboard(undefined, options).then(result => {
+    refreshShadow(controller.signal),
+    ...(acceptanceEnabled ? [] : [loadMarketDashboard(dashboardFetch, options).then(result => {
       if (disposed) return
       latestError.value = result.error
       if (result.data) { latest.value = result.data; lastSuccessAt.value = new Date().toISOString() }
       now.value = new Date()
-    }),
-    loadMarketHistory('5d', undefined, options).then(result => {
+    })]),
+    loadMarketHistory('5d', dashboardFetch, { ...options, schemaVersion: acceptanceEnabled ? 'market-dashboard-v3' : 'market-dashboard-v2' }).then(result => {
       if (disposed) return
       historyError.value = result.error
       if (result.data) history.value = result.data
@@ -89,5 +182,5 @@ onMounted(() => {
   freshnessTimer = setInterval(() => { now.value = new Date() }, 60_000)
   refreshTimer = setInterval(refresh, 5 * 60_000)
 })
-onUnmounted(() => { disposed = true; controller?.abort(); clearInterval(freshnessTimer); clearInterval(refreshTimer) })
+onUnmounted(() => { disposed = true; controller?.abort(); rotationController?.abort(); detailController?.abort(); clearInterval(freshnessTimer); clearInterval(refreshTimer) })
 </script>
