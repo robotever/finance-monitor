@@ -67,6 +67,7 @@ test('shadow integration is off by default and responsive hooks constrain page o
   const source = readFileSync(new URL('../src/components/MarketResearchDashboard.vue', import.meta.url), 'utf8')
   assert.match(source, /VITE_SECTOR_ROTATION_RELEASE === 'true'/)
   assert.match(source, /MODE === 'rotation-shadow'/)
+  assert.match(source, /MODE === 'production-rotation'/)
   assert.match(source, /releaseEligible/)
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8')
   for (const hook of ['.sector-rotation','.sector-rotation__matrix-scroll','.sector-rotation-detail','390px','1440px']) assert.ok(css.includes(hook), hook)
@@ -82,6 +83,61 @@ test('default dashboard does not mount any v3 board or detail UI', async () => {
   const html = await render('MarketResearchDashboard', {})
   assert.ok(!html.includes('sector-rotation-detail'))
   assert.ok(!html.includes('id="rotation-title"'))
+})
+
+async function mountDashboard(module) {
+  let state
+  const renderer = createRenderer({ createComment: () => ({}), insert() {}, remove() {}, parentNode() {}, nextSibling() {} })
+  const app = renderer.createApp({ setup() { state = module.default.setup({}, { expose() {}, emit() {} }); return () => null } })
+  app.provide(ssrContextKey, {})
+  app.mount({})
+  for (let i = 0; i < 100 && state.loading.value; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  return { app, state }
+}
+
+test('production rotation build exposes real observation beta while retaining release ineligibility', async () => {
+  const production = await createServer({ mode: 'production-rotation', server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' })
+  const previousFetch = globalThis.fetch
+  try {
+    const module = await production.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
+    const html = await renderToString(createSSRApp({ render: () => h(module.default) }))
+    assert.match(html, /data-environment="sector-observation"/)
+    assert.match(html, /真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号/)
+    const { acceptanceFetch } = await import('../src/features/market-dashboard/acceptance.mjs')
+    let networkCalls = 0
+    globalThis.fetch = async (...args) => { networkCalls++; return acceptanceFetch(...args) }
+    const { app, state } = await mountDashboard(module)
+    try {
+      assert.equal(state.loading.value, false)
+      assert.equal(state.v3Active.value, true)
+      assert.equal(state.v3Latest.value.sectorRotation.releaseEligible, false)
+      assert.ok(networkCalls > 0, 'production observation uses API transport rather than fixture fallback')
+    } finally { app.unmount() }
+  } finally {
+    globalThis.fetch = previousFetch
+    await production.close()
+  }
+})
+
+test('production rotation build falls back to v2 when the v3 response is malformed', async () => {
+  const production = await createServer({ mode: 'production-rotation', server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' })
+  const previousFetch = globalThis.fetch
+  try {
+    const module = await production.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
+    const { acceptanceFetch } = await import('../src/features/market-dashboard/acceptance.mjs')
+    globalThis.fetch = async (input, init) => String(input).includes('schemaVersion=market-dashboard-v3')
+      ? new Response('{"schemaVersion":"broken"}', { status: 200, headers: { 'content-type': 'application/json' } })
+      : acceptanceFetch(input, init)
+    const { app, state } = await mountDashboard(module)
+    try {
+      assert.equal(state.loading.value, false)
+      assert.equal(state.v3Active.value, false)
+      assert.ok(state.dashboard.value, 'validated v2 fallback remains visible')
+    } finally { app.unmount() }
+  } finally {
+    globalThis.fetch = previousFetch
+    await production.close()
+  }
 })
 
 test('acceptance build keeps a persistent synthetic banner even before fixtures load', async () => {

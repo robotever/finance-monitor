@@ -1,8 +1,9 @@
 <template>
-  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading" :data-environment="acceptanceEnabled ? 'sector-acceptance' : undefined">
+  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading" :data-environment="acceptanceEnabled ? 'sector-acceptance' : productionObservationEnabled ? 'sector-observation' : undefined">
     <div v-if="acceptanceEnabled" class="sector-acceptance-banner" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
+    <div v-if="productionObservationEnabled" class="sector-acceptance-banner" role="note">真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号</div>
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ acceptanceEnabled ? '临时验收 · 测试数据' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
+      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ acceptanceEnabled ? '临时验收 · 测试数据' : productionObservationEnabled ? '真实数据观察 · 板块强度 · 机会 · 风险' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -57,12 +58,15 @@ import SectorRotationDetail from './SectorRotationDetail.vue'
 import type { MarketDashboardV3Payload, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail as DetailPayload, SectorUniverse, SectorView, SectorLeaderboardAxis, SectorMatrixCell } from '@/features/market-dashboard/types'
 const acceptanceEnabled = import.meta.env.MODE === 'sector-acceptance' && isSectorAcceptanceMode()
 const dashboardFetch = acceptanceEnabled ? acceptanceFetch : undefined
-// Explicit shadow builds on loopback only. Ordinary production builds always keep v2.
+const productionObservationEnabled = import.meta.env.MODE === 'production-rotation'
+// Local shadow remains release-gated; production-rotation is an explicit observation build.
 const shadowEnabled = import.meta.env.VITE_SECTOR_ROTATION_RELEASE === 'true'
   && import.meta.env.MODE === 'rotation-shadow'
   && typeof window !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 const v3Latest = shallowRef<MarketDashboardV3Payload | null>(null)
-const v3Active = computed(() => !!v3Latest.value && (acceptanceEnabled || shadowEnabled && v3Latest.value.sectorRotation.releaseEligible === true))
+const rotationEnabled = acceptanceEnabled || productionObservationEnabled || shadowEnabled
+const v3Active = computed(() => !!v3Latest.value && (acceptanceEnabled || productionObservationEnabled
+  || shadowEnabled && v3Latest.value.sectorRotation.releaseEligible === true))
 const rotationLatest = shallowRef<SectorRotationLatest | null>(null)
 const rotationHistory = shallowRef<SectorRotationHistory | null>(null)
 const rotationLoading = ref(false), rotationError = ref('')
@@ -119,7 +123,7 @@ async function openSector(selection: { universe: SectorUniverse; id: string; nam
 }
 function closeDetail() { detailOpen.value = false; detailController?.abort() }
 async function refreshShadow(signal: AbortSignal) {
-  if (!shadowEnabled && !acceptanceEnabled) return
+  if (!rotationEnabled) return
   const result = await loadMarketDashboard(dashboardFetch, { signal, schemaVersion: 'market-dashboard-v3' })
   if (disposed || signal.aborted) return
   v3Latest.value = result.data
