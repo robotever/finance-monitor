@@ -84,6 +84,81 @@ test('default dashboard does not mount any v3 board or detail UI', async () => {
   assert.ok(!html.includes('id="rotation-title"'))
 })
 
+test('acceptance build keeps a persistent synthetic banner even before fixtures load', async () => {
+  const previous = process.env.VITE_SECTOR_ROTATION_ACCEPTANCE
+  process.env.VITE_SECTOR_ROTATION_ACCEPTANCE = 'true'
+  const acceptanceServer = await createServer({ mode: 'sector-acceptance', server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' })
+  try {
+    const module = await acceptanceServer.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
+    const html = await renderToString(createSSRApp({ render: () => h(module.default) }))
+    assert.match(html, /data-environment="sector-acceptance"/)
+    assert.match(html, /临时验收环境 · 全部为测试数据 · 不代表真实市场信号/)
+    assert.match(html, /role="note"/)
+    const transformed = await acceptanceServer.transformIndexHtml('/', readFileSync(new URL('../index.html', import.meta.url), 'utf8'))
+    assert.match(transformed, /name="robots" content="noindex,nofollow"/)
+    assert.match(transformed, /<title>板块轮动临时验收 · 测试数据<\/title>/)
+    assert.match(transformed, /name="description" content=".*测试数据/)
+    const previousFetch = globalThis.fetch
+    let networkCalls = 0
+    globalThis.fetch = async () => { networkCalls++; throw new Error('market network forbidden during acceptance') }
+    let state
+    const renderer = createRenderer({ createComment: () => ({}), insert() {}, remove() {}, parentNode() {}, nextSibling() {} })
+    const app = renderer.createApp({ setup() { state = module.default.setup({}, { expose() {}, emit() {} }); return () => null } })
+    app.provide(ssrContextKey, {})
+    try {
+      app.mount({})
+      // Exercise actual onMounted -> refresh, and all subsequent dashboard interactions.
+      for (let i = 0; i < 100 && state.loading.value; i++) await new Promise(resolve => setTimeout(resolve, 10))
+      assert.equal(state.loading.value, false)
+      assert.equal(state.v3Active.value, true)
+      assert.equal(state.v3Latest.value.sectorRotation.releaseEligible, false)
+      assert.equal(state.rotationError.value, '')
+      assert.equal(state.latestError.value, null)
+      assert.equal(state.historyError.value, null)
+      for (const universe of ['industry', 'concept']) for (const view of ['potential', 'main', 'risk']) for (const axis of ['strength', 'opportunity']) {
+        await state.changeRotation({ universe, view, axis })
+        assert.equal(state.rotationError.value, '')
+        assert.ok(state.rotationLatest.value.sectors.length)
+        await state.openSector({ universe, id: state.rotationLatest.value.sectors[0].id, name: '测试板块' })
+        assert.equal(state.detailError.value, '')
+        assert.equal(state.detailPayload.value.history.length, 15)
+      }
+      await state.refresh()
+      assert.equal(state.v3Active.value, true)
+      assert.equal(networkCalls, 0, 'real mounted dashboard and interaction loaders must never reach the network')
+    } finally {
+      app.unmount()
+      globalThis.fetch = previousFetch
+    }
+  } finally {
+    await acceptanceServer.close()
+    if (previous === undefined) delete process.env.VITE_SECTOR_ROTATION_ACCEPTANCE
+    else process.env.VITE_SECTOR_ROTATION_ACCEPTANCE = previous
+  }
+})
+
+test('ordinary and shadow HTML retain default metadata even with the acceptance flag', async () => {
+  const previous = process.env.VITE_SECTOR_ROTATION_ACCEPTANCE
+  process.env.VITE_SECTOR_ROTATION_ACCEPTANCE = 'true'
+  try {
+    for (const mode of ['production', 'rotation-shadow']) {
+      const ordinary = await createServer({ mode, server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' })
+      try {
+        const html = await ordinary.transformIndexHtml('/', readFileSync(new URL('../index.html', import.meta.url), 'utf8'))
+        assert.match(html, /<title>NewsMonitor · 实时热榜聚合<\/title>/)
+        assert.ok(!html.includes('noindex'))
+        const module = await ordinary.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
+        const rendered = await renderToString(createSSRApp({ render: () => h(module.default) }))
+        assert.ok(!rendered.includes('data-environment="sector-acceptance"'))
+        assert.ok(!rendered.includes('临时验收环境'))
+      } finally { await ordinary.close() }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.VITE_SECTOR_ROTATION_ACCEPTANCE
+    else process.env.VITE_SECTOR_ROTATION_ACCEPTANCE = previous
+  }
+})
+
 test('historical selection shows its own derived audit while retaining the full score trajectory', async () => {
   const detail = { ...versions, id: '884100.WI', universe: 'concept', axisLabels: { strength:'强度',opportunity:'机会',risk:'风险' }, series: [{ observedAt:'2026-11-12T07:00:00Z',marketDate:'2026-11-12',officialClose:true,strength:60,opportunity:80,risk:30,ranks:{strength:12,opportunity:2,risk:20},heatStateLabel:'升温' },{ observedAt:'2026-11-13T07:00:00Z',marketDate:'2026-11-13',officialClose:true,strength:65,opportunity:85,risk:30,ranks:{strength:10,opportunity:1,risk:20},heatStateLabel:'升温' }], audit:{ components:{},missing:['latestOnlyMissing'],contributors:[],provenance:{source:'Wind',observedAt:'2026-11-13T07:00:00Z'} } }
   const selected = { ...row('884100.WI'),marketDate:'2026-11-12',officialClose:true,components:{},missing:['selectedCloseMissing'],contributors:[],provenance:{source:'Wind',observedAt:'2026-11-12T07:00:00Z'} }

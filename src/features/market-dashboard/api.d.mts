@@ -1,5 +1,6 @@
 import type { MarketDashboardPayload, MarketDashboardV3Payload, MarketHistoryPayload, MarketHistoryV3Payload, MarketHistoryWindow, MarketLoadOptions, MarketLoadResult,
   SectorLatestOptions, SectorHistoryOptions, SectorDetailOptions, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail } from './types'
+/** Omitted fetchers use the local adapter only in the explicitly flagged sector-acceptance build. All responses remain strictly validated. */
 export function loadMarketDashboard(fetcher: typeof fetch | undefined, options: MarketLoadOptions & { schemaVersion: 'market-dashboard-v3' }): Promise<MarketLoadResult<MarketDashboardV3Payload>>
 export function loadMarketDashboard(fetcher?: typeof fetch, options?: MarketLoadOptions & { schemaVersion?: 'market-dashboard-v2' }): Promise<MarketLoadResult<MarketDashboardPayload>>
 export function loadMarketDashboard(fetcher: typeof fetch | undefined, options: MarketLoadOptions): Promise<MarketLoadResult<MarketDashboardPayload | MarketDashboardV3Payload>>

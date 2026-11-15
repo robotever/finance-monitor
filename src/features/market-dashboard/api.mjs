@@ -1,4 +1,9 @@
 import { validatePayload, validSectorIdentity, timestamp as preciseTimestamp } from '../../../functions/_lib/market-dashboard.js'
+import { acceptanceFetch } from './acceptance.mjs'
+
+// The build gate is inlined so ordinary bundles cannot select the offline adapter.
+const acceptanceBuild = import.meta.env?.MODE === 'sector-acceptance' && import.meta.env?.VITE_SECTOR_ROTATION_ACCEPTANCE === 'true'
+const defaultFetcher = (...args) => acceptanceBuild ? acceptanceFetch(...args) : fetch(...args)
 
 // Public derived-data contract, paired with Task 3 publisher / Task 4 Pages API.
 const AXES = ['strength', 'heat', 'risk']
@@ -158,12 +163,12 @@ async function load(url, validate, fetcher, options) {
 }
 
 // These independent results can be combined with Promise.all; history failure never clears latest.
-export function loadMarketDashboard(fetcher = fetch, options = {}) {
+export function loadMarketDashboard(fetcher = defaultFetcher, options = {}) {
   const schemaVersion = options.schemaVersion === undefined ? 'market-dashboard-v2' : options.schemaVersion
   if (!['market-dashboard-v2', 'market-dashboard-v3'].includes(schemaVersion)) return Promise.resolve(failure('INVALID_QUERY'))
   return load(`/api/market-dashboard/latest?schemaVersion=${schemaVersion}`, schemaVersion === 'market-dashboard-v3' ? validV3Latest : validLatest, fetcher, options)
 }
-export function loadMarketHistory(window, fetcher = fetch, options = {}) {
+export function loadMarketHistory(window, fetcher = defaultFetcher, options = {}) {
   if (!WINDOWS.includes(window)) return Promise.resolve(failure('INVALID_WINDOW'))
   const schemaVersion = options.schemaVersion === undefined ? 'market-dashboard-v2' : options.schemaVersion
   if (!['market-dashboard-v2', 'market-dashboard-v3'].includes(schemaVersion)) return Promise.resolve(failure('INVALID_QUERY'))
@@ -315,7 +320,7 @@ function validRotationDetail(value, options) {
 function rotationLoad(endpoint, options, validate, query) {
   return load(`/api/sector-rotation/${endpoint}?${new URLSearchParams(query)}`, body => {
     try { return validate(body, options) } catch { return false }
-  }, options.fetcher ?? fetch, options)
+  }, options.fetcher ?? defaultFetcher, options)
 }
 export function loadSectorRotationLatest(options = {}) {
   if (!['industry', 'concept'].includes(options.universe) || !['potential', 'main', 'risk'].includes(options.view)) return Promise.resolve(failure('INVALID_QUERY'))

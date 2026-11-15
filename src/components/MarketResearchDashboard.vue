@@ -1,7 +1,8 @@
 <template>
-  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading">
+  <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading" :data-environment="acceptanceEnabled ? 'sector-acceptance' : undefined">
+    <div v-if="acceptanceEnabled" class="sector-acceptance-banner" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
+      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ acceptanceEnabled ? '临时验收 · 测试数据' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -44,6 +45,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { loadMarketDashboard, loadMarketHistory, loadSectorRotationLatest, loadSectorRotationHistory, loadSectorRotationDetail } from '@/features/market-dashboard/api.mjs'
+import { acceptanceFetch, isSectorAcceptanceMode } from '@/features/market-dashboard/acceptance.mjs'
 import { deriveMarketDashboardView, deriveSectorRotationView } from '@/features/market-dashboard/model.mjs'
 import type { MarketDashboardPayload, MarketHistoryPayload, MarketLoadError } from '@/features/market-dashboard/types'
 import MarketScoreCard from './MarketScoreCard.vue'
@@ -53,12 +55,14 @@ import ConceptRadar from './ConceptRadar.vue'
 import SectorRotationBoard from './SectorRotationBoard.vue'
 import SectorRotationDetail from './SectorRotationDetail.vue'
 import type { MarketDashboardV3Payload, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail as DetailPayload, SectorUniverse, SectorView, SectorLeaderboardAxis, SectorMatrixCell } from '@/features/market-dashboard/types'
+const acceptanceEnabled = import.meta.env.MODE === 'sector-acceptance' && isSectorAcceptanceMode()
+const dashboardFetch = acceptanceEnabled ? acceptanceFetch : undefined
 // Explicit shadow builds on loopback only. Ordinary production builds always keep v2.
 const shadowEnabled = import.meta.env.VITE_SECTOR_ROTATION_RELEASE === 'true'
   && import.meta.env.MODE === 'rotation-shadow'
   && typeof window !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 const v3Latest = shallowRef<MarketDashboardV3Payload | null>(null)
-const v3Active = computed(() => shadowEnabled && v3Latest.value?.sectorRotation.releaseEligible === true)
+const v3Active = computed(() => !!v3Latest.value && (acceptanceEnabled || shadowEnabled && v3Latest.value.sectorRotation.releaseEligible === true))
 const rotationLatest = shallowRef<SectorRotationLatest | null>(null)
 const rotationHistory = shallowRef<SectorRotationHistory | null>(null)
 const rotationLoading = ref(false), rotationError = ref('')
@@ -92,7 +96,7 @@ async function changeRotation(selection = rotationSelection.value) {
   rotationController?.abort()
   const request = new AbortController(); rotationController = request
   rotationLoading.value = true; rotationError.value = ''; rotationLatest.value = null; rotationHistory.value = null
-  const options = { ...selection, signal: request.signal }
+  const options = { ...selection, signal: request.signal, fetcher: dashboardFetch }
   const [current, past] = await Promise.all([loadSectorRotationLatest(options), loadSectorRotationHistory(options)])
   if (disposed || request.signal.aborted) return
   rotationLoading.value = false
@@ -107,7 +111,7 @@ async function openSector(selection: { universe: SectorUniverse; id: string; nam
   const request = new AbortController(); detailController = request
   detailName.value = selection.name; selectedCell.value = selection.cell; detailPayload.value = null
   detailError.value = ''; detailLoading.value = true; detailOpen.value = true
-  const result = await loadSectorRotationDetail({ ...selection, signal: request.signal })
+  const result = await loadSectorRotationDetail({ ...selection, signal: request.signal, fetcher: dashboardFetch })
   if (disposed || request.signal.aborted) return
   detailLoading.value = false; detailPayload.value = result.data
   detailError.value = result.error?.message ?? ''
@@ -115,10 +119,11 @@ async function openSector(selection: { universe: SectorUniverse; id: string; nam
 }
 function closeDetail() { detailOpen.value = false; detailController?.abort() }
 async function refreshShadow(signal: AbortSignal) {
-  if (!shadowEnabled) return
-  const result = await loadMarketDashboard(undefined, { signal, schemaVersion: 'market-dashboard-v3' })
+  if (!shadowEnabled && !acceptanceEnabled) return
+  const result = await loadMarketDashboard(dashboardFetch, { signal, schemaVersion: 'market-dashboard-v3' })
   if (disposed || signal.aborted) return
   v3Latest.value = result.data
+  if (acceptanceEnabled) latestError.value = result.error
   if (v3Active.value) await changeRotation()
   else { closeDetail(); detailPayload.value = null; rotationController?.abort(); rotationLatest.value = null; rotationHistory.value = null }
 }
@@ -154,13 +159,13 @@ async function refresh() {
   // Keep the independent latest result responsive even if history times out.
   await Promise.all([
     refreshShadow(controller.signal),
-    loadMarketDashboard(undefined, options).then(result => {
+    ...(acceptanceEnabled ? [] : [loadMarketDashboard(dashboardFetch, options).then(result => {
       if (disposed) return
       latestError.value = result.error
       if (result.data) { latest.value = result.data; lastSuccessAt.value = new Date().toISOString() }
       now.value = new Date()
-    }),
-    loadMarketHistory('5d', undefined, options).then(result => {
+    })]),
+    loadMarketHistory('5d', dashboardFetch, options).then(result => {
       if (disposed) return
       historyError.value = result.error
       if (result.data) history.value = result.data
