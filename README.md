@@ -1,67 +1,104 @@
 # NewsMonitor
 
-市场研究首页、全球债务风险和实时财经新闻聚合：[生产页面](https://newsmonitor.pages.dev/)。市场研究面板目前为 **v0.1 / 试运行**，三交易日灰度验收尚未完成。
+NewsMonitor 是一个面向个人研究流程的金融市场首页，整合实时财经新闻、全球债务风险、A 股市场状态、行业／概念雷达和板块轮动研究。
 
-## 首页功能
+- 生产页面：[newsmonitor.pages.dev](https://newsmonitor.pages.dev/)
+- 代码仓库：[robotever/newsmonitor](https://github.com/robotever/newsmonitor)
+- 当前生产数据契约：`market-dashboard-v2`
+- 板块轮动契约：`market-dashboard-v3`，仍处于验收与影子验证阶段
 
-- 全局环境、A 股整体、六类风格、35 个 Wind 二级行业，以及“25 个核心概念 + 10 个动态热点”，统一展示强度、热度、风险、完整度、时间与贡献因素。
-- 本地 Python 采集 Wind / FRED / 妙想并计算二级指标，经认证 Pages Function 发布到 D1；浏览器只读最新快照及短期历史。供应商原始响应与凭证不上传。
-- 保留全球债务四条主线（美国利率、信用与久期、日本资金、欧洲主权），新闻每 5 分钟刷新，实时快讯聚合成功来源。
-- 缺失不补零；证据不足、滞后、无可比历史和刷新失败均明确披露。风险红色仅表达风险分，缺失为灰色虚线，滞后为灰紫实线。
+> 本项目提供研究辅助信息，不构成投资建议。评分、阈值和权重仍是待回测的研究假设。
 
-2026-11-13 的原始真实收盘基线含 43 个评分对象，整体完整度 **40%**；加入概念雷达后，v2 每次快照包含 78 个可见评分对象。完整度是有效输入权重的覆盖比例（含冷启动折扣），不是数据准确率或收益概率；缺少单位、过期数据与不可用跨资产指标会减少覆盖。低于 70% 提示证据不足，低于 50% 不给阶段结论。详见[运行手册](docs/market-dashboard-operations.md)。
+## 主要能力
 
-## 开发与验证
+- 聚合 11 个中外财经新闻源，每个来源最多展示 10 条，前端每 5 分钟刷新。
+- 展示全球环境、A 股整体、六类市场风格和 35 个 Wind 二级行业的二级评分。
+- 展示 25 个核心概念和 10 个动态热点概念。
+- 提供全球债务风险监测，包括美国利率、信用与久期、日本资金和欧洲主权风险。
+- 板块轮动 v3 为 35 个行业和 75 个概念计算强度、机会、风险、热度状态、排名与历史上榜信息。
+- 缺失数据不补零；滞后、证据不足、无比较历史和数据源异常均显式披露。
 
-技术栈：Vue 3、TypeScript、Vite、Pinia、Tailwind CSS、Cloudflare Pages Functions / D1。
+## 当前状态
+
+截至 2026-11-15：
+
+- 生产页面继续使用 v2；概念雷达已进入生产。
+- v3 界面已在独立验收页面通过桌面端和移动端技术检查，但页面使用合成测试数据。
+- Wind 全量只读验证已覆盖 35 个行业和 75 个概念；上一交易日截面完整，110 个板块全部具备至少 20 个收盘历史，108 个具备至少 60 个，107 个具备至少 250 个。
+- 妙想已实测返回代表性板块的涨跌、成交、换手、资金和涨跌家数；全量映射、批量能力和盘中时效仍待交易时间验证。
+- 计划采用 15 分钟盘中刷新，并为 Wind／妙想切换保留明确的数据源边界；该策略尚未部署。
+
+完整状态和未决事项见 [项目状态](docs/STATUS.md)。
+
+## 技术架构
+
+```text
+Wind / 妙想 / FRED / 新闻源
+             │
+             ▼
+macOS 本地采集与评分（Python）
+             │ 只发布派生结果
+             ▼
+Cloudflare Pages Functions ── D1
+             │
+             ▼
+Vue 3 / TypeScript 前端
+```
+
+浏览器不会持有供应商密钥；供应商原始响应不发布到 Cloudflare。详细说明见 [系统架构](docs/ARCHITECTURE.md) 和 [数据源策略](docs/DATA_SOURCES.md)。
+
+## 快速开始
+
+要求：Node.js、npm、Python 3。访问真实市场数据还需要本机已配置相应供应商凭据。
 
 ```bash
 npm ci
 npm run dev
+```
+
+开发地址默认为 [localhost:5173](http://localhost:5173)。Vite 只代理现有新闻／FRED 请求；研究 API 需要 Pages Functions 环境或测试中的受控响应。
+
+完整验证：
+
+```bash
 python3 -m unittest discover -s tools/market_dashboard/tests -v
-python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/regression_service_reliability.py'
-PYTHONPYCACHEPREFIX=/private/tmp/newsmonitor-python-cache python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/intake_health_check.py'
 npm test
 npm run build
 ```
 
-开发地址为 [localhost:5173](http://localhost:5173)，构建输出 `dist/`。Vite 只提供现有新闻/FRED 代理；研究 API 需 Pages Functions 环境（如 `npx wrangler pages dev dist`）或本地测试中的受控 API 响应。
-
-## 部署与运维
-
-仓库：[robotever/newsmonitor](https://github.com/robotever/newsmonitor)。当前发布流程使用 Wrangler；GitHub 的 `main` 也连接 Pages，发布时只能选择一个触发路径，避免重复部署。必须一同保留 `functions/`、`migrations/` 与 `wrangler.toml` 中的 `MARKET_DB` 绑定。
-
-[运行手册](docs/market-dashboard-operations.md)涵盖持久环境、证书、迁移、轮换、手工运行、诊断、回滚、停用及灰度清单。[macOS 调度说明](ops/macos/README.md)描述安装器的准备、启用和恢复行为。长期服务应指向稳定 checkout；本工作树的 Task 9 不部署、不安装或启用 LaunchAgent。
-
-### 板块轮动影子验证（仅本地）
-
-v3 影子任务保留全球环境、A 股整体、六类风格的强度／热度／风险；35 个行业及全部 75 个概念改为强度／机会／风险和热度状态。可见概念仍为 25 个核心与 10 个动态席位，完整的 110 个板块放在 `sectorRotation`。该区块保存完整归一化组件证据、各轴完整度、排名和正式收盘上榜统计；组件权重与热度阈值统一放在 `auditDefinitions`，每行 `missing` 的整数索引对应区块的 `missingReasons`，保留全部缺失原因并控制 JSON 正文不超过 256 KiB。私有收盘状态另保留未舍入工作分数和派生历史，供应商原始数据不进入载荷。
-
-完整组件采用 `componentEncoding=node-mask-v1`：每行 `components` 的值是 `componentNodes` 索引；节点数组首项为字段存在位掩码，其余值依照 `componentFields` 中置位字段的顺序排列。字段依次为 `value, coverage, missing, usedWeight, totalWeight, effectiveWeight, percentile, parts`。`missing` 仍索引 `missingReasons`，`parts` 为 `[componentPartNames 索引, 子节点索引]` 数组，子节点先于父节点。共享节点不舍入数值，区分字段缺失与显式 null，可完整恢复嵌套归一化值、历史分位、有效权重和缺失原因。
-
-LaunchAgent 保持已加载及每 5 分钟检查，无需卸载、重装或改间隔。影子任务只在北京时间 09:45–09:55、11:30–11:40、14:00–14:10、15:00–15:30 运行，包含端点，不补跑错过的盘中窗口。每个行业及概念批次的所有行都必须有当日有效时间；正式收盘还要求每行来源时间不早于 15:00，15:30 后不补收盘。`--force` 不绕过这些要求。节假日需提供已确认的 `schedule.tradingDates`；默认仍按工作日近似。
+验收模式使用隔离的合成数据：
 
 ```bash
-# 单独运行本地影子任务；即使提供发布凭据，也不会调用生产发布接口。
-python3 -m tools.market_dashboard.job --rotation-shadow --skip-rotation-publish
-# 只读摘要：行数、版本、覆盖度、延迟和安全错误码；不采集、不输出明细。
-python3 -m tools.market_dashboard.job --rotation-report
-# 离线合成数据验证；固定关键窗口时间，不写状态、不发布。
-python3 -m tools.market_dashboard.job --rotation-shadow --fixture --dry-run
+npm run build:acceptance
+npm run preview
 ```
 
-命令使用与原任务相同的 `MARKET_DASHBOARD_STATE_ROOT`。影子快照、独立比较历史及健康摘要只写入父项目 `state/market-dashboard-shadow/`（目录 0700、文件 0600）；与 v2 共用采集锁，但不改 v2 的 `last-success.json` 或健康摘要。健康摘要先写，成功状态的原子替换是最终提交点：此前失败可重试收盘，替换后目录同步失败仍确认已安装的收盘，并在命令摘要返回 `STATE_DURABILITY_UNCONFIRMED`。夹具模式必须加 `--dry-run`，避免污染真实验证状态。测试、夹具及回填的合成载荷一律禁止发布。
+## 文档导航
 
-经本地验证后，操作者可在稳定 checkout 的父项目 `.env` 设置 `MARKET_DASHBOARD_ROTATION_SHADOW=1`。包装器在每次原 v2 调用后另跑一次本地影子任务；v2 生产更新继续运行。影子日志单独写入私有 `logs/market-dashboard-shadow/`，沿用 2 MB／三份备份的轮换策略。设置为 `0` 或移除该变量即可关闭影子运行，无需停止已加载的服务。显式传入影子命令只运行影子任务。本次代码变更不修改实际 `.env`、LaunchAgent 或生产服务。
+| 文档 | 用途 |
+|---|---|
+| [项目状态](docs/STATUS.md) | 生产、验收、影子、数据验证和下一步 |
+| [系统架构](docs/ARCHITECTURE.md) | 组件边界、数据流、存储、契约与安全 |
+| [项目结构](docs/PROJECT_STRUCTURE.md) | 目录职责和常见修改入口 |
+| [数据源策略](docs/DATA_SOURCES.md) | Wind、妙想、FRED、新闻来源及切换原则 |
+| [开发规范](docs/DEVELOPMENT.md) | 本地开发、测试、分支、提交和发布流程 |
+| [运行手册](docs/market-dashboard-operations.md) | 调度、诊断、密钥、回滚和服务管理 |
+| [macOS 服务](ops/macos/README.md) | LaunchAgent 安装、启用、停用和恢复 |
+| [变更记录](CHANGELOG.md) | 重要功能与工程变化 |
+| [贡献说明](CONTRIBUTING.md) | 修改项目时的最短入口 |
 
-真实 K 线响应、20／60／250 日历史、历史资金与广度以及调用额度仍未通过可行性核验；本地载荷始终标记 `releaseEligible=false`，不会解锁公开机会分或 v3 生产发布。缺少可靠同期成交额时，5／20 日资金比率保持缺失，不能用当日成交额替代；Wind 失败不会静默切换妙想。
+设计与实施过程保存在 `docs/superpowers/`；实测证据和验收记录保存在 `docs/verification/`。它们是历史证据，不代替上述当前文档。
 
-## 数据限制
+## 部署边界
 
-- v0.1 权重、分位和阶段阈值是研究假设，尚未历史回测，不构成投资建议。
-- 默认 A 股交易日仅按工作日近似；假日与跨日比较需要经确认的交易日历。
-- 本机离线、供应商额度、字段/单位变化会中断更新；保留最后成功快照，不以模拟值填补或自动混用供应商口径。
-- 全球序列含日频、月频，不能视作全部盘中实时；`sourceMode` 记录选定来源，不保证该来源的每项数据均可用。
-- 概念强度、热度、风险和动态席位均由 Wind 结构化行情计算；妙想仅用于发现候选线索，不参与概念评分，也不会在 Wind 失败时静默替代。
+生产使用 Cloudflare Pages、Pages Functions 和 D1。发布必须保留 `functions/`、`migrations/` 以及 `wrangler.toml` 中的 `MARKET_DB` 绑定。GitHub 自动构建与 Wrangler 手工部署不能同时触发同一次发布。
 
-Task 8 adds safe operational health, a private atomic `rotation-ledger.json`, and read-only historical/release-evidence tools. `--rotation-report` now includes `rotationMode/Session/Coverage/UniverseCounts/LatencySeconds/CloseSuccesses/SafeErrorCode` and safe source/observation timestamps. Close successes count distinct explicitly configured official dates only. The evaluator always leaves `productionMode=v2` and `productionSwitchApproved=false`; offline calculations always retain `liveVerified=false`. See the [shadow release record and pending ten-day template](docs/verification/2026-11-14-sector-rotation-shadow.md) for commands and thresholds. No live ten-day acceptance, historical validity, stable service opt-in, production migration or feature activation is implied by local tests.
+长期本地任务必须指向稳定 checkout，不应指向临时 Codex worktree。任何 D1 迁移、生产发布、功能开关切换或 LaunchAgent 变更都需要单独验证和明确批准。
+
+## 数据与安全原则
+
+- 不提交或输出 API Key、发布令牌和供应商授权信息。
+- 不把测试数据、回放数据或回填结果标记为实时市场观测。
+- 不在没有显式来源状态的情况下静默混合 Wind 与妙想口径。
+- 评分版本、数据契约和板块宇宙均需版本化；不兼容变更必须同步迁移、测试和文档。
+- 数据源失败时保留最后一次成功快照并显示滞后，不生成看似正常的替代值。
