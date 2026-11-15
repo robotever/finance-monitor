@@ -14,7 +14,7 @@ def trading_dates(count=12):
 def sample_rows(count=12):
     config = load_config()
     dates = trading_dates(count)
-    identities = [identity for identity, _ in INDUSTRY_DEFINITIONS[:5]]
+    identities = [identity for identity, _ in INDUSTRY_DEFINITIONS[:10]]
     rows = []
     for day_index, day in enumerate(dates):
         for index, identity in enumerate(identities):
@@ -72,7 +72,7 @@ class RotationEvaluationCoreTests(unittest.TestCase):
 
         first = report['universes']['industry']['signals']['opportunity']['horizons']['1']['dates'][0]
         self.assertEqual(first['status'], 'MISSING_FORWARD_RETURNS')
-        self.assertEqual(first['sampleCount'], 5)
+        self.assertEqual(first['sampleCount'], 10)
 
     def test_future_availability_excludes_the_score_before_outcomes_are_seen(self):
         rows, dates, config, _, = sample_rows()
@@ -90,7 +90,7 @@ class RotationEvaluationCoreTests(unittest.TestCase):
         rows, dates, config, identities = sample_rows()
         for row in rows:
             day = dates.index(row['marketDate'])
-            if row['id'] == identities[0]:
+            if row['id'] in identities[:2]:
                 row['metrics']['return1d'] = (10, -20, 10)[(day - 1) % 3]
             else:
                 row['metrics']['return1d'] = 0
@@ -101,6 +101,62 @@ class RotationEvaluationCoreTests(unittest.TestCase):
         self.assertAlmostEqual(first['spread'], -3.2)
         self.assertAlmostEqual(first['topGroupDrawdown'], 20)
         self.assertEqual(first['hitRate'], 0)
+
+
+class RotationEvaluationRobustnessTests(unittest.TestCase):
+    def test_reports_ic_stability_turnover_slices_and_leave_one_out_checks(self):
+        rows, dates, config, _ = sample_rows()
+
+        report = rotation_evaluation.evaluate(rows, dates, config)
+
+        signal = report['universes']['industry']['signals']['strength']
+        self.assertEqual(signal['topQuintileTurnover'], 0)
+        horizon = signal['horizons']['1']
+        self.assertEqual(horizon['icPositiveRate'], 1)
+        self.assertIsNone(horizon['icInformationRatio'])
+        self.assertGreater(horizon['minimumLeaveOneDateSpread'], 0)
+        self.assertGreater(horizon['minimumLeaveOneSectorSpread'], 0)
+        self.assertEqual([horizon['slices'][name]['validDates']
+                          for name in ('early', 'middle', 'late')], [4, 4, 3])
+        self.assertEqual(horizon['evidenceStatus'], 'INSUFFICIENT_EVIDENCE')
+
+    def test_model_baseline_comparison_uses_same_date_identity_intersection(self):
+        rows, dates, config, identities = sample_rows()
+        for row in rows:
+            if row['id'] == identities[-1]:
+                row['components']['position']['value'] = None
+
+        report = rotation_evaluation.evaluate(rows, dates, config)
+
+        opportunity = report['universes']['industry']['signals']['opportunity']
+        position = report['universes']['industry']['signals']['position']
+        comparison = report['universes']['industry']['comparisons']['opportunity']['position']['horizons']['1']
+        self.assertEqual(opportunity['nativeCoverage']['maximumSectors'], 10)
+        self.assertEqual(position['nativeCoverage']['maximumSectors'], 9)
+        self.assertEqual(comparison['validDates'], 11)
+        self.assertTrue(all(point['sampleCount'] == 9 for point in comparison['dates']
+                            if point['status'] == 'VALID'))
+        self.assertEqual(set(report['universes']['industry']['comparisons']['strength']),
+                         {'return5d', 'return20d', 'relativeStrength20d'})
+        self.assertEqual(set(report['universes']['industry']['comparisons']['opportunity']),
+                         {'position', 'return5d', 'return20d'})
+        self.assertNotIn('risk', report['universes']['industry']['comparisons'])
+
+    def test_raw_risk_diagnostics_reward_identifying_losses_and_drawdowns(self):
+        rows, dates, config, identities = sample_rows()
+        for row in rows:
+            index = identities.index(row['id'])
+            row['metrics']['return1d'] = 2 - index
+
+        report = rotation_evaluation.evaluate(rows, dates, config)
+
+        risk = report['universes']['industry']['signals']['risk']
+        returns = risk['horizons']['1']
+        diagnostics = risk['riskDiagnostics']['horizons']['1']
+        self.assertGreater(returns['meanRankIc'], 0)
+        self.assertEqual(diagnostics['highMinusLowNegativeReturnRate'], 1)
+        self.assertGreater(diagnostics['highMinusLowMaximumDrawdown'], 0)
+        self.assertEqual(diagnostics['interpretation'], 'HIGHER_RAW_RISK_IDENTIFIES_WORSE_OUTCOMES')
 
 
 if __name__ == '__main__':
