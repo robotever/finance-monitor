@@ -890,6 +890,14 @@ class JobResult:
     metadata: dict | None = None
 
 
+@dataclass(frozen=True)
+class CombinedCycleResult:
+    success: bool
+    status: str
+    legacy: JobResult
+    rotation: JobResult
+
+
 def _read_json(path):
     if path.is_symlink() or path.parent.is_symlink():
         raise ValueError('INVALID_STATE')
@@ -1389,6 +1397,40 @@ def run_job(args, deps=None):
             lock.close()
 
 
+def run_combined_cycle(args, deps=None):
+    """Run rotation first and v2 second with one cached provider collection."""
+    deps = dict(deps or {})
+    values = dict(args) if isinstance(args, dict) else vars(args).copy()
+    fixture = bool(values.get('fixture', False))
+    supplied = deps.get('collector')
+    cached, failed = [], []
+
+    def collect_once(config):
+        if cached:
+            return cached[0]
+        if failed:
+            raise failed[0]
+        try:
+            result = supplied(config) if supplied else collect_batches(
+                config, concept_config=deps.get('concept_config'), fixture=fixture)
+        except Exception as error:
+            failed.append(error)
+            raise
+        cached.append(result)
+        return result
+
+    shared = {**deps, 'collector': collect_once}
+    rotation_args = {**values, 'rotation_shadow': True}
+    rotation_args.pop('with_rotation', None)
+    legacy_args = dict(values)
+    legacy_args.pop('with_rotation', None)
+    for flag in ('rotation_shadow', 'rotation_report', 'skip_rotation_publish', 'rotation_publish'):
+        legacy_args.pop(flag, None)
+    rotation = run_job(rotation_args, shared)
+    legacy = run_job(legacy_args, shared)
+    return CombinedCycleResult(rotation.success and legacy.success, 'combined', legacy, rotation)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true', help='Validate and summarize; no publication or snapshot/health writes (live runs use the collection lock)')
@@ -1402,7 +1444,16 @@ def main(argv=None):
     parser.add_argument('--rotation-shadow', action='store_true', help='Assemble v3 locally in private shadow state; never publish')
     parser.add_argument('--skip-rotation-publish', action='store_true', help='Select the shadow-only path; production publication is unavailable')
     parser.add_argument('--rotation-report', action='store_true', help='Read private shadow metadata only; no collection or state writes')
+    parser.add_argument('--with-rotation', action='store_true', help='Run rotation then v2 with one shared provider collection')
     args = parser.parse_args(argv)
+    if args.with_rotation:
+        result = run_combined_cycle(args)
+        print(json.dumps({'status': result.status, 'success': result.success,
+            'rotationStatus': result.rotation.status, 'legacyStatus': result.legacy.status,
+            **({'rotationErrorCode': result.rotation.error_code} if result.rotation.error_code else {}),
+            **({'legacyErrorCode': result.legacy.error_code} if result.legacy.error_code else {})},
+            ensure_ascii=False, separators=(',', ':')))
+        return 0 if result.success else 1
     result = run_job(args)
     if args.rotation_report:
         print(json.dumps(result.metadata or {}, ensure_ascii=False, separators=(',', ':')))

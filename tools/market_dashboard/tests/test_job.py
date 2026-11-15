@@ -744,6 +744,46 @@ class RotationShadowTests(unittest.TestCase):
             ledger = json.loads((root/'market-dashboard-shadow/rotation-ledger.json').read_text())
             self.assertEqual(ledger['successfulCloseDates'], ['2026-11-13'])
 
+    def test_combined_overlap_collects_once_and_runs_rotation_before_v2(self):
+        with TemporaryDirectory() as directory:
+            calls = []
+            def collector(config):
+                calls.append(config['sources']['now'])
+                return rotation_batches(config)
+            result = job.run_combined_cycle({'skip_publish': True}, {
+                'now': self.now, 'state_root': Path(directory), 'collector': collector})
+            self.assertTrue(result.success)
+            self.assertEqual(result.rotation.status, 'rotation_shadow')
+            self.assertEqual(result.legacy.status, 'skip_publish')
+            self.assertEqual(len(calls), 1)
+
+    def test_combined_rotation_only_window_collects_once(self):
+        with TemporaryDirectory() as directory:
+            calls = []
+            now = self.now.replace(hour=11, minute=35)
+            def collector(config):
+                calls.append('collect')
+                return rotation_batches(config)
+            result = job.run_combined_cycle({'skip_publish': True}, {
+                'now': now, 'state_root': Path(directory), 'collector': collector})
+            self.assertTrue(result.success)
+            self.assertEqual(result.rotation.status, 'rotation_shadow')
+            self.assertEqual(result.legacy.status, 'outside_schedule')
+            self.assertEqual(calls, ['collect'])
+
+    def test_combined_collection_failure_is_cached_for_both_consumers(self):
+        with TemporaryDirectory() as directory:
+            calls = []
+            def collector(config):
+                calls.append('collect')
+                raise RuntimeError('synthetic provider failure')
+            result = job.run_combined_cycle({}, {
+                'now': self.now, 'state_root': Path(directory), 'collector': collector})
+            self.assertFalse(result.success)
+            self.assertFalse(result.rotation.success)
+            self.assertFalse(result.legacy.success)
+            self.assertEqual(calls, ['collect'])
+
     def test_windows_do_not_backfill_and_use_shanghai_clock(self):
         schedule = getattr(job, 'scheduled_rotation_session', None)
         self.assertTrue(callable(schedule), 'rotation scheduler is missing')

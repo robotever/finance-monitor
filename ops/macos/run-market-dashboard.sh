@@ -12,7 +12,6 @@ import importlib.util
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 
 repo, root = (Path(value).resolve() for value in sys.argv[1:3])
@@ -81,28 +80,9 @@ try:
     python = os.environ.get('MARKET_DASHBOARD_PYTHON') or os.environ.get('PYTHON_BIN') or sys.executable
     command = [python, '-u', '-m', 'tools.market_dashboard.job']
     if not arguments and os.environ.get('MARKET_DASHBOARD_ROTATION_SHADOW') == '1':
-        # The existing v2 service remains the first invocation on every tick.
-        # This opt-in never changes the loaded LaunchAgent or its interval.
-        # Shadow writes its own atomic operational ledger and safe health only;
-        # MARKET_DASHBOARD_ROTATION_SHADOW=0 reverses the opt-in on the next tick.
-        legacy = subprocess.run(command, check=False).returncode
-        shadow_logs = root / 'logs/market-dashboard-shadow'
-        if shadow_logs.is_symlink():
-            raise ValueError('log directory symlinks are not supported')
-        shadow_logs.mkdir(parents=True, exist_ok=True, mode=0o700)
-        shadow_logs.chmod(0o700)
-        for path in shadow_logs.glob('*.log'):
-            if path.is_symlink():
-                raise ValueError('log symlinks are not supported')
-            rotation.rotate(path)
-        for path in shadow_logs.iterdir():
-            if path.is_file() and not path.is_symlink():
-                path.chmod(0o600)
-        with (shadow_logs / 'job.log').open('a') as output:
-            os.fchmod(output.fileno(), 0o600)
-            shadow = subprocess.run(command + ['--rotation-shadow', '--skip-rotation-publish'],
-                                    stdout=output, stderr=output, check=False).returncode
-        raise SystemExit(legacy or shadow)
+        # One process runs rotation first and lets v2 reuse the same lazy batch.
+        # MARKET_DASHBOARD_ROTATION_SHADOW=0 restores the unchanged v2-only path.
+        arguments = ['--with-rotation']
     os.execvpe(python, command + arguments, os.environ)
 except Exception:
     # Never print a dotenv line, credential, provider exception or exec arguments.

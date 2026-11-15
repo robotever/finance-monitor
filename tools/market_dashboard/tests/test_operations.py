@@ -132,7 +132,7 @@ class OperationsTests(unittest.TestCase):
                     self.assertFalse((Path(self.env['HOME']) / 'launchctl-calls').exists())
             link.unlink()
 
-    def test_opt_in_wrapper_runs_v2_then_private_shadow_and_can_be_disabled(self):
+    def test_opt_in_wrapper_runs_one_combined_cycle_and_can_be_disabled(self):
         self.copy_ops()
         package = self.repo / 'tools/market_dashboard'
         package.mkdir(parents=True)
@@ -149,11 +149,9 @@ class OperationsTests(unittest.TestCase):
         enabled = self.execute('run-market-dashboard.sh')
         self.assertEqual(enabled.returncode, 0, enabled.stderr)
         self.assertEqual([json.loads(line) for line in capture.read_text().splitlines()],
-                         [[], ['--rotation-shadow', '--skip-rotation-publish']])
-        shadow_log = self.root / 'logs/market-dashboard-shadow/job.log'
-        self.assertEqual(shadow_log.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(shadow_log.parent.stat().st_mode & 0o777, 0o700)
-        self.assertIn('safe-summary', shadow_log.read_text())
+                         [['--with-rotation']])
+        self.assertFalse((self.root / 'logs/market-dashboard-shadow/job.log').exists())
+        self.assertIn('safe-summary', (self.root / 'logs/market-dashboard/job.log').read_text())
         capture.unlink()
         self.env['MARKET_DASHBOARD_ROTATION_SHADOW'] = '0'
         disabled = self.execute('run-market-dashboard.sh')
