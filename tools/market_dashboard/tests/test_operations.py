@@ -171,6 +171,35 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual([json.loads(line) for line in capture.read_text().splitlines()],
                          [['--rotation-shadow', '--dry-run']])
 
+    def test_feature_flag_updater_is_atomic_idempotent_and_preserves_private_mode(self):
+        target = self.root / '.env'
+        target.write_text('PRIVATE_TOKEN=retained\nMARKET_DASHBOARD_ROTATION_SHADOW=0\n')
+        target.chmod(0o600)
+        command = [sys.executable, str(OPS / 'set-market-dashboard-flags.py'), str(target),
+                   'MARKET_DASHBOARD_ROTATION_SHADOW=1', 'MARKET_DASHBOARD_ROTATION_PUBLISH=1']
+        first = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(target.read_text(), 'PRIVATE_TOKEN=retained\nMARKET_DASHBOARD_ROTATION_SHADOW=1\n'
+                         'MARKET_DASHBOARD_ROTATION_PUBLISH=1\n')
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        second = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(target.read_text().count('MARKET_DASHBOARD_ROTATION_PUBLISH='), 1)
+
+    def test_feature_flag_updater_rejects_symlink_and_non_allowlisted_keys(self):
+        outside = Path(self.tmp.name) / 'outside.env'
+        outside.write_text('PRIVATE_TOKEN=retained\n')
+        target = self.root / '.env'
+        target.symlink_to(outside)
+        script = str(OPS / 'set-market-dashboard-flags.py')
+        linked = subprocess.run([sys.executable, script, str(target),
+                                 'MARKET_DASHBOARD_ROTATION_SHADOW=1'], capture_output=True, text=True)
+        self.assertNotEqual(linked.returncode, 0)
+        invalid = subprocess.run([sys.executable, script, str(outside), 'PRIVATE_TOKEN=changed'],
+                                 capture_output=True, text=True)
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertEqual(outside.read_text(), 'PRIVATE_TOKEN=retained\n')
+
     def test_direct_job_test_module_includes_close_freshness_tests(self):
         result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.tests.test_job', '-v'],
                                 cwd=REPO, capture_output=True, text=True, timeout=120)

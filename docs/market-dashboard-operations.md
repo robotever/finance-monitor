@@ -1,6 +1,6 @@
 # 市场研究面板运行手册
 
-状态：**v0.1 / 试运行**。本文最后核验于 2026-11-13。首个真实收盘快照是 day 0 基线；三个完整交易日的灰度验收仍待执行。任务分支尚待主代理审查、整合稳定 checkout、最终部署与显式服务启用。
+状态：**v0.1 / 真实数据观察期**。本文最后核验于 2026-11-15。v2 继续作为稳定回退；v3 板块轮动已完成 D1 迁移和观察版页面部署，但首个自然交易时段的真实 v3 快照仍待 2026-11-16 自动任务产生。评分尚未完成历史有效性验证，不构成交易信号。
 
 ## 数据职责与解释边界
 
@@ -46,7 +46,7 @@ wrapper 按单行字面量解析 `.env`，不执行 `source` / `eval` / `$()`；
 
 全部业务时钟为 Asia/Shanghai。LaunchAgent 每 300 秒唤醒，Python gate 决定是否运行：交易日 09:30–11:30、13:00–15:00，每 15 分钟 bucket 最多成功一次；15:00–15:30 为一次最终 close 的补采窗口。收盘数据必须在当日 15:00 或之后；同日收盘观测可持续有效到当地日期结束。`--force` 只绕过时段限制，不绕过锁、schema 或成功 bucket 去重。
 
-默认工作日只是近似。要识别休市日，给版本化配置增加 `schedule.tradingDates`（ISO 日期字符串列表），同时让根 health 读取同一已安装 checkout 的配置。未提供日历时不可声称交易所假日已覆盖。
+默认工作日只是运行候选日。任务先读取同一批 Wind 广度数据的市场日期：只有当前上海日期的证据才会把当天注入本次正式交易日集合；若仍是上一交易日，则写入私有负缓存并停止当日后续调用和发布。该机制不预知未来休市日，休市工作日最多消耗一次探测，但不会把旧数据冒充当日数据。
 
 仅准备（不会加载/启动）；先审核生成 plist、稳定路径与私有权限：
 
@@ -58,7 +58,7 @@ plutil -lint "$HOME/Library/LaunchAgents/com.robot-ever.newsmonitor.market-dashb
 launchctl print "gui/$(id -u)/com.robot-ever.newsmonitor.market-dashboard"
 ```
 
-无 RunAtLoad/KeepAlive，无 kickstart。已加载的旧 plist 不自动重启；路径变化先 `--disable` 再 `--enable`。此轮未安装、加载或启用真实服务，不能把 one-shot 成功当作定时运行证据。
+无 RunAtLoad/KeepAlive，无 kickstart。已加载的旧 plist 不自动重启；路径变化先 `--disable` 再 `--enable`。生产服务已经加载，仍保持原 label、稳定 checkout 路径和 300 秒 `StartInterval`。功能开关更新后等待下一个自然唤醒；部署成功不能替代首个真实 v3 快照证据。
 
 ```bash
 ./ops/macos/install-market-dashboard-service.sh --disable
@@ -114,7 +114,7 @@ npx wrangler d1 migrations apply newsmonitor-market-dashboard --remote
 
 Secret 更新后核验目标环境已使用新绑定，先在 preview 检查新 token 可用、旧 token 拒绝；如需要部署以生效，走同一经审查发布路径，再更新/恢复本地。避免轮换中途继续定时发布。不要为证明 token 有效往生产注入合成快照；下一个真实新 bucket 的发布才是生产业务验证。
 
-发布使用单一路径：当前采用 Wrangler 手工发布，需构建 `dist` 并携带 `functions/`；不要同时推 `main` 触发 Git 构建。具体最终发布与稳定 checkout 整合由主代理完成，本轮只读生产。
+发布使用单一路径：当前采用 Wrangler 手工发布，需先运行 `npm run build:production-rotation`，再部署 `dist` 并携带 `functions/`；不要同时推 `main` 触发 Git 构建。2026-11-15 生产部署为 `3a5e497a-6c7e-4e36-9b54-811d22b3004d`，源提交 `1b679fc`。公开 v3 在首个真实发布前返回 JSON `NO_SNAPSHOT` 是预期状态。
 
 ## 滞后、额度、故障诊断
 
@@ -128,7 +128,7 @@ Secret 更新后核验目标环境已使用新绑定，先在 preview 检查新 
 
 ## 回滚与数据保留
 
-应用回滚可在 Cloudflare Pages 历史中选择已核验的此前部署 `d925c945-7259-4aaa-81dc-518acc3e0419`（源 `9de6d5c`），或通过唯一 Wrangler 路径部署经审查的旧 checkout。Task 8 当前生产为 `1aaa18b2-98c2-437f-8a5a-4f73831bd8a5`（`b683fb0`）；最终部署后应更新这一记录。回滚保留 `MARKET_DB`、增量 schema、真实快照及 Secret；停用本地发布器后再排查兼容性。不要 drop 数据库/表，也不要删成功 state 绕过去重。
+应用回滚可在 Cloudflare Pages 历史中选择此前生产部署 `0cf75354-1104-47f1-94ec-df31abab1476`（源 `2798be2`），或通过唯一 Wrangler 路径部署经审查的旧 checkout。当前观察版生产为 `3a5e497a-6c7e-4e36-9b54-811d22b3004d`（源 `1b679fc`）。先把 `MARKET_DASHBOARD_ROTATION_PUBLISH` 设为 `0` 可停止 v3 新发布而保留 v2；页面回滚和发布开关回滚相互独立。回滚保留 `MARKET_DB`、增量 schema、真实快照及 Secret；不要 drop 数据库/表，也不要删成功 state 绕过去重。
 
 父项目 health 与 regression 的 Task 7 改动不属于此 Git 仓库；文件为上文两个绝对路径，有同目录 `.task7-20261113.bak` 和 `.task7-round1-20261113.bak`。只在确认后续改动后恢复相应版本，不盲目覆盖。
 
