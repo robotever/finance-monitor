@@ -38,7 +38,7 @@
       </template>
       <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股、六类风格与 35 个行业将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
-    <SectorRotationDetail v-if="v3Active" :open="detailOpen" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
+    <SectorRotationDetail v-if="v3Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
     <footer class="market-dashboard__footer"><span>统一评分 0–100 · 高强度不等于低风险</span><span>缺失项以 — 表示 · 研究参考，非买卖建议</span></footer>
   </section>
 </template>
@@ -47,7 +47,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { loadMarketDashboard, loadMarketHistory, loadSectorRotationLatest, loadSectorRotationHistory, loadSectorRotationDetail } from '@/features/market-dashboard/api.mjs'
 import { acceptanceFetch, isSectorAcceptanceMode } from '@/features/market-dashboard/acceptance.mjs'
 import { deriveMarketDashboardView, deriveSectorRotationView } from '@/features/market-dashboard/model.mjs'
-import type { MarketDashboardPayload, MarketHistoryPayload, MarketLoadError } from '@/features/market-dashboard/types'
+import type { MarketDashboardPayload, MarketHistoryPayload, MarketHistoryV3Payload, MarketLoadError } from '@/features/market-dashboard/types'
 import MarketScoreCard from './MarketScoreCard.vue'
 import MarketStyleGrid from './MarketStyleGrid.vue'
 import IndustryHeatmap from './IndustryHeatmap.vue'
@@ -129,7 +129,7 @@ async function refreshShadow(signal: AbortSignal) {
 }
 
 const latest = shallowRef<MarketDashboardPayload | null>(null)
-const history = shallowRef<MarketHistoryPayload | null>(null)
+const history = shallowRef<MarketHistoryPayload | MarketHistoryV3Payload | null>(null)
 const latestError = ref<MarketLoadError | null>(null)
 const historyError = ref<MarketLoadError | null>(null)
 const lastSuccessAt = ref('')
@@ -165,7 +165,7 @@ async function refresh() {
       if (result.data) { latest.value = result.data; lastSuccessAt.value = new Date().toISOString() }
       now.value = new Date()
     })]),
-    loadMarketHistory('5d', dashboardFetch, options).then(result => {
+    loadMarketHistory('5d', dashboardFetch, { ...options, schemaVersion: acceptanceEnabled ? 'market-dashboard-v3' : 'market-dashboard-v2' }).then(result => {
       if (disposed) return
       historyError.value = result.error
       if (result.data) history.value = result.data

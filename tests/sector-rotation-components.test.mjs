@@ -115,6 +115,11 @@ test('acceptance build keeps a persistent synthetic banner even before fixtures 
       assert.equal(state.rotationError.value, '')
       assert.equal(state.latestError.value, null)
       assert.equal(state.historyError.value, null)
+      const lastHistory = state.history.value.snapshots.at(-1)
+      assert.equal(Date.parse(lastHistory.observedAt), Date.parse(state.dashboard.value.observedAt))
+      for (const family of ['global', 'aShare']) for (const axis of ['strength', 'heat', 'risk']) {
+        assert.equal(lastHistory[family][axis], state.dashboard.value[family][axis], `mounted acceptance cards and history agree: ${family}/${axis}`)
+      }
       for (const universe of ['industry', 'concept']) for (const view of ['potential', 'main', 'risk']) for (const axis of ['strength', 'opportunity']) {
         await state.changeRotation({ universe, view, axis })
         assert.equal(state.rotationError.value, '')
@@ -135,6 +140,22 @@ test('acceptance build keeps a persistent synthetic banner even before fixtures 
     if (previous === undefined) delete process.env.VITE_SECTOR_ROTATION_ACCEPTANCE
     else process.env.VITE_SECTOR_ROTATION_ACCEPTANCE = previous
   }
+})
+
+test('acceptance detail keeps its own synthetic warning inside the modal across loading, errors and audit content', async () => {
+  const warning = '临时验收环境 · 全部为测试数据 · 不代表真实市场信号'
+  const detail = { ...versions, id: '884100.WI', universe: 'concept', axisLabels: { strength: '强度', opportunity: '机会', risk: '风险' },
+    series: [], audit: { components: {}, missing: [], contributors: [], provenance: { source: 'Wind', observedAt: '2026-11-13T07:00:00Z' } } }
+  for (const state of [{ loading: true }, { error: '详情暂不可用' }, { detail }]) {
+    const html = await render('SectorRotationDetail', { open: true, acceptanceEnvironment: true, ...state })
+    assert.match(html, /<dialog[^>]*aria-describedby="rotation-detail-acceptance-warning"/)
+    assert.match(html, /id="rotation-detail-acceptance-warning"[^>]*data-environment="sector-acceptance"[^>]*role="note"/)
+    assert.ok(html.includes(warning))
+    assert.ok(html.indexOf(warning) < html.indexOf('sector-rotation-detail__header'), 'warning starts inside the dialog above its scrollable content')
+  }
+  const ordinary = await render('SectorRotationDetail', { open: true, detail })
+  assert.ok(!ordinary.includes(warning), 'ordinary details do not inherit the acceptance environment')
+  assert.ok(ordinary.includes('Wind'), 'provenance is retained without changing its validator enum')
 })
 
 test('ordinary and shadow HTML retain default metadata even with the acceptance flag', async () => {

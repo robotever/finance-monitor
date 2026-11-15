@@ -466,3 +466,9 @@
   text-align: center;
   overflow-wrap: anywhere;
 }
+/* Modal top-layer content must retain its own warning while the audit scrolls. */
+.sector-rotation-detail__acceptance-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

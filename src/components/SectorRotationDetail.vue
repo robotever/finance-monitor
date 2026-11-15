@@ -1,5 +1,6 @@
 <template>
-  <dialog ref="dialog" class="sector-rotation-detail" aria-labelledby="rotation-detail-title" @cancel.prevent="emit('close')" @click="backdrop" @keydown="trapFocus">
+  <dialog ref="dialog" class="sector-rotation-detail" aria-labelledby="rotation-detail-title" :aria-describedby="acceptanceEnvironment ? 'rotation-detail-acceptance-warning' : undefined" @cancel.prevent="emit('close')" @click="backdrop" @keydown="trapFocus">
+    <div v-if="acceptanceEnvironment" id="rotation-detail-acceptance-warning" class="sector-acceptance-banner sector-rotation-detail__acceptance-banner" data-environment="sector-acceptance" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
     <header class="sector-rotation-detail__header"><div><h3 id="rotation-detail-title">{{ name ?? detail?.id ?? '板块详情' }}</h3><p>实际可得 {{ closes.length }} 个正式收盘日 · 最多60日</p></div><button ref="closeButton" type="button" class="market-button" aria-label="关闭板块详情" autofocus @click="emit('close')">关闭 ×</button></header>
     <div v-if="selectedCell && selectedObservation" class="sector-rotation-detail__selection"><h4>选中 {{ selectedCell.marketDate }} · {{ selectedAxis === 'opportunity' ? '机会' : '强度' }}榜第{{ selectedCell.rank }}名</h4><p>当日三项评分：强度 {{ selectedObservation.strength ?? '—' }} · 机会 {{ selectedObservation.opportunity ?? '—' }} · 风险 {{ selectedObservation.risk ?? '—' }}</p><p>当日排名：强度 {{ selectedObservation.ranks.strength ?? '—' }} · 机会 {{ selectedObservation.ranks.opportunity ?? '—' }} · 风险 {{ selectedObservation.ranks.risk ?? '—' }}</p><p>强度榜近15日{{ selectedObservation.leaderboard.strength.topTenCount15d }}次 · 机会榜近15日{{ selectedObservation.leaderboard.opportunity.topTenCount15d }}次（正式收盘）</p><p>分数变化 — · 详情接口未提供可比变化，不作推算</p></div>
     <p v-if="loading" role="status">详情加载中…</p><p v-else-if="error" class="market-notice" role="alert">{{ error }}</p>
@@ -19,7 +20,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { SectorDetailView, SectorMatrixCell, SectorLeaderboardAxis, SectorDetailRow } from '@/features/market-dashboard/types'
-const props = defineProps<{ open: boolean; detail?: SectorDetailView | null; name?: string; loading?: boolean; error?: string; selectedCell?: SectorMatrixCell; selectedAxis?: SectorLeaderboardAxis; observations?: SectorDetailRow[] }>()
+const props = defineProps<{ open: boolean; acceptanceEnvironment?: boolean; detail?: SectorDetailView | null; name?: string; loading?: boolean; error?: string; selectedCell?: SectorMatrixCell; selectedAxis?: SectorLeaderboardAxis; observations?: SectorDetailRow[] }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>(), closeButton = ref<HTMLButtonElement>()
 let previousFocus: HTMLElement | null = null

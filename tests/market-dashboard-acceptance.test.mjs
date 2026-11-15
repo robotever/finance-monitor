@@ -39,6 +39,11 @@ test('all synthetic dashboard routes pass the unchanged strict v2/v3 validators'
       const history = await loadMarketHistory(window, acceptanceFetch, { schemaVersion })
       assert.equal(history.error, null)
       assert.ok(history.data.snapshots.length > 0)
+      const last = history.data.snapshots.at(-1)
+      assert.equal(last.observedAt, result.data.observedAt.replace('Z', schemaVersion.endsWith('v3') ? '.000000Z' : 'Z'))
+      for (const family of ['global', 'aShare']) for (const axis of ['strength', 'heat', 'risk']) {
+        assert.equal(last[family][axis], result.data[family][axis], `${schemaVersion}/${window}/${family}/${axis}: one observation must have one value`)
+      }
     }
   }
   assert.equal(networkCalls, 0)
