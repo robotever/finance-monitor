@@ -3,12 +3,16 @@
 The evaluator never collects, fits, persists or publishes data. Forward returns
 are outcomes only and start on the next exact official market date.
 """
+import argparse
 from collections import defaultdict
+import json
 import math
+from pathlib import Path
 from statistics import mean
 
 from .concepts import concept_definitions, load_concept_config
 from .rotation_operations import VERSIONS, calendar_dates, timestamp
+from .scoring import load_config
 from .sources import INDUSTRY_DEFINITIONS
 
 
@@ -361,3 +365,91 @@ def evaluate(rows: list[dict], official_dates: list[str], config: dict) -> dict:
         'limitations': ['NO_AUTOMATIC_WEIGHT_TUNING', 'NO_TRANSACTION_COSTS',
                         'CANONICAL_STATE_DOES_NOT_REPROVE_PROVIDER_ARRIVAL'],
     }
+
+
+def _display(value, digits=3):
+    if not _number(value):
+        return '—'
+    return f'{value:.{digits}f}'
+
+
+def render_markdown(report: dict) -> str:
+    """Render a compact human review without changing evaluation semantics."""
+    versions = report.get('versions', {})
+    lines = [
+        '# 板块评分评价报告',
+        '',
+        '> 仅用于计算检验（CALCULATION_ONLY），不是收益承诺、调仓建议或生产发布授权。',
+        '',
+        f"- 评分版本：`{versions.get('sectorScoringVersion', 'unknown')}`",
+        f"- 板块范围版本：`{versions.get('sectorUniverseVersion', 'unknown')}`",
+        f"- 官方日期数：{len(report.get('officialDates', []))}",
+        '- 解释门槛：每个市场范围、维度和周期至少20个成熟评分日；不足时仍展示指标，但标记样本不足。',
+    ]
+    labels = {'strength': '强度', 'opportunity': '机会', 'risk': '风险（反向后）'}
+    for universe, universe_label in (('industry', '行业板块'), ('concept', '概念板块')):
+        lines.extend(['', f'## {universe_label}', '',
+                      '| 维度 | 周期 | 有效日期 | Rank IC | IC正值率 | 多空分组差 | 命中率 | 最大回撤 | 证据 |',
+                      '|---|---:|---:|---:|---:|---:|---:|---:|---|'])
+        signals = report.get('universes', {}).get(universe, {}).get('signals', {})
+        for signal in ('strength', 'opportunity', 'risk'):
+            for horizon in map(str, HORIZONS):
+                result = signals.get(signal, {}).get('horizons', {}).get(horizon, {})
+                evidence = result.get('evidenceStatus', 'INSUFFICIENT_EVIDENCE')
+                readable = '样本不足（INSUFFICIENT_EVIDENCE）' if evidence == 'INSUFFICIENT_EVIDENCE' else evidence
+                lines.append('| {} | {}日 | {} | {} | {} | {} | {} | {} | {} |'.format(
+                    labels[signal], horizon, result.get('validDates', 0),
+                    _display(result.get('meanRankIc')), _display(result.get('icPositiveRate')),
+                    _display(result.get('meanSpread')), _display(result.get('meanHitRate')),
+                    _display(result.get('worstTopGroupDrawdown')), readable))
+        lines.extend(['', '### 基准比较', '',
+                      '| 模型 | 基准 | 周期 | 共同样本有效日期 | Rank IC差 | 分组差之差 |',
+                      '|---|---|---:|---:|---:|---:|'])
+        comparisons = report.get('universes', {}).get(universe, {}).get('comparisons', {})
+        for model, baselines in comparisons.items():
+            for baseline, comparison in baselines.items():
+                for horizon in map(str, HORIZONS):
+                    result = comparison.get('horizons', {}).get(horizon, {})
+                    delta = result.get('delta', {})
+                    lines.append('| {} | {} | {}日 | {} | {} | {} |'.format(
+                        labels.get(model, model), baseline, horizon, result.get('validDates', 0),
+                        _display(delta.get('meanRankIc')), _display(delta.get('meanSpread'))))
+    lines.extend(['', '## 解释限制', '',
+                  '- 正Rank IC表示分数方向与后续相对收益方向一致，不等于可交易收益。',
+                  '- 概念板块存在成分重叠；当前版本尚未做重叠校正和交易成本估计。',
+                  '- 原始高风险组的损失率和回撤差在JSON的 `riskDiagnostics` 中单独披露。',
+                  '- 评价程序不自动修改权重；新公式必须升级评分版本并与旧版并行比较。', ''])
+    return '\n'.join(lines)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--state', required=True, type=Path)
+    parser.add_argument('--calendar', required=True, type=Path)
+    parser.add_argument('--config', type=Path)
+    parser.add_argument('--format', choices=('json', 'markdown'), default='json')
+    args = parser.parse_args(argv)
+    try:
+        envelope = json.loads(args.state.read_text())
+        dates = json.loads(args.calendar.read_text())
+        if not isinstance(envelope, dict):
+            raise ValueError('INVALID_STATE')
+        state = envelope.get('rotation', envelope)
+        if not isinstance(state, dict) or not isinstance(state.get('closes'), list):
+            raise ValueError('INVALID_STATE')
+        report = evaluate(state['closes'], dates, load_config(args.config))
+        output = render_markdown(report) if args.format == 'markdown' else json.dumps(
+            report, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+        print(output)
+        return 0
+    except (ValueError, TypeError, KeyError, OSError, json.JSONDecodeError):
+        if args.format == 'markdown':
+            print('# 板块评分评价失败\n\n`INVALID_EVALUATION_INPUT`\n')
+        else:
+            print(json.dumps({'evidenceStatus': 'CALCULATION_ONLY', 'liveVerified': False,
+                              'safeErrorCode': 'INVALID_EVALUATION_INPUT'}, separators=(',', ':')))
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

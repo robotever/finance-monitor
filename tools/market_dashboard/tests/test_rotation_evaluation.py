@@ -1,5 +1,10 @@
 from copy import deepcopy
 from datetime import date, timedelta
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from tools.market_dashboard.scoring import load_config
@@ -157,6 +162,60 @@ class RotationEvaluationRobustnessTests(unittest.TestCase):
         self.assertEqual(diagnostics['highMinusLowNegativeReturnRate'], 1)
         self.assertGreater(diagnostics['highMinusLowMaximumDrawdown'], 0)
         self.assertEqual(diagnostics['interpretation'], 'HIGHER_RAW_RISK_IDENTIFIES_WORSE_OUTCOMES')
+
+
+class RotationEvaluationCliTests(unittest.TestCase):
+    def run_cli(self, state, dates, *extra):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path, calendar_path = root / 'state.json', root / 'calendar.json'
+            state_path.write_text(json.dumps(state))
+            calendar_path.write_text(json.dumps(dates))
+            return subprocess.run(
+                [sys.executable, '-m', 'tools.market_dashboard.rotation_evaluation',
+                 '--state', str(state_path), '--calendar', str(calendar_path), *extra],
+                cwd=Path(__file__).resolve().parents[3], capture_output=True, text=True,
+            )
+
+    def test_cli_emits_parseable_json_and_human_markdown_without_writing_files(self):
+        rows, dates, _, _ = sample_rows()
+        state = {'rotation': {'closes': rows}}
+
+        json_result = self.run_cli(state, dates)
+        markdown_result = self.run_cli(state, dates, '--format', 'markdown')
+
+        self.assertEqual(json_result.returncode, 0, json_result.stderr)
+        self.assertEqual(json.loads(json_result.stdout)['schemaVersion'], 'sector-score-evaluation-v1')
+        self.assertEqual(markdown_result.returncode, 0, markdown_result.stderr)
+        self.assertIn('# 板块评分评价报告', markdown_result.stdout)
+        self.assertIn('仅用于计算检验', markdown_result.stdout)
+        self.assertIn('| 维度 | 周期 | 有效日期 | Rank IC |', markdown_result.stdout)
+        self.assertIn('样本不足', markdown_result.stdout)
+
+    def test_cli_invalid_input_returns_format_appropriate_safe_error_without_traceback(self):
+        json_result = self.run_cli([], ['2026-10-01'])
+        markdown_result = self.run_cli([], ['2026-10-01'], '--format', 'markdown')
+
+        self.assertEqual(json_result.returncode, 1)
+        self.assertEqual(json.loads(json_result.stdout), {
+            'evidenceStatus': 'CALCULATION_ONLY',
+            'liveVerified': False,
+            'safeErrorCode': 'INVALID_EVALUATION_INPUT',
+        })
+        self.assertEqual(markdown_result.returncode, 1)
+        self.assertIn('INVALID_EVALUATION_INPUT', markdown_result.stdout)
+        self.assertNotIn('Traceback', json_result.stderr + markdown_result.stderr)
+
+    def test_markdown_renderer_uses_report_values_and_preserves_evidence_warning(self):
+        rows, dates, config, _ = sample_rows()
+        report = rotation_evaluation.evaluate(rows, dates, config)
+
+        markdown = rotation_evaluation.render_markdown(report)
+
+        self.assertIn(config['sectorScoringVersion'], markdown)
+        self.assertIn('1日', markdown)
+        self.assertIn('机会', markdown)
+        self.assertIn('INSUFFICIENT_EVIDENCE', markdown)
 
 
 if __name__ == '__main__':

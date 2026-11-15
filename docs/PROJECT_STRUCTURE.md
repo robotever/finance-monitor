@@ -61,6 +61,7 @@ functions/
 | `rotation_operations.py` | 影子运行健康、账本和发布门禁 |
 | `rotation_probe.py` | 只读 Wind 能力、覆盖和成本探针 |
 | `rotation_diagnostics.py` | 离线历史诊断 |
+| `rotation_evaluation.py` | 强度／机会／风险的只读PIT评价、基准比较和Markdown报告 |
 | `fixtures/` | 只用于测试的受控合成／截断样本 |
 | `tests/` | Python 单元、集成和运维测试 |
 

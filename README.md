@@ -83,6 +83,7 @@ npm run preview
 | [数据源策略](docs/DATA_SOURCES.md) | Wind、妙想、FRED、新闻来源及切换原则 |
 | [开发规范](docs/DEVELOPMENT.md) | 本地开发、测试、分支、提交和发布流程 |
 | [运行手册](docs/market-dashboard-operations.md) | 调度、诊断、密钥、回滚和服务管理 |
+| [板块评分评价](docs/sector-score-evaluation.md) | 强度／机会／风险的PIT检验、基准和解释规则 |
 | [macOS 服务](ops/macos/README.md) | LaunchAgent 安装、启用、停用和恢复 |
 | [变更记录](CHANGELOG.md) | 重要功能与工程变化 |
 | [贡献说明](CONTRIBUTING.md) | 修改项目时的最短入口 |
