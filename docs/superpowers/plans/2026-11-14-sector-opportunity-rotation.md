@@ -76,7 +76,7 @@ Add tests that assert `get_index_kline` receives exactly one verified Wind code 
 
 - [ ] **Step 2: Run the focused tests and confirm failure**
 
-Run: `python3 -m unittest tools.market_dashboard.tests.test_rotation_probe tools.market_dashboard.tests.test_sources -v`  
+Run: `python3 -m unittest tools.market_dashboard.tests.test_rotation_probe tools.market_dashboard.tests.test_sources -v`
 Expected: FAIL because the history adapter and probe do not exist.
 
 - [ ] **Step 3: Implement the safe historical adapter and metadata probe**
@@ -143,7 +143,7 @@ Pin unrounded-score ordering, completeness/ID tie-breaks and exact predicates/so
 
 - [ ] **Step 5: Run focused tests and confirm failure**
 
-Run: `python3 -m unittest tools.market_dashboard.tests.test_rotation -v`  
+Run: `python3 -m unittest tools.market_dashboard.tests.test_rotation -v`
 Expected: FAIL because the rotation engine and v0.2 config do not exist.
 
 - [ ] **Step 6: Add versioned configuration and implement pure functions**
@@ -250,7 +250,7 @@ Document that the LaunchAgent remains loaded, shadow mode is reversible, v2 prod
 
 - [ ] **Step 6: Run Python regression suite**
 
-Run: `python3 -m unittest discover -s tools/market_dashboard/tests -v`  
+Run: `python3 -m unittest discover -s tools/market_dashboard/tests -v`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
@@ -512,4 +512,3 @@ Record deployment ID, first v3 observed time, counts, completeness, API summarie
 - [ ] **Step 7: Merge and push the reviewed release**
 
 Fast-forward or merge without rewriting history, run final status checks and push `main` only after production verification passes.
-
