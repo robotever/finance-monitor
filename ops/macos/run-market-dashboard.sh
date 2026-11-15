@@ -83,6 +83,8 @@ try:
     if not arguments and os.environ.get('MARKET_DASHBOARD_ROTATION_SHADOW') == '1':
         # The existing v2 service remains the first invocation on every tick.
         # This opt-in never changes the loaded LaunchAgent or its interval.
+        # Shadow writes its own atomic operational ledger and safe health only;
+        # MARKET_DASHBOARD_ROTATION_SHADOW=0 reverses the opt-in on the next tick.
         legacy = subprocess.run(command, check=False).returncode
         shadow_logs = root / 'logs/market-dashboard-shadow'
         if shadow_logs.is_symlink():

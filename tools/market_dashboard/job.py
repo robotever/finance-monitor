@@ -16,7 +16,7 @@ import os
 import re
 import time
 
-from . import sources
+from . import sources, rotation_operations
 from .concepts import (build_concept_payload, concept_definitions, core_concept_ids,
                        load_concept_config)
 from .scoring import load_config, build_dashboard_payload, percentile_rank, score_family
@@ -949,8 +949,9 @@ def _rotation_report(health, config):
     coverage = health.get('coverage')
     latency = health.get('latencySeconds')
     allowed_codes = {'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED', 'INVALID_STATE',
-        'COLLECTION_FAILED', 'INVALID_PAYLOAD', 'SCORING_FAILED', 'STATE_WRITE_FAILED', 'WINDOW_EXPIRED'}
-    return {'counts': {key: counts.get(key, 0) if isinstance(counts, dict)
+        'COLLECTION_FAILED', 'INVALID_PAYLOAD', 'SCORING_FAILED', 'STATE_WRITE_FAILED', 'WINDOW_EXPIRED',
+        *rotation_operations.SAFE_CODES}
+    return {**rotation_operations.safe_health(health), 'counts': {key: counts.get(key, 0) if isinstance(counts, dict)
                 and isinstance(counts.get(key, 0), int) and not isinstance(counts.get(key, 0), bool)
                 and 0 <= counts.get(key, 0) <= maximum else 0
                 for key, maximum in [('industries', 35), ('concepts', 75)]},
@@ -981,16 +982,27 @@ def _run_rotation_job(args, deps):
         return JobResult(False, 'configuration', error_code='INVALID_CONFIG')
     shadow = state_root / 'market-dashboard-shadow'
     path, health_path = shadow/'last-success.json', shadow/'health.json'
+    ledger_path = shadow/'rotation-ledger.json'
     if arg('rotation_report', False):
         try:
             metadata = _rotation_report(_read_json(health_path), config)
+            metadata['rotationCloseSuccesses'] = len(rotation_operations.read_ledger(ledger_path, config)['successfulCloseDates'])
             return JobResult(True, 'rotation_report', metadata=metadata)
         except (ValueError, TypeError, OSError):
             return JobResult(False, 'rotation_report', error_code='INVALID_STATE',
                 metadata=_rotation_report({'safeCodes': ['INVALID_STATE']}, config))
     lock = None
-    stage, metadata = 'state', _rotation_report({}, config)
+    stage, metadata = 'state', _rotation_report({'safeCodes': [
+        'LIVE_HISTORY_UNVERIFIED', 'LIVE_QUOTA_UNVERIFIED']}, config)
     committed = False
+    event, ledger, key = None, None, None
+
+    def record_operation(event):
+        nonlocal metadata
+        ledger = rotation_operations.update_ledger(ledger_path, event, config)
+        metadata.update(rotation_operations.health_for_event(event, ledger))
+        _write_json(health_path, metadata)
+
     try:
         if not (fixture and dry_run):
             # Share the v2 provider lock, while every JSON write stays in shadow.
@@ -1002,12 +1014,31 @@ def _run_rotation_job(args, deps):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return JobResult(True, 'locked')
+        ledger = rotation_operations.read_ledger(ledger_path, config) if not fixture else {'successfulCloseDates': []}
         state = {} if fixture else _read_json(path)
         rotation_state = {} if fixture else load_rotation_state(path, config)
+        if not fixture and health_path.exists():
+            metadata = _rotation_report(_read_json(health_path), config)
+        pending = state.get('shadowOperation')
+        if pending and not dry_run and not any(all(row.get(field) == pending.get(field)
+                for field in ('marketDate', 'session', 'observedAt', 'success', 'safeErrorCode'))
+                for row in ledger.get('events', [])):
+            # Reconcile before any later session replaces the recovery proof.
+            # If audit repair fails, leave the earlier success file untouched.
+            stage = 'persist'
+            record_operation(pending)
+            stage = 'state'
         key = scheduled_rotation_session(now, {}, config)
         bucket = f'{_local(now).date()}:{key}'
         if key is not None and state.get('bucket') == bucket:
-            return JobResult(True, 'duplicate')
+            # Repair an interrupted audit write from the authoritative committed
+            # snapshot before returning duplicate. Never recollect or republish.
+            if state.get('shadowOperation') and not dry_run:
+                try:
+                    record_operation(state['shadowOperation'])
+                except (OSError, ValueError, TypeError):
+                    metadata['safeCodes'] = ['LEDGER_WRITE_FAILED']
+            return JobResult(True, 'duplicate', metadata=metadata)
         if key is None:
             return JobResult(True, 'outside_schedule')
         stage = 'collect'
@@ -1043,6 +1074,12 @@ def _run_rotation_job(args, deps):
             'coverage': sum(row['completeness'] for row in block['industries']+block['concepts'])/110,
             'latencySeconds': max((now-_timestamp(row['observedAt'])).total_seconds() for row in current),
             'safeCodes': block['safeCodes']}, config)
+        scored_closes = [row for row in next_rotation.get('closes', [])
+                         if row['marketDate'] == inputs['marketDate']] if key == 'close' else None
+        event = rotation_operations.event_from_block(block, now,
+            min((row['observedAt'] for row in current), key=_timestamp), config, session=key,
+            scored_rows=scored_closes)
+        metadata.update(rotation_operations.health_for_event(event, ledger))
         if dry_run:
             return JobResult(True, 'dry_run', payload, metadata=metadata)
         stage = 'persist'
@@ -1059,7 +1096,12 @@ def _run_rotation_job(args, deps):
             nonlocal committed
             committed = True
         _write_json(path, {'bucket': bucket, 'mode': 'rotation_shadow', 'payload': payload,
-            'rotation': next_rotation, 'legacyHistory': history}, on_replace=acknowledge_replace)
+            'rotation': next_rotation, 'legacyHistory': history, 'shadowOperation': event}, on_replace=acknowledge_replace)
+        try:
+            record_operation(event)
+        except (OSError, ValueError, TypeError):
+            metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + ['LEDGER_WRITE_FAILED']))
+            metadata['rotationSafeErrorCode'] = 'LEDGER_WRITE_FAILED'
         return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
     except Exception as error:
         if committed:
@@ -1067,19 +1109,25 @@ def _run_rotation_job(args, deps):
             # failure is a durability warning, never a failed/retryable close.
             metadata = deepcopy(metadata)
             metadata['safeCodes'] = sorted(set(metadata['safeCodes'] + ['STATE_DURABILITY_UNCONFIRMED']))
+            metadata['rotationSafeErrorCode'] = 'STATE_DURABILITY_UNCONFIRMED'
             return JobResult(True, 'rotation_shadow', payload, metadata=metadata)
         code = 'INVALID_PAYLOAD' if isinstance(error, ValidationError) else {
             'state': 'INVALID_STATE', 'collect': 'COLLECTION_FAILED', 'score': 'SCORING_FAILED',
             'validate': 'INVALID_PAYLOAD', 'persist': 'STATE_WRITE_FAILED'}.get(stage, 'SCORING_FAILED')
-        if isinstance(error, sources.SourceError) and error.code == 'WINDOW_EXPIRED':
-            code = 'WINDOW_EXPIRED'
+        if isinstance(error, sources.SourceError) and error.code in rotation_operations.SAFE_CODES:
+            code = error.code
         metadata['safeCodes'] = [code]
+        metadata['rotationSafeErrorCode'] = code
         if not dry_run:
             try:
                 _require(not shadow.is_symlink())
                 shadow.mkdir(parents=True, exist_ok=True, mode=0o700)
                 shadow.chmod(0o700)
-                _write_json(health_path, metadata)
+                failed_event = event or rotation_operations.event_from_block(
+                    {'session': key if key in rotation_operations.SESSIONS else 'close'}, now, None, config,
+                    success=False, code=code)
+                failed_event = {**failed_event, 'success': False, 'safeErrorCode': code}
+                record_operation(failed_event)
             except (OSError, ValueError, TypeError):
                 pass
         return JobResult(False, stage, error_code=code, metadata=metadata)
@@ -1275,6 +1323,7 @@ def main(argv=None):
         summary['errorCode'] = result.error_code
     if result.metadata:
         summary['safeCodes'] = result.metadata['safeCodes']
+        summary.update(rotation_operations.safe_health(result.metadata))
     print(json.dumps(summary, ensure_ascii=False, separators=(',', ':')))
     return 0 if result.success else 1
 

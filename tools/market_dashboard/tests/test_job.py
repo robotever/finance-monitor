@@ -992,7 +992,10 @@ class RotationShadowTests(unittest.TestCase):
             with patch.dict(job.os.environ, {'MARKET_DASHBOARD_STATE_ROOT': directory}), redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(job.main(['--rotation-report']), 0)
             summary = json.loads(output.getvalue())
-            self.assertEqual(set(summary), {'counts', 'versions', 'coverage', 'latencySeconds', 'safeCodes'})
+            self.assertEqual(set(summary), {'counts', 'versions', 'coverage', 'latencySeconds', 'safeCodes',
+                'rotationMode', 'rotationSession', 'rotationCoverage', 'rotationUniverseCounts',
+                'rotationLatencySeconds', 'rotationCloseSuccesses', 'rotationSafeErrorCode',
+                'rotationObservedAt', 'rotationSourceAt'})
             self.assertEqual(summary['counts']['industries'], 35)
             self.assertEqual(summary['counts']['concepts'], 75)
             self.assertNotIn('882100', output.getvalue())

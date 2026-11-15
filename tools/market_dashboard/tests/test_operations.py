@@ -403,5 +403,313 @@ class DashboardHealthTests(unittest.TestCase):
         self.assertTrue(self.check('2026-11-13T15:30:00+08:00', close)[0])
 
 
+class RotationOperationalTests(unittest.TestCase):
+    def api(self):
+        from tools.market_dashboard import job
+        module = getattr(job, 'rotation_operations', None)
+        self.assertIsNotNone(module, 'safe shadow operational ledger is missing')
+        return module
+
+    def test_health_allowlist_removes_nested_provider_data_and_unsafe_codes(self):
+        api = self.api()
+        result = api.safe_health({'rotationMode': 'shadow', 'rotationSession': 'close',
+            'rotationCoverage': 81, 'rotationUniverseCounts': {'industries': 35, 'concepts': 75,
+                'provider': 'private'}, 'rotationLatencySeconds': 30, 'rotationCloseSuccesses': 2,
+            'rotationSafeErrorCode': 'secret token', 'rotationObservedAt': '2026-11-13T15:01:00+08:00',
+            'rotationSourceAt': '2026-11-13T15:00:00+08:00', 'rawResponse': 'private', 'token': 'secret'})
+        self.assertEqual(result['rotationSafeErrorCode'], 'INVALID_STATE')
+        self.assertEqual(result['rotationUniverseCounts'], {'industries': 35, 'concepts': 75})
+        self.assertNotIn('private', json.dumps(result)); self.assertNotIn('secret', json.dumps(result))
+        for key in ('rotationCoverage', 'rotationLatencySeconds', 'rotationCloseSuccesses'):
+            self.assertIsNone(api.safe_health({key: float('nan')})[key])
+
+    def test_ledger_is_atomic_private_deduplicated_and_only_counts_official_closes(self):
+        api = self.api()
+        from tools.market_dashboard.scoring import load_config
+        config = load_config(); config['schedule'] = {'tradingDates': ['2026-11-13']}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'market-dashboard-shadow/rotation-ledger.json'
+            event = self.event()
+            api.update_ledger(path, event, config)
+            api.update_ledger(path, event, config)
+            self.assertEqual(api.read_ledger(path, config)['successfulCloseDates'], ['2026-11-13'])
+            self.assertEqual(len(api.read_ledger(path, config)['events']), 1)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+            before = path.read_bytes()
+            # Simulate interruption at the real installation boundary.
+            with patch.object(Path, 'replace', side_effect=OSError('interrupted')):
+                with self.assertRaises(OSError): api.update_ledger(path, self.event(session='14:00'), config)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(list(path.parent.glob('.rotation-*')), [])
+            api.update_ledger(path, self.event(marketDate='2026-11-16', observedAt='2026-11-16T15:05:00+08:00',
+                sourceAt='2026-11-16T15:00:00+08:00'), config)
+            api.update_ledger(path, self.event(marketDate='2026-11-17', observedAt='2026-11-17T15:05:00+08:00',
+                sourceAt='2026-11-17T15:00:00+08:00', success=False, safeErrorCode='COLLECTION_FAILED'), config)
+            self.assertEqual(api.read_ledger(path, config)['successfulCloseDates'], ['2026-11-13'])
+            self.assertNotIn('token', path.read_text())
+            target = Path(tmp)/'outside'; target.write_text('retained')
+            path.unlink(); path.symlink_to(target)
+            with self.assertRaises(ValueError): api.update_ledger(path, event, config)
+            self.assertEqual(target.read_text(), 'retained')
+
+    @staticmethod
+    def event(**changes):
+        return {'marketDate': '2026-11-13', 'session': 'close', 'observedAt': '2026-11-13T15:05:00+08:00',
+            'sourceAt': '2026-11-13T15:00:00+08:00', 'success': True, 'officialClose': True,
+            'counts': {'industries': 35, 'concepts': 75}, 'medianCompleteness': 85,
+            'minimumCandidateCompleteness': 75, 'candidateCount': 10,
+            'latencySeconds': 300, 'publicationSkipped': True, 'safeErrorCode': None,
+            'opportunityLists': {'industry': ['882100.WI'], 'concept': ['884201.WI']},
+            'token': 'must-not-persist', **changes}
+
+    def test_shadow_opportunity_churn_uses_private_precision_for_top_ten_membership(self):
+        api = self.api()
+        from tools.market_dashboard.scoring import load_config
+        from tools.market_dashboard.sources import INDUSTRY_DEFINITIONS
+        config = load_config()
+        rows = [dict(id=identity, universe='industry', strength=60, opportunity=80, risk=30,
+            completeness=80, heatState='warming', _rawScores={'opportunity': 80+index/1000, 'strength': 60})
+            for index, (identity, _) in enumerate(INDUSTRY_DEFINITIONS[:11])]
+        block = {'industries': [{k:v for k,v in row.items() if k != '_rawScores'} for row in rows],
+                 'concepts': [], 'session': 'close', 'officialClose': True}
+        now = datetime.fromisoformat('2026-11-13T15:05:00+08:00')
+        event = api.event_from_block(block, now, '2026-11-13T15:00:00+08:00', config, scored_rows=rows)
+        self.assertEqual(event['opportunityLists']['industry'], [identity for identity, _ in reversed(INDUSTRY_DEFINITIONS[1:11])])
+        self.assertNotIn('_rawScores', json.dumps(event))
+
+    def test_duplicate_summary_retains_unverified_live_evidence_codes(self):
+        self.api()
+        from tools.market_dashboard import job
+        from tools.market_dashboard.tests.test_job import rotation_batches
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = {'now': datetime.fromisoformat('2026-11-13T15:05:00+08:00'),
+                    'state_root': Path(tmp), 'collector': rotation_batches}
+            self.assertTrue(job.run_job({'rotation_shadow': True}, deps).success)
+            duplicate = job.run_job({'rotation_shadow': True}, deps)
+            self.assertEqual(duplicate.status, 'duplicate')
+            self.assertIn('LIVE_HISTORY_UNVERIFIED', duplicate.metadata['safeCodes'])
+            self.assertIn('LIVE_QUOTA_UNVERIFIED', duplicate.metadata['safeCodes'])
+
+    def test_success_ledger_is_recovered_before_the_next_session_can_replace_state(self):
+        self.api()
+        from tools.market_dashboard import job
+        from tools.market_dashboard.tests.test_job import rotation_batches
+        from tools.market_dashboard.scoring import load_config
+        config = load_config(); config['schedule'] = {'tradingDates': ['2026-11-13', '2026-11-16']}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            deps = {'now': datetime.fromisoformat('2026-11-13T15:05:00+08:00'), 'state_root': root,
+                    'config': config, 'collector': rotation_batches}
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=OSError('interrupted')):
+                first = job.run_job({'rotation_shadow': True}, deps)
+            self.assertTrue(first.success)
+            second = job.run_job({'rotation_shadow': True}, deps | {'now': deps['now'].replace(day=16, hour=9, minute=50)})
+            self.assertTrue(second.success, second.error_code)
+            value = json.loads((root/'market-dashboard-shadow/rotation-ledger.json').read_text())
+            self.assertEqual(value['successfulCloseDates'], ['2026-11-13'])
+            metadata = job.run_job({'rotation_report': True}, deps).metadata
+            self.assertEqual(metadata['rotationSession'], '09:45')
+            self.assertEqual(metadata['rotationCloseSuccesses'], 1)
+
+    def test_invalid_historical_report_shapes_return_safe_failed_gates(self):
+        api = self.api()
+        for report in ({'universes': []}, {'universes': {'industry': {'horizons': {'3': None}}}},
+                       {'universes': {'industry': {'horizons': {'1': {'dates': ['raw-provider-secret']}}}}}):
+            result = api.evaluate_release({'events': [], 'versions': {}}, [], report)
+            self.assertFalse(result['evidenceGatesPassed'])
+            self.assertNotIn('raw-provider-secret', json.dumps(result))
+
+    def test_readonly_evaluation_requires_complete_horizon_diagnostics_and_all_gates(self):
+        api = self.api()
+        from copy import deepcopy
+        from tools.market_dashboard.scoring import load_config
+        dates = ['2026-11-%02d' % d for d in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13)]
+        config = load_config(); config['schedule'] = {'tradingDates': dates}
+        ledger = api._envelope([self.event(marketDate=d, observedAt=d+'T15:05:00+08:00',
+            sourceAt=d+'T15:00:00+08:00') for d in dates[:9]], config)
+        report = {'liveVerified': True, 'versions': ledger['versions'], 'universes': {
+            u: {'listTurnover': .1, 'horizons': {h: {'validDates': 5, 'spread': 1, 'nonDominated': True,
+                'rankCorrelation': .1, 'hitRate': .6, 'maximumDrawdown': 2, 'dates': [
+                    {'marketDate': d, 'status': 'VALID'} for d in dates[:5]]} for h in ('1', '3', '5')}}
+            for u in ('industry', 'concept')}}
+        self.assertTrue(api.evaluate_release(ledger, dates, report)['evidenceGatesPassed'])
+        for field, value, gate in [('medianCompleteness', 79, 'MEDIAN_COMPLETENESS'),
+                ('minimumCandidateCompleteness', 69, 'CANDIDATE_COMPLETENESS'),
+                ('latencySeconds', 601, 'CLOSE_LATENCY'), ('publicationSkipped', False, 'PUBLICATION_SKIPPED')]:
+            changed = deepcopy(ledger); changed['events'][0][field] = value
+            self.assertIn(gate, api.evaluate_release(changed, dates, report)['failedGates'])
+        changed = deepcopy(ledger); changed['events'] = changed['events'][:8]
+        self.assertIn('CLOSE_SUCCESS_9_OF_10', api.evaluate_release(changed, dates, report)['failedGates'])
+        incomplete = deepcopy(report); del incomplete['universes']['concept']['horizons']['1']
+        self.assertIn('HISTORICAL_DIAGNOSTICS_CONCEPT', api.evaluate_release(ledger, dates, incomplete)['failedGates'])
+
+    def test_release_window_requires_ten_distinct_official_dates_and_fails_closed(self):
+        api = self.api()
+        from tools.market_dashboard.scoring import load_config
+        dates = ['2026-11-%02d' % d for d in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13)]
+        config = load_config(); config['schedule'] = {'tradingDates': dates}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'shadow/rotation-ledger.json'
+            for day in dates:
+                api.update_ledger(path, self.event(marketDate=day, observedAt=day+'T15:05:00+08:00',
+                    sourceAt=day+'T15:00:00+08:00'), config)
+            ledger = api.read_ledger(path, config)
+            historical = {'liveVerified': True, 'versions': ledger['versions'], 'universes': {
+                u: {'listTurnover': .1, 'horizons': {h: {'validDates': 10, 'spread': 1, 'nonDominated': True,
+                    'rankCorrelation': .2, 'hitRate': .6, 'maximumDrawdown': 1,
+                    'dates': [{'marketDate': d, 'status': 'VALID'} for d in dates]} for h in ('1', '3', '5')}}
+                for u in ('industry', 'concept')}}
+            evaluation = api.evaluate_release(ledger, dates, historical)
+            self.assertTrue(evaluation['evidenceGatesPassed'])
+            self.assertFalse(evaluation['productionSwitchApproved'])
+            self.assertEqual(evaluation['productionMode'], 'v2')
+            self.assertFalse(api.evaluate_release(ledger, dates[:-1]+[dates[-2]], historical)['evidenceGatesPassed'])
+            self.assertFalse(api.evaluate_release(ledger, dates, historical | {'liveVerified': False})['evidenceGatesPassed'])
+            # A nine-close success rate is allowed; a failed close itself never increments the count.
+            api.update_ledger(path, self.event(marketDate=dates[-1], success=False, safeErrorCode='COLLECTION_FAILED'), config)
+            self.assertEqual(len(api.read_ledger(path, config)['successfulCloseDates']), 10)
+            ledger['events'][0]['counts']['concepts'] = 71
+            self.assertIn('UNIVERSE_COVERAGE', api.evaluate_release(ledger, dates, historical)['failedGates'])
+            ledger['events'][0]['counts']['concepts'] = 75
+            ledger['events'][0]['safeErrorCode'] = 'UNIT_MISMATCH'
+            self.assertIn('IDENTITY_UNIT_TIME', api.evaluate_release(ledger, dates, historical)['failedGates'])
+
+    def test_job_records_failed_then_successful_close_without_changing_v2_state(self):
+        self.api()
+        from tools.market_dashboard import job
+        from tools.market_dashboard.tests.test_job import rotation_batches
+        from tools.market_dashboard.scoring import load_config
+        config = load_config(); config['schedule'] = {'tradingDates': ['2026-11-13']}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); v2 = root/'market-dashboard/last-success.json'
+            v2.parent.mkdir(); v2.write_text('{"mode":"published"}')
+            health = root/'service-health/market-dashboard.json'; health.parent.mkdir(); health.write_text('{}')
+            before = v2.read_bytes(), health.read_bytes()
+            deps = {'now': datetime.fromisoformat('2026-11-13T15:05:00+08:00'), 'state_root': root,
+                    'config': config, 'collector': lambda c: (_ for _ in ()).throw(ValueError('secret'))}
+            failed = job.run_job({'rotation_shadow': True}, deps)
+            self.assertFalse(failed.success)
+            ledger = root/'market-dashboard-shadow/rotation-ledger.json'
+            self.assertEqual(json.loads(ledger.read_text())['successfulCloseDates'], [])
+            good = job.run_job({'rotation_shadow': True}, deps | {'collector': rotation_batches})
+            self.assertTrue(good.success, good.error_code)
+            self.assertEqual(json.loads(ledger.read_text())['successfulCloseDates'], ['2026-11-13'])
+            report = job.run_job({'rotation_report': True}, deps)
+            self.assertEqual(report.metadata['rotationCloseSuccesses'], 1)
+            self.assertEqual(report.metadata['rotationSession'], 'close')
+            self.assertEqual((v2.read_bytes(), health.read_bytes()), before)
+            self.assertNotIn('secret', json.dumps(report.metadata))
+            with patch.object(job.rotation_operations, 'update_ledger', side_effect=OSError('interrupted')):
+                other = job.run_job({'rotation_shadow': True}, deps | {'now': deps['now'].replace(day=16), 'collector': rotation_batches,
+                    'config': config | {'schedule': {'tradingDates': ['2026-11-13', '2026-11-16']}}})
+                self.assertTrue(other.success)
+                self.assertIn('LEDGER_WRITE_FAILED', other.metadata['safeCodes'])
+            recovered = job.run_job({'rotation_shadow': True}, deps | {'now': deps['now'].replace(day=16),
+                'config': config | {'schedule': {'tradingDates': ['2026-11-13', '2026-11-16']}}})
+            self.assertEqual(recovered.status, 'duplicate')
+            self.assertEqual(json.loads(ledger.read_text())['successfulCloseDates'], ['2026-11-13', '2026-11-16'])
+
+
+class RotationDiagnosticTests(unittest.TestCase):
+    def api(self):
+        import importlib
+        self.assertIsNotNone(importlib.util.find_spec('tools.market_dashboard.rotation_diagnostics'),
+                             'point-in-time offline diagnostics are missing')
+        return importlib.import_module('tools.market_dashboard.rotation_diagnostics')
+
+    def sample(self):
+        from tools.market_dashboard.scoring import load_config
+        from tools.market_dashboard.sources import INDUSTRY_DEFINITIONS
+        from tools.market_dashboard.concepts import concept_definitions, load_concept_config
+        dates = ['2026-11-%02d' % d for d in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13)]
+        config = load_config()
+        rows = []
+        for day in dates:
+            for universe, definitions in [('industry', INDUSTRY_DEFINITIONS), ('concept', concept_definitions(load_concept_config()))]:
+                for index, (identity, _) in enumerate(definitions):
+                    rows.append(dict(id=identity, universe=universe, marketDate=day, session='close', officialClose=True,
+                        observedAt=day+'T15:05:00+08:00', availableAt=day+'T15:05:00+08:00',
+                        sectorScoringVersion=config['sectorScoringVersion'], sectorUniverseVersion=config['sectorUniverseVersion'],
+                        opportunity=100-index, completeness=90, validCloses=25,
+                        metrics={'return1d': (len(definitions)-index)/100}))
+        return rows, dates, config
+
+    def test_diagnostics_report_all_horizons_and_dates_separately_without_lookahead(self):
+        api = self.api(); rows, dates, config = self.sample()
+        result = api.diagnose(rows, dates, config, live_verified=False)
+        self.assertFalse(result['liveVerified'])
+        for universe in ('industry', 'concept'):
+            report = result['universes'][universe]
+            self.assertEqual(report['listTurnover'], 0)
+            for horizon, valid in [('1', 9), ('3', 7), ('5', 5)]:
+                point = report['horizons'][horizon]
+                self.assertEqual(point['validDates'], valid)
+                self.assertEqual(len(point['dates']), 10)
+                self.assertAlmostEqual(point['rankCorrelation'], 1)
+                self.assertGreater(point['spread'], 0)
+                self.assertEqual(point['hitRate'], 1)
+                self.assertEqual(point['maximumDrawdown'], 0)
+                self.assertTrue(point['nonDominated'])
+        # Future availability invalidates a score as of its close, even if returns are attractive.
+        for row in rows:
+            if row['marketDate'] == dates[0]: row['availableAt'] = dates[1]+'T15:05:00+08:00'
+        changed = api.diagnose(rows, dates, config)
+        self.assertEqual(changed['universes']['industry']['horizons']['1']['validDates'], 8)
+        self.assertEqual(changed['universes']['industry']['horizons']['1']['dates'][0]['status'], 'NO_PIT_SCORES')
+
+    def test_diagnostic_cli_rejects_malformed_state_without_a_traceback(self):
+        self.api(); rows, dates, _ = self.sample()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); calendar = root/'calendar.json'; calendar.write_text(json.dumps(dates))
+            state = root/'state.json'
+            corrupt = rows[0].copy(); corrupt['_rawScores'] = None
+            for value in ([], {'closes': [corrupt]}):
+                state.write_text(json.dumps(value))
+                result = subprocess.run([sys.executable, '-m', 'tools.market_dashboard.rotation_diagnostics',
+                    '--state', str(state), '--calendar', str(calendar)], cwd=REPO, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, '')
+                self.assertEqual(json.loads(result.stdout), {'liveVerified': False, 'safeErrorCode': 'INVALID_DIAGNOSTIC_INPUT'})
+
+    def test_single_sector_driving_positive_spread_fails_domination_check(self):
+        api = self.api(); rows, dates, config = self.sample()
+        for row in rows:
+            row['metrics']['return1d'] = 5 if row['id'] == '882100.WI' else 0
+        result = api.diagnose(rows, dates, config)['universes']['industry']['horizons']['3']
+        self.assertGreater(result['spread'], 0)
+        self.assertEqual(result['minimumLeaveOneSectorSpread'], 0)
+        self.assertFalse(result['nonDominated'])
+
+    def test_compounding_spread_and_high_group_drawdown_have_hand_checked_units(self):
+        api = self.api(); rows, dates, config = self.sample()
+        for row in rows:
+            day = dates.index(row['marketDate'])
+            # Every top quintile: +10%, -20%, +10%; bottom quintile: flat.
+            # 3-day outcome = 1.1*.8*1.1-1 = -3.2%; drawdown = 20%.
+            row['metrics']['return1d'] = (10, -20, 10)[(day-1) % 3] if row['opportunity'] >= 94 else 0
+        report = api.diagnose(rows, dates, config)['universes']['industry']['horizons']['3']
+        first = report['dates'][0]
+        self.assertAlmostEqual(first['spread'], -3.2)
+        self.assertAlmostEqual(first['maximumDrawdown'], 20)
+        self.assertEqual(first['hitRate'], 0)
+        self.assertFalse(report['nonDominated'])
+
+    def test_diagnostics_missing_future_dates_do_not_bridge_and_single_date_cannot_pass(self):
+        api = self.api(); rows, dates, config = self.sample()
+        rows = [row for row in rows if row['marketDate'] != dates[2]]
+        result = api.diagnose(rows, dates, config)
+        point = result['universes']['industry']['horizons']['3']
+        self.assertEqual(point['dates'][0]['status'], 'MISSING_FORWARD_RETURNS')
+        # No fabricated confidence from a single eligible score date.
+        rows, dates, config = self.sample()
+        for row in rows:
+            if row['marketDate'] != dates[0]: row['opportunity'] = None
+        result = api.diagnose(rows, dates, config)
+        self.assertEqual(result['universes']['industry']['horizons']['3']['validDates'], 1)
+        self.assertFalse(result['universes']['industry']['horizons']['3']['nonDominated'])
+        with self.assertRaises(ValueError): api.diagnose(rows, dates+[dates[0]], config)
+
+
 if __name__ == '__main__':
     unittest.main()

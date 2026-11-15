@@ -63,3 +63,5 @@ python3 -m tools.market_dashboard.job --rotation-shadow --fixture --dry-run
 - 本机离线、供应商额度、字段/单位变化会中断更新；保留最后成功快照，不以模拟值填补或自动混用供应商口径。
 - 全球序列含日频、月频，不能视作全部盘中实时；`sourceMode` 记录选定来源，不保证该来源的每项数据均可用。
 - 概念强度、热度、风险和动态席位均由 Wind 结构化行情计算；妙想仅用于发现候选线索，不参与概念评分，也不会在 Wind 失败时静默替代。
+
+Task 8 adds safe operational health, a private atomic `rotation-ledger.json`, and read-only historical/release-evidence tools. `--rotation-report` now includes `rotationMode/Session/Coverage/UniverseCounts/LatencySeconds/CloseSuccesses/SafeErrorCode` and safe source/observation timestamps. Close successes count distinct explicitly configured official dates only. The evaluator always leaves `productionMode=v2` and `productionSwitchApproved=false`; offline calculations always retain `liveVerified=false`. See the [shadow release record and pending ten-day template](docs/verification/2026-11-14-sector-rotation-shadow.md) for commands and thresholds. No live ten-day acceptance, historical validity, stable service opt-in, production migration or feature activation is implied by local tests.
