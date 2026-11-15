@@ -26,6 +26,7 @@ from .rotation_store import load_rotation_state, append_rotation_close, leaderbo
 
 
 SHANGHAI = ZoneInfo('Asia/Shanghai')
+TRADING_CALENDAR_SCHEMA = 'market-trading-calendar-v1'
 
 
 def _local(now):
@@ -76,6 +77,21 @@ def scheduled_rotation_session(now: datetime, state: dict, config: dict) -> str 
         if start_hour*3600 + start_minute*60 <= seconds <= end_hour*3600 + end_minute*60:
             return None if state.get('bucket') == f'{local.date()}:{key}' else key
     return None
+
+
+def verify_market_date(batches: dict, now: datetime) -> bool:
+    """Use the already collected broad-market observation as today's session proof."""
+    try:
+        batch = batches['breadth']
+        if batch.source != 'Wind' or batch.source_mode != 'wind' or len(batch.rows) != 1:
+            return False
+        value = batch.rows[0].get('_timestamp')
+        observed = datetime.fromisoformat(value)
+        if observed.tzinfo is None or observed.utcoffset() is None:
+            return False
+        return observed.astimezone(SHANGHAI).date() == _local(now).date()
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
 
 
 
@@ -911,6 +927,46 @@ def _write_json(path, value, *, on_replace=None):
             temporary.unlink(missing_ok=True)
 
 
+def _calendar_path(state_root: Path) -> Path:
+    return state_root / 'market-dashboard/trading-calendar.json'
+
+
+def _calendar_state(path: Path) -> dict:
+    value = _read_json(path)
+    if not value:
+        return {'schemaVersion': TRADING_CALENDAR_SCHEMA, 'nonTradingDates': []}
+    dates = value.get('nonTradingDates')
+    if (value.get('schemaVersion') != TRADING_CALENDAR_SCHEMA or not isinstance(dates, list)
+            or any(not isinstance(day, str) for day in dates)
+            or dates != sorted(set(dates))):
+        raise ValueError('INVALID_STATE')
+    for day in dates:
+        date.fromisoformat(day)
+    return value
+
+
+def _is_cached_non_trading_date(state_root: Path, now: datetime) -> bool:
+    return str(_local(now).date()) in _calendar_state(_calendar_path(state_root))['nonTradingDates']
+
+
+def _record_non_trading_date(state_root: Path, now: datetime) -> None:
+    path = _calendar_path(state_root)
+    state = _calendar_state(path)
+    state['nonTradingDates'] = sorted(set(state['nonTradingDates']) | {str(_local(now).date())})
+    _write_json(path, state)
+
+
+def _mark_verified_trading_date(config: dict, now: datetime) -> None:
+    """Make a source-verified date available to ledger/comparison consumers this run."""
+    day = str(_local(now).date())
+    schedule = config.setdefault('schedule', {})
+    dates = schedule.get('tradingDates')
+    if dates is None:
+        schedule['tradingDates'] = [day]
+    elif day not in dates:
+        schedule['tradingDates'] = sorted([*dates, day])
+
+
 def prepare_rotation_state(inputs, state, config):
     """Task 4 supplies canonical full-universe sectorRows, never provider rows.
 
@@ -1043,6 +1099,8 @@ def _run_rotation_job(args, deps):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return JobResult(True, 'locked')
+        if not fixture and _is_cached_non_trading_date(state_root, now):
+            return JobResult(True, 'market_closed_cached', metadata=metadata)
         ledger = rotation_operations.read_ledger(ledger_path, config) if not fixture else {'successfulCloseDates': []}
         state = {} if fixture else _read_json(path)
         rotation_state = {} if fixture else load_rotation_state(path, config)
@@ -1080,6 +1138,11 @@ def _run_rotation_job(args, deps):
             now = datetime.now(timezone.utc)
         if scheduled_rotation_session(now, {}, config) != key or f'{_local(now).date()}:{key}' != bucket:
             raise sources.SourceError('WINDOW_EXPIRED')
+        if not verify_market_date(batches, now):
+            if not fixture and not dry_run:
+                _record_non_trading_date(state_root, now)
+            return JobResult(True, 'market_closed', metadata=metadata)
+        _mark_verified_trading_date(config, now)
         config['sources']['now'] = now.isoformat()
         stage = 'score'
         current = _rotation_inputs(batches, config)
@@ -1208,6 +1271,8 @@ def run_job(args, deps=None):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return JobResult(True, 'locked')
+        if not fixture and _is_cached_non_trading_date(state_root, now):
+            return JobResult(True, 'market_closed_cached')
         state = {} if fixture else _read_json(state_path)
         rotation_state = {} if fixture else load_rotation_state(state_path, config)
         old_health = {} if fixture else _read_json(health_path)
@@ -1239,6 +1304,11 @@ def run_job(args, deps=None):
         elif 'now' not in deps and not fixture:
             now = datetime.now(timezone.utc)
         _local(now)
+        if not verify_market_date(batches, now):
+            if not fixture and not dry_run:
+                _record_non_trading_date(state_root, now)
+            return JobResult(True, 'market_closed')
+        _mark_verified_trading_date(config, now)
         stage = 'score'
         inputs = derive_inputs(batches, now, config, concept_config)
         next_rotation_state = prepare_rotation_state(inputs, rotation_state, config)

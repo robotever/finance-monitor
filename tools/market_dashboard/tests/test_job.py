@@ -703,6 +703,47 @@ class RotationShadowTests(unittest.TestCase):
         self.now = NOW.replace(hour=9, minute=50)
         self.config.setdefault('sources', {})['now'] = self.now.isoformat()
 
+    def test_market_date_evidence_accepts_current_breadth_and_rejects_prior_date(self):
+        batches = rotation_batches(self.config)
+        self.assertTrue(job.verify_market_date(batches, self.now))
+        batches['breadth'].rows[0]['_timestamp'] = '2026-11-12T15:00:00+08:00'
+        self.assertFalse(job.verify_market_date(batches, self.now))
+
+    def test_negative_market_date_cache_prevents_same_day_recollection(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls = []
+            def prior_date(config):
+                calls.append('collect')
+                batches = rotation_batches(config)
+                batches['breadth'].rows[0]['_timestamp'] = '2026-11-12T15:00:00+08:00'
+                return batches
+            first = job.run_job({'rotation_shadow': True}, {
+                'now': self.now, 'state_root': root, 'collector': prior_date})
+            self.assertTrue(first.success)
+            self.assertEqual(first.status, 'market_closed')
+            calendar = root/'market-dashboard/trading-calendar.json'
+            self.assertEqual(json.loads(calendar.read_text()), {
+                'schemaVersion': 'market-trading-calendar-v1',
+                'nonTradingDates': ['2026-11-13'],
+            })
+            second = job.run_job({'rotation_shadow': True}, {
+                'now': self.now.replace(minute=55), 'state_root': root,
+                'collector': lambda config: self.fail('cached closed date recollected')})
+            self.assertTrue(second.success)
+            self.assertEqual(second.status, 'market_closed_cached')
+            self.assertEqual(calls, ['collect'])
+
+    def test_source_verified_close_counts_without_a_manually_maintained_calendar(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            now = self.now.replace(hour=15, minute=5)
+            result = job.run_job({'rotation_shadow': True}, {
+                'now': now, 'state_root': root, 'collector': rotation_batches})
+            self.assertTrue(result.success, result.error_code)
+            ledger = json.loads((root/'market-dashboard-shadow/rotation-ledger.json').read_text())
+            self.assertEqual(ledger['successfulCloseDates'], ['2026-11-13'])
+
     def test_windows_do_not_backfill_and_use_shanghai_clock(self):
         schedule = getattr(job, 'scheduled_rotation_session', None)
         self.assertTrue(callable(schedule), 'rotation scheduler is missing')
