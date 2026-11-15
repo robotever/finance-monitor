@@ -1,7 +1,7 @@
 """Read-only Wind feasibility probe. stdout contains allowlisted metadata only.
 
-No file writes, publication, retries or full historical backfill. A full probe
-checks the current universe and estimates history request cost before any call.
+No file writes, publication or retries. A full probe estimates history request
+cost before any call and only performs it with the explicit include-history flag.
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -77,6 +77,8 @@ def main(argv=None, *, runner=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scope', choices=('sample', 'full'), default='sample')
     parser.add_argument('--metadata-only', required=True, action='store_true')
+    parser.add_argument('--include-history', action='store_true',
+                        help='Explicitly permit one serial history call per selected identity')
     args = parser.parse_args(argv)
     runner = runner or sources.run_command
     requested_at = datetime.now(timezone.utc)
@@ -114,8 +116,8 @@ def main(argv=None, *, runner=None):
         # remain observed, never inferred from a rolling return field.
         end = requested_at.astimezone(timezone(timedelta(hours=8))).date() - timedelta(days=1)
         begin = end - timedelta(days=550)
-        # Full mode estimates only; backfill belongs to a later gated task.
-        for code, _ in definitions if args.scope == 'sample' else ():
+        permitted = args.scope == 'sample' or args.include_history
+        for code, _ in definitions if permitted else ():
             try:
                 histories[code] = sources.collect_index_history(
                     timed_runner, code, begin.isoformat(), end.isoformat())
@@ -128,8 +130,10 @@ def main(argv=None, *, runner=None):
                    safeErrorCodes=errors, requestDurationsSeconds=requests,
                    requestedIdentityCounts={'industries': len(industries),
                                             'concepts': len(concept_config['universe'])},
-                   historicalSampleAttempted=bool(histories) or len(requests) > cost['currentCallsEstimated'],
+                   historicalSampleAttempted=args.scope == 'sample' and
+                       (bool(histories) or len(requests) > cost['currentCallsEstimated']),
                    durationSeconds=round(monotonic() - start, 3), **cost)
+    summary['historicalBackfillAttempted'] = bool(args.include_history and args.scope == 'full')
     print(json.dumps(summary, ensure_ascii=False))
     return 1 if errors else 0
 

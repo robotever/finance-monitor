@@ -36,6 +36,31 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual([(r['date'], r['close']) for r in rows], [('2026-11-12', 11), ('2026-11-13', 12)])
         self.assertEqual(output.getvalue(), '')
 
+    def test_current_wind_kline_schema_maps_single_requested_identity_and_match_close(self):
+        response = {'data': {
+            'columns': [
+                {'name': 'TIME', 'type': 'string'},
+                {'name': 'OPEN', 'type': 'string'},
+                {'name': 'MATCH', 'type': 'string'},
+                {'name': 'HIGH', 'type': 'string'},
+                {'name': 'LOW', 'type': 'string'},
+                {'name': 'TURNOVER', 'type': 'string'},
+            ],
+            'rows': [
+                ['2026-11-12T00:00:00.000+08:00', '10', '11', '12', '9', '1000'],
+                ['2026-11-13T00:00:00.000+08:00', '11', '12', '13', '10', '1200'],
+            ],
+            'unit': {'TURNOVER 单位：': '元'},
+        }}
+
+        rows = self.adapter()(lambda *a, **k: response,
+                              '882100.WI', '2026-11-12', '2026-11-13')
+
+        self.assertEqual([(row['id'], row['date'], row['close']) for row in rows], [
+            ('882100.WI', '2026-11-12', 11),
+            ('882100.WI', '2026-11-13', 12),
+        ])
+
     def test_invalid_requests_never_call_provider(self):
         def runner(*a, **k):
             self.fail('invalid request reached provider')
@@ -163,6 +188,25 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual([len(json.loads(call[-1])['windcode'].split(',')) for call in calls], [35, 50, 25])
         self.assertEqual(result['groups']['concepts']['identityCount'], 75)
         self.assertEqual(len(result['requestDurationsSeconds']), 3)
+
+    def test_full_history_requires_explicit_flag_and_queries_each_identity_once(self):
+        probe = self.probe()
+        calls, output = [], io.StringIO()
+        def runner(argv, **kwargs):
+            calls.append(argv)
+            return self.successful_runner(argv, **kwargs)
+        with patch('pathlib.Path.write_text', side_effect=AssertionError('probe wrote a file')):
+            with redirect_stdout(output):
+                code = probe.main(
+                    ['--scope', 'full', '--metadata-only', '--include-history'], runner=runner)
+        result = json.loads(output.getvalue().splitlines()[-1])
+        history_calls = [call for call in calls if call[4] == 'get_index_kline']
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 113)
+        self.assertEqual(len(history_calls), 110)
+        self.assertEqual(len({json.loads(call[-1])['windcode'] for call in history_calls}), 110)
+        self.assertEqual(result['history']['price']['identityCount'], 110)
+        self.assertEqual(result['historicalBackfillAttempted'], True)
         self.assertFalse(result['historicalSampleAttempted'])
 
     def test_first_history_error_stops_remaining_history_without_losing_safe_code(self):

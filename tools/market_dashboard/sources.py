@@ -199,20 +199,29 @@ def collect_index_history(runner, windcode: str, begin_date: str, end_date: str,
         raise SourceError('COMMAND_ERROR') from None
     points = {}
     for row in rows:
-        if row.get('Wind代码') != windcode:
+        returned_identity = row.get('Wind代码')
+        if returned_identity is not None and returned_identity != windcode:
             raise SourceError('IDENTITY_MISMATCH')
-        observed = _history_date(row.get('日期', row.get('交易日期')))
+        raw_date = row.get('日期', row.get('交易日期'))
+        if raw_date is None and isinstance(row.get('TIME'), str):
+            try:
+                raw_date = datetime.fromisoformat(row['TIME']).date().isoformat()
+            except ValueError:
+                raise SourceError('INVALID_HISTORY_DATE') from None
+        observed = _history_date(raw_date)
         if not begin <= observed <= end or observed.isoformat() in points:
             raise SourceError('INVALID_HISTORY_DATE')
         point = {'id': windcode, 'date': observed.isoformat(), '_units': {}}
-        for key, field_name in [('open', '开盘价'), ('high', '最高价'),
-                                ('low', '最低价'), ('close', '收盘价')]:
-            value = _number(row.get(field_name))
+        fields = [('open', '开盘价', 'OPEN'), ('high', '最高价', 'HIGH'),
+                  ('low', '最低价', 'LOW'), ('close', '收盘价', 'MATCH')]
+        for key, field_name, current_name in fields:
+            source_name = field_name if field_name in row else current_name
+            value = _number(row.get(source_name))
             if value is None or value <= 0:
                 raise SourceError('INVALID_HISTORY_OHLC')
             point[key] = value
-            if field_name in row['_units']:
-                point['_units'][key] = row['_units'][field_name]
+            if source_name in row['_units']:
+                point['_units'][key] = row['_units'][source_name]
         if not point['low'] <= min(point['open'], point['close']) <= max(point['open'], point['close']) <= point['high']:
             raise SourceError('INVALID_HISTORY_OHLC')
         points[point['date']] = point
