@@ -228,7 +228,23 @@ def _canonical(row):
     return r
 
 
-def _prepare_participation(rows, prior_closes, norm, settings, universe):
+
+def _indexed_history(prior_closes):
+    indexed={}
+    for row in prior_closes:
+        if (row.get('session')=='close' and row.get('sectorScoringVersion')==SCORE_VERSION
+                and row.get('sectorUniverseVersion')==UNIVERSE_VERSION):
+            indexed.setdefault((row.get('universe'),row.get('id')),[]).append(row)
+    for rows in indexed.values(): rows.sort(key=lambda row:row['marketDate'])
+    return indexed
+
+
+def _prior(indexed,universe,identity,today):
+    return [row for row in indexed.get((universe,identity),()) if row.get('marketDate','')<today]
+
+
+def _prepare_participation(rows, prior_closes, norm, settings, universe, *, indexed=None):
+    if indexed is None: indexed=_indexed_history(prior_closes)
     for row in rows:
         mm=row['metrics']; parts={}
         for key in settings['componentWeights']['participation']:
@@ -236,9 +252,7 @@ def _prepare_participation(rows, prior_closes, norm, settings, universe):
             parts[key]=_leaf(value,row.get('breadthCompleteness',0) if key=='volumeExpansionShare' else 1.)
         mm['participation']=_combine(parts,settings['componentWeights']['participation'])['value']
         mm['activityPercentile']=mm['participation']
-        previous=sorted([r for r in prior_closes if r.get('id')==row['id'] and r.get('universe')==universe
-                         and r.get('marketDate','')<row['marketDate'] and r.get('session')=='close'
-                         and r.get('sectorScoringVersion')==SCORE_VERSION and r.get('sectorUniverseVersion')==UNIVERSE_VERSION],key=lambda r:r['marketDate'])
+        previous=_prior(indexed,universe,row['id'],row['marketDate'])
         if mm.get('participationDelta5d') is None:
             mm['participationDelta5d']=_difference(mm['participation'],_strict_mean([r.get('metrics',{}).get('participation') for r in previous[-5:]],5))
         mm['activityAcceleration']=mm.get('participationDelta5d')
@@ -267,7 +281,7 @@ def _prepare_participation(rows, prior_closes, norm, settings, universe):
     return rows
 
 
-def score_v4_sector(current, prior_closes, universe_current, config, *, _prepared=None):
+def score_v4_sector(current, prior_closes, universe_current, config, *, _prepared=None, _indexed=None, _dependency_availability=None):
     """Score three independent axes, retaining complete component audit trails."""
     settings=validate_v4_config(config)
     if _prepared is not None:
@@ -286,13 +300,12 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
         for key,expected in (('sectorScoringVersion',SCORE_VERSION),('sectorUniverseVersion',UNIVERSE_VERSION),('featureVersion',FEATURE_VERSION)):
             if key in row and row[key]!=expected: raise ValueError('INCOMPARABLE_SECTOR_VERSION')
     rows=[current if r['id']==current['id'] else r for r in rows]
-    past=sorted([r for r in prior_closes if r.get('id')==current['id'] and r.get('universe')==universe
-                 and r.get('marketDate','')<current['marketDate'] and r.get('session')=='close'
-                 and r.get('sectorScoringVersion')==SCORE_VERSION and r.get('sectorUniverseVersion')==UNIVERSE_VERSION],key=lambda r:r['marketDate'])
+    if _indexed is None: _indexed=_indexed_history(prior_closes)
+    past=_prior(_indexed,universe,current['id'],current['marketDate'])
     if len({r['marketDate'] for r in past})!=len(past): raise ValueError('DUPLICATE_SECTOR_CLOSE')
     norm={'normalization':settings['normalization']}
     if _prepared is None:
-        _prepare_participation(rows,prior_closes,norm,settings,universe)
+        _prepare_participation(rows,prior_closes,norm,settings,universe,indexed=_indexed)
     m=current['metrics']; c={}
     for period in (5,20):
         key=f'relativeTurn{period}d'
@@ -360,14 +373,12 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
         heat='crowded' if activity>=90 else 'active' if activity>=70 else 'cold' if activity<30 else None
         if heat is None and _number(m.get('participationDelta5d')) and m['participationDelta5d']>=15: heat='warming'
     result.update({axis:math.floor(v+.5) if v is not None else None for axis,v in raw.items()})
-    dependencies=list(rows)
-    for identity in ids:
-        dependencies.extend(sorted([row for row in prior_closes
-            if row.get('id')==identity and row.get('universe')==universe
-            and row.get('marketDate','')<current['marketDate'] and row.get('session')=='close'
-            and row.get('sectorScoringVersion')==SCORE_VERSION and row.get('sectorUniverseVersion')==UNIVERSE_VERSION],
-            key=lambda row:row['marketDate'])[-15:])
-    result.update(_availability(dependencies))
+    if _dependency_availability is None:
+        dependencies=list(rows)
+        for identity in ids:
+            dependencies.extend(_prior(_indexed,universe,identity,current['marketDate'])[-15:])
+        _dependency_availability=_availability(dependencies)
+    result.update(_dependency_availability)
     result.update(schemaVersion='market-dashboard-v4',sectorScoringVersion=SCORE_VERSION,sectorUniverseVersion=UNIVERSE_VERSION,
                   featureVersion=FEATURE_VERSION,membershipVersion=MEMBERSHIP_VERSION,membershipMode=current.get('membershipMode'),
                   source='Hithink',_rawScores=raw,components=c,metrics=m,heatState=heat,validCloses=valid,
@@ -382,13 +393,17 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
 def score_v4_sectors(rows, prior_closes, config):
     """Batch score a complete dated universe, normalizing participation once."""
     settings=validate_v4_config(config)
-    prepared=[]
+    prepared=[]; indexed=_indexed_history(prior_closes); availability={}
     for universe in ('industry','concept'):
         selected=[_canonical(r) for r in rows if r.get('universe')==universe]
-        _prepare_participation(selected,prior_closes,{'normalization':settings['normalization']},settings,universe)
+        _prepare_participation(selected,prior_closes,{'normalization':settings['normalization']},settings,universe,indexed=indexed)
+        dependencies=list(selected)
+        for row in selected:
+            dependencies.extend(_prior(indexed,universe,row['id'],row['marketDate'])[-15:])
+        availability[universe]=_availability(dependencies)
         prepared.extend(selected)
     if len(prepared)!=len(rows): raise ValueError('INVALID_SECTOR_UNIVERSE')
-    return [score_v4_sector(row,prior_closes,prepared,config,_prepared=prepared) for row in rows]
+    return [score_v4_sector(row,prior_closes,prepared,config,_prepared=prepared,_indexed=indexed,_dependency_availability=availability[row['universe']]) for row in rows]
 
 
 def rank_v4_universe(rows, axis='strength'):

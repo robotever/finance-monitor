@@ -1,0 +1,334 @@
+{
+  "status": "completed",
+  "providerCalls": 0,
+  "benchmarkAcquisitionCalls": 1,
+  "published": false,
+  "scoreDates": 30,
+  "warmupDates": 15,
+  "deliveredDates": 15,
+  "rows": 7200,
+  "elapsedSeconds": 84.09,
+  "marketTurnoverStatus": "missing_full_market_aggregate",
+  "benchmark": "000300.SH",
+  "benchmarkRows": 936,
+  "historicalReconstruction": true,
+  "timelyPitRows": 0,
+  "dates": [
+    {
+      "marketDate": "2026-10-27",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 59,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-10-28",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 60,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-10-29",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 60,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-10-30",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 61,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-02",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 61,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-03",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 63,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-04",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 63,
+      "medianCompleteness": 88.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-05",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 63,
+      "medianCompleteness": 88.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-06",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 68,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-09",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 78,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-10",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 78,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-11",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 79,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-12",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 79,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-13",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 479,
+        "risk": 480
+      },
+      "minimumCompleteness": 78,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 480
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    },
+    {
+      "marketDate": "2026-11-16",
+      "rows": 480,
+      "industryRows": 90,
+      "conceptRows": 390,
+      "coreRows": 25,
+      "chunks": 10,
+      "scoreCounts": {
+        "strength": 480,
+        "opportunity": 480,
+        "risk": 480
+      },
+      "minimumCompleteness": 81,
+      "medianCompleteness": 87.0,
+      "membershipModes": {
+        "current_members_backfill": 478,
+        "point_in_time_snapshot": 2
+      },
+      "timelyPitRows": 0,
+      "officialClose": false,
+      "historicalReconstruction": true
+    }
+  ]
+}

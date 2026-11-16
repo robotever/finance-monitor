@@ -205,6 +205,23 @@ class V4ScoringTests(unittest.TestCase):
         self.assertEqual(scores[1]['metrics']['relativeTurn5d'],5)
         self.assertGreater(scores[1]['components']['relativeTurn']['value'],scores[0]['components']['relativeTurn']['value'])
 
+    def test_batch_history_is_indexed_once_for_full_universe_replay(self):
+        class CountedHistory(list):
+            iterations=0
+            def __iter__(self):
+                self.iterations+=1
+                return super().__iter__()
+        indexes,breadth=panel(30)
+        current=[]; history=CountedHistory()
+        for i in range(4):
+            f=v4.build_v4_features(indexes,breadth); f['id']=str(i); current.append(f)
+            history.append(dict(f,marketDate='2024-01-01',session='close'))
+        result=v4.score_v4_sectors(current,history,config())
+        self.assertEqual(len(result),4)
+        self.assertLessEqual(history.iterations,2)
+        expected=[v4.score_v4_sector(row,list(history),current,config()) for row in current]
+        self.assertEqual(result,expected)
+
     def test_invalid_identity_nonfinite_and_duplicate_dates_rejected(self):
         indexes,breadth=panel()
         with self.assertRaises(ValueError): v4.build_v4_features(indexes+[indexes[-1]],breadth)
