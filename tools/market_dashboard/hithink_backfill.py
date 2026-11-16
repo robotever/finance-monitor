@@ -14,7 +14,9 @@ import subprocess
 import sqlite3
 import time as clock
 
-from .hithink_cli import HithinkClient, HithinkError, SHANGHAI, canonical_date
+from .hithink_cli import HithinkClient, HithinkError, IndexDailyBar, SHANGHAI, canonical_date, finite_number, run_command
+from .hithink_history import _decode
+from .rotation_operations import calendar_dates
 from .hithink_probe import ProbeBudget, ProbeStopped, _metered_runner
 from .hithink_store import (open_store, migrate_store, store_write_lock, replace_catalog,
     commit_index_backfill, record_ingest_run, _private_directory, _private_file)
@@ -74,6 +76,7 @@ class BackfillReport:
     elapsed: float = 0
     safe_error_code: str | None = None
     batch_status: str = 'SINGLE_INDEX_DEFAULT'
+    calendar_source: str = 'supplied_trading_dates'
     complete: bool = False
 
     def safe_summary(self):
@@ -81,7 +84,7 @@ class BackfillReport:
         return {'schemaVersion': 'hithink-index-backfill-v1', 'complete': self.complete,
             'actualCalls': self.calls, 'remoteDataAttemptUpperBound': self.reserved_attempts,
             'elapsedSeconds': round(self.elapsed, 3), 'safeErrorCode': self.safe_error_code,
-            'historyBatchStatus': self.batch_status, 'economicGateApplied': False,
+            'historyBatchStatus': self.batch_status, 'calendarSource': self.calendar_source, 'economicGateApplied': False,
             'publicReleaseEligible': False, 'coverage': {
                 'industryUniverse': sum(r['tag'] == 'industry' for r in rows),
                 'conceptUniverse': sum(r['tag'] == 'cn_concept' for r in rows),
@@ -107,8 +110,53 @@ def _coverage(store, sector, window, checkpoint):
         **{f'coverage{n}': row[0] >= n for n in (20, 60, 250)}}
 
 
+def _validate_history_rows(rows, code, window, trading_dates):
+    seen = set()
+    for row in rows:
+        day = canonical_date(row.date)
+        if row.code != code or not window.start <= row.date <= window.end or row.date in seen:
+            raise HithinkError('INVALID_HISTORY_ROWS')
+        if day.weekday() >= 5 or row.date not in trading_dates:
+            raise HithinkError('INVALID_HISTORY_TRADING_DATE')
+        prices = [finite_number(v, positive=True) for v in (row.open, row.high, row.low, row.close)]
+        finite_number(row.volume, nonnegative=True)
+        finite_number(row.turnover, nonnegative=True)
+        if not prices[2] <= min(prices[0], prices[3]) <= max(prices[0], prices[3]) <= prices[1]:
+            raise HithinkError('INVALID_HISTORY_OHLC')
+        seen.add(row.date)
+
+
+def load_observed_market_calendar(cli_path, db_path, window, *, runner=run_command):
+    """Read observed stock-market dates through the official read-only DB boundary.
+
+    This is an observed_market_calendar reference, not a fabricated holiday
+    schedule or a claim that the provider DB has every historical session.
+    """
+    query = ("select distinct cast(date as varchar) as date from v_daily "
+             f"where date between '{window.start}' and '{window.end}' order by date limit 10000")
+    rows = _decode(runner([str(cli_path), '--db', str(db_path), 'db', 'query', '--sql', query, '--format', 'json']))
+    if not rows or len(rows) >= 10000 or any(not isinstance(r, dict) or set(r) != {'date'} for r in rows):
+        raise ValueError('CALENDAR_UNVERIFIED')
+    dates = calendar_dates([r['date'] for r in rows])
+    if any(not window.start <= day <= window.end or canonical_date(day).weekday() >= 5 for day in dates):
+        raise ValueError('INVALID_CALENDAR')
+    return dates
+
+
+def _stock_database(cli_path, explicit=None):
+    if explicit is not None:
+        return explicit
+    # Installation-root discovery uses the requested official executable path,
+    # preserving its npm-global symlink layout; never search user data broadly.
+    for parent in Path(cli_path).parents:
+        candidate = parent / 'data' / 'hithink' / 'market.duckdb'
+        if candidate.is_file():
+            return candidate
+    raise ValueError('CALENDAR_UNVERIFIED')
+
+
 def backfill_index_history(client, store, universe, window, budget, *, state_root=None,
-                           batch_validated=False, should_yield=None, progress=None):
+                           batch_validated=False, should_yield=None, progress=None, trading_dates=None):
     """Resume exact catalog/window checkpoints; release shared lock per 250 rows.
 
     ``should_yield`` lets the live producer preempt at dispatch/chunk boundaries.
@@ -123,16 +171,27 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
     calls_before = budget.calls
     attempts_before = budget.reserved_attempts
     original = getattr(client, 'runner', None)
-    if original is not None:
-        client.runner = _metered_runner(original, budget)
-    def request(method, *args):
-        if original is None:
-            budget.before_call()
-        return method(*args)
     def yield_if_needed():
         if should_yield and should_yield():
             raise ProbeStopped('BACKFILL_YIELDED')
+    if original is not None:
+        metered = _metered_runner(original, budget)
+        def priority_runner(argv):
+            yield_if_needed()
+            return metered(argv)
+        client.runner = priority_runner
+    def request(method, *args):
+        yield_if_needed()
+        if original is None:
+            budget.before_call()
+        return method(*args)
     try:
+        try:
+            allowed_dates = set(calendar_dates(trading_dates))
+            if not allowed_dates:
+                raise ValueError()
+        except (ValueError, TypeError):
+            raise ProbeStopped('CALENDAR_UNVERIFIED') from None
         with store_write_lock(state_root):
             replace_catalog(store, sectors, catalog_version=universe.version,
                             observed_at_ms=int(clock.time()*1000))
@@ -140,7 +199,15 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
             checkpoint = _checkpoint_id(universe, window, sector.code)
             existing = _coverage(store, sector, window, checkpoint)
             if existing['status'] == 'complete':
-                continue
+                stored = store.execute('SELECT sector_id,market_date,open,high,low,close,volume,turnover '
+                    'FROM sector_index_daily WHERE sector_id=? AND market_date BETWEEN ? AND ? ORDER BY market_date',
+                    (sector.code, window.start, window.end)).fetchall()
+                try:
+                    _validate_history_rows([IndexDailyBar(*r) for r in stored], sector.code, window, allowed_dates)
+                    if stored:
+                        continue
+                except HithinkError:
+                    pass  # Only corrupt completed sectors are fetched again.
             yield_if_needed()
             started = int(clock.time()*1000)
             count_before = budget.calls
@@ -158,10 +225,7 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
                     rows = request(client.index_history, sector.code, window.start_ms, window.end_ms)
                 if not rows:
                     raise HithinkError('HISTORY_EMPTY')
-                # The strict adapter guarantees dates/identity; retain checks at
-                # this boundary for injectable clients and prevent foreign rows.
-                if any(r.code != sector.code or not window.start <= r.date <= window.end for r in rows):
-                    raise HithinkError('INVALID_HISTORY_ROWS')
+                _validate_history_rows(rows, sector.code, window, allowed_dates)
                 for offset in range(0, len(rows), 250):
                     yield_if_needed()
                     with store_write_lock(state_root):
@@ -200,6 +264,8 @@ def main(argv=None):
     parser.add_argument('--cli', type=Path, required=True)
     parser.add_argument('--store', type=Path, default=Path('data/market-dashboard/sector-history.sqlite3'))
     parser.add_argument('--state-root', type=Path)
+    parser.add_argument('--calendar', type=Path, help='validated JSON list of observed trading dates')
+    parser.add_argument('--stock-db', type=Path, help='provider-managed read-only stock database for observed calendar')
     parser.add_argument('--config', type=Path, default=Path('config/hithink-sector-dashboard.json'))
     parser.add_argument('--start-date')
     parser.add_argument('--end-date')
@@ -218,12 +284,15 @@ def main(argv=None):
         fixtures = Path(__file__).parent / 'fixtures' / 'hithink'
         universe = build_universe(load_catalog_fixture(fixtures/'catalog-industry.json'),
             load_catalog_fixture(fixtures/'catalog-concept.json'), json.loads(Path('config/hithink-core-concepts.json').read_text()))
+        trading_dates = (calendar_dates(json.loads(args.calendar.read_text())) if args.calendar else
+                         load_observed_market_calendar(args.cli, _stock_database(args.cli, args.stock_db), window))
         root = args.state_root or args.store.parent
         with store_write_lock(root):
             store = open_store(args.store)
             migrate_store(store)
         report = backfill_index_history(HithinkClient(args.cli), store, universe, window, budget, state_root=root,
-            should_yield=lambda: (root/'hithink-live-priority').exists())
+            should_yield=lambda: (root/'hithink-live-priority').exists(), trading_dates=trading_dates)
+        report.calendar_source = 'supplied_trading_dates' if args.calendar else 'observed_market_calendar'
         directory = _private_directory(root/'hithink-index-backfill')
         import os
         with os.fdopen(_private_file(directory/'report.json'), 'w') as output:

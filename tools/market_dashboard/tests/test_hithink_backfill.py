@@ -21,6 +21,12 @@ class BackfillTests(unittest.TestCase):
         self.b = SectorDefinition('885001.TI', 'two', 'cn_concept')
         self.universe = SimpleNamespace(industries=(self.a,), concepts=(self.b,), version='sector-universe-ths-v1', catalog_digest='test')
         self.window = HistoryWindow('2023-01-01', '2026-11-13')
+        self.calendar = []
+        day = datetime(2023, 1, 2)
+        while len(self.calendar) < 300:
+            if day.weekday() < 5:
+                self.calendar.append(day.date().isoformat())
+            day += timedelta(days=1)
         self.calls = []
         self.fail = set()
         outer = self
@@ -33,7 +39,7 @@ class BackfillTests(unittest.TestCase):
                 if code in outer.fail:
                     raise HithinkError('HITHINK_COMMAND_FAILED')
                 n = 251 if code == outer.a.code else 60
-                return tuple(IndexDailyBar(code, (datetime(2023, 1, 2) + timedelta(days=i)).date().isoformat(), 1, 2, 1, 2, 10, 20) for i in range(n))
+                return tuple(IndexDailyBar(code, outer.calendar[i], 1, 2, 1, 2, 10, 20) for i in range(n))
             def index_history_batch(self, *args):
                 raise HithinkError('HISTORY_BATCH_INCOMPLETE')
         self.client = Client()
@@ -44,7 +50,7 @@ class BackfillTests(unittest.TestCase):
 
     def run_backfill(self, **kwargs):
         return backfill_index_history(self.client, self.store, self.universe, self.window,
-                                      BackfillBudget(min_call_interval=0, **kwargs), state_root=self.root)
+                                      BackfillBudget(min_call_interval=0, **kwargs), state_root=self.root, trading_dates=self.calendar)
 
     def test_shanghai_window_and_coverage_and_rerun(self):
         self.assertEqual(datetime.fromtimestamp(self.window.start_ms/1000, SHANGHAI).isoformat(), '2023-01-01T00:00:00+08:00')
@@ -75,7 +81,7 @@ class BackfillTests(unittest.TestCase):
 
     def test_single_default_and_explicit_batch_empty_fallback(self):
         report = backfill_index_history(self.client, self.store, self.universe, self.window,
-            BackfillBudget(min_call_interval=0), state_root=self.root, batch_validated=True)
+            BackfillBudget(min_call_interval=0), state_root=self.root, batch_validated=True, trading_dates=self.calendar)
         self.assertTrue(report.complete)
         self.assertEqual(report.batch_status, 'HISTORY_BATCH_INCOMPLETE')
         self.assertEqual(self.calls, [self.a.code, self.b.code])
@@ -89,7 +95,7 @@ class BackfillTests(unittest.TestCase):
 
     def test_live_preemption_before_dispatch(self):
         report = backfill_index_history(self.client, self.store, self.universe, self.window,
-            BackfillBudget(min_call_interval=0), state_root=self.root, should_yield=lambda: True)
+            BackfillBudget(min_call_interval=0), state_root=self.root, should_yield=lambda: True, trading_dates=self.calendar)
         self.assertEqual(self.calls, [])
         self.assertEqual(report.safe_error_code, 'BACKFILL_YIELDED')
 
@@ -111,10 +117,10 @@ class BackfillTests(unittest.TestCase):
         self.assertFalse(report['publicReleaseEligible'])
 
     def test_chunk_interruption_requires_refetch_and_releases_lock(self):
-        checks = iter([False, False, True])
+        checks = lambda: self.store.execute('select count(*) from sector_index_daily').fetchone()[0] >= 250
         report = backfill_index_history(self.client, self.store, self.universe, self.window,
             BackfillBudget(min_call_interval=0), state_root=self.root,
-            should_yield=lambda: next(checks, True))
+            should_yield=checks, trading_dates=self.calendar)
         self.assertEqual(report.safe_error_code, 'BACKFILL_YIELDED')
         self.assertEqual(report.coverage[0]['rows'], 250)
         self.assertEqual(report.coverage[0]['status'], 'pending')
@@ -141,7 +147,7 @@ class BackfillTests(unittest.TestCase):
                 'data': {'item': [], 'interval': '1d', 'adjust': None}}), '')
         client = HithinkClient('/fake/official-cli', runner=runner)
         report = backfill_index_history(client, self.store, self.universe, self.window,
-            BackfillBudget(max_calls=1, min_call_interval=0), state_root=self.root, batch_validated=True)
+            BackfillBudget(max_calls=1, min_call_interval=0), state_root=self.root, batch_validated=True, trading_dates=self.calendar)
         self.assertEqual(len(actual), 1)
         self.assertEqual(report.calls, 1)
         self.assertEqual(report.safe_error_code, 'BACKFILL_CALL_BUDGET')
@@ -157,3 +163,77 @@ class BackfillTests(unittest.TestCase):
                 result = main(['--cli', '/fake/official-cli', '--store', str(self.root/'other.sqlite3')])
         self.assertEqual(result, 1)
         self.assertEqual(json.loads(output.getvalue())['safeErrorCode'], 'BACKFILL_FAILED')
+
+    def test_invalid_ohlc_and_nontrading_date_never_checkpoint(self):
+        for date, prices, code in [('2023-01-02', (10, 2, 8, 1), 'INVALID_HISTORY_OHLC'),
+                                   ('2023-01-08', (1, 2, 1, 2), 'INVALID_HISTORY_TRADING_DATE')]:
+            with self.subTest(date=date):
+                self.client.index_history = lambda identity, *args: (IndexDailyBar(identity, date, *prices, 10, 20),)
+                report = self.run_backfill()
+                self.assertFalse(report.complete)
+                self.assertEqual(report.coverage[0]['safeErrorCode'], code)
+                self.assertEqual(self.store.execute('select count(*) from sector_index_daily').fetchone()[0], 0)
+                self.assertGreater(self.run_backfill().calls, 0)
+
+    def test_missing_calendar_fails_before_dispatch(self):
+        report = backfill_index_history(self.client, self.store, self.universe, self.window,
+            BackfillBudget(min_call_interval=0), state_root=self.root)
+        self.assertEqual(report.safe_error_code, 'CALENDAR_UNVERIFIED')
+        self.assertEqual(self.calls, [])
+
+    def test_adapter_nested_batch_verification_checks_priority_before_dispatch(self):
+        from tools.market_dashboard.hithink_cli import HithinkClient
+        import subprocess
+        actual = []
+        priority = False
+        def runner(argv):
+            nonlocal priority
+            actual.append(argv[2])
+            priority = True
+            return subprocess.CompletedProcess(argv, 0, json.dumps({
+                'ok': True, 'command': 'index.history-batch',
+                'meta': {'source': 'remote', 'count': 0, 'truncated': False, 'schema_version': '1'},
+                'data': {'item': [], 'interval': '1d', 'adjust': None}}), '')
+        client = HithinkClient('/fake/official-cli', runner=runner)
+        report = backfill_index_history(client, self.store, self.universe, self.window,
+            BackfillBudget(min_call_interval=0), state_root=self.root, batch_validated=True,
+            should_yield=lambda: priority, trading_dates=self.calendar)
+        self.assertEqual(actual, ['history-batch'])
+        self.assertEqual(report.safe_error_code, 'BACKFILL_YIELDED')
+        self.assertEqual(report.calls, 1)
+
+    def test_completed_checkpoint_revalidates_stored_ohlc(self):
+        self.assertTrue(self.run_backfill().complete)
+        self.store.execute('update sector_index_daily set open=100 where sector_id=?', (self.a.code,))
+        self.assertTrue(self.run_backfill().complete)
+        self.assertEqual(self.calls, [self.a.code, self.b.code, self.a.code])
+        self.assertEqual(self.store.execute('select max(open) from sector_index_daily').fetchone()[0], 1)
+
+    def test_observed_calendar_uses_readonly_cli_query_and_validates_dates(self):
+        from tools.market_dashboard.hithink_backfill import load_observed_market_calendar
+        import subprocess
+        calls = []
+        days = ['2023-01-03', '2023-01-04']
+        def runner(argv):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, json.dumps({'ok': True, 'command': 'db.query',
+                'meta': {'count': len(days), 'truncated': False}, 'data': [{'date': day} for day in days]}), '')
+        self.assertEqual(load_observed_market_calendar('/fake/cli', '/fake/stock.duckdb', self.window, runner=runner), days)
+        self.assertEqual(calls[0][3:5], ['db', 'query'])
+        self.assertIn('select distinct', calls[0][6])
+        days[:] = ['2023-01-08']
+        with self.assertRaises(ValueError):
+            load_observed_market_calendar('/fake/cli', '/fake/stock.duckdb', self.window, runner=runner)
+
+    def test_main_defaults_to_observed_calendar_source(self):
+        from tools.market_dashboard.hithink_backfill import main
+        import contextlib, io
+        output = io.StringIO()
+        with patch('tools.market_dashboard.hithink_backfill._stock_database', return_value=Path('/fake/stock.duckdb')):
+            with patch('tools.market_dashboard.hithink_backfill.load_observed_market_calendar', return_value=self.calendar) as calendar:
+                with patch('tools.market_dashboard.hithink_backfill.HithinkClient', return_value=self.client):
+                    with contextlib.redirect_stdout(output):
+                        result = main(['--cli', '/fake/official-cli', '--store', str(self.root/'other.sqlite3'), '--max-calls', '1'])
+        self.assertEqual(result, 1)
+        calendar.assert_called_once()
+        self.assertEqual(json.loads(output.getvalue())['calendarSource'], 'observed_market_calendar')
