@@ -14,6 +14,7 @@
 |---|---|---|
 | Wind | A 股宽度、风格、35 个行业、75 个概念、板块行情与资金 | v2／v3 主来源 |
 | 东方财富妙想 | 黄金、原油、离岸人民币等补充；概念线索；未来板块备用 | 部分生产、板块备用待验证 |
+| 同花顺 Financial API 离线行情库 | A 股长期日线、复权因子和历史评价基线 | 本地已建库并校验；尚未接入生产评分 |
 | FRED | 美债利率、通胀预期、信用、美元、美股等全球序列 | 生产 |
 | RSS／公开 JSON | 财经新闻与快讯 | 生产 |
 
@@ -49,6 +50,33 @@
 - 字段名、表结构和单位长期稳定；
 - 历史深度足够覆盖所有 60／250 日位置计算。
 
+### 同花顺离线历史库
+
+2026-11-16 已使用同花顺 Financial API 官方工具建立共享 DuckDB 历史库：
+
+- 数据库：`/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb`；
+- 官方 CLI：`/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance`，版本 `0.2.4`；
+- 日线记录 `10,393,175` 条，覆盖 `5,579` 个证券；
+- 日期范围为 `2016-11-15` 至 `2026-11-13`；
+- 提供原始日线、前复权、后复权和证券维表等视图；
+- 官方完整性校验返回 `ok: true`，未发现质量问题；数据库约 `759 MiB`。
+
+该库当前只承担**离线历史基线**：用于 5／20／60／250 日位置、历史百分位、未来收益标签、评分评价和回测。它尚未替换 Wind／妙想的盘中行情、资金流、上涨广度或新闻数据，也尚未接入生产评分。`v_daily.prev_close` 当前为空，需要用同一证券按交易日排序后的上一日 `close` 推导，不得直接把空值当零。
+
+日常增量更新使用固定工具和固定数据库，不在项目目录复制原始数据：
+
+```bash
+'/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
+  --db '/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb' \
+  data sync --format json
+
+'/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
+  --db '/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb' \
+  data validate --format json
+```
+
+建议在交易日收盘且供应商增量发布后执行一次同步，再执行校验；未校验成功的数据不得进入评价或回填。行业目录接口已单独返回 320 条记录，但板块代码、分类层级、成份变更和现有 Wind 宇宙尚未完成版本化映射，因此不能直接把股票级历史聚合成当前生产板块分数。
+
 ## 已批准的目标刷新结构
 
 用户需要盘中操作参考，因此目标是 15 分钟刷新。为控制 Wind 成本，按数据变化速度分频：
@@ -57,6 +85,7 @@
 |---|---:|---|---|
 | 35 行业＋75 概念盘中行情／资金／广度 | 每 15 分钟 | Wind | 保持板块评分同口径 |
 | 全市场宽度和六类风格 | 每日 4 个关键时点 | Wind | 相对慢变量 |
+| A 股长期日线与复权基线 | 收盘后按日增量 | 同花顺离线库 | 供历史位置、标签和评价，不替代盘中字段 |
 | 全球日频／月频序列 | 按来源频率 | FRED／妙想 | 不伪装成盘中实时 |
 | 新闻与事件 | 5 分钟或按需 | 新闻源／妙想搜索 | 不直接进入量化评分 |
 | 板块备用数据 | 失败时显式启用 | 妙想 | 映射和盘中验证通过后才可启用 |
@@ -112,7 +141,9 @@ Wind `*.WI` 与东方财富 `BK*` 之间建立人工审核的版本化映射。�
 
 ## 凭据与数据保留
 
-- `MX_APIKEY`、Wind 授权和 Cloudflare 发布令牌只能通过环境变量、供应商配置或 Cloudflare Secret 提供。
+- `MX_APIKEY`、Wind 授权、同花顺 API Key 和 Cloudflare 发布令牌只能通过环境变量、供应商凭据存储或 Cloudflare Secret 提供。
+- 同花顺 API Key 已保存到官方 CLI 的用户凭据存储，不写入仓库、命令记录、数据库或前端。
 - 原始供应商响应只可用于临时诊断，不提交仓库、不发布到前端。
+- 同花顺离线库位于 Financial Knowledge Repository 的共享 `data/` 目录，不提交 Git；对外页面只发布必要的派生评分和来源元数据，并在使用前确认供应商授权与再分发边界。
 - 长期保存的是版本化派生指标、评分、来源元数据和必要审计证据。
 - 临时能力测试输出应写入受控临时目录并可安全删除。

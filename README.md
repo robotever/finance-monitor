@@ -80,7 +80,7 @@ npm run preview
 | [项目状态](docs/STATUS.md) | 生产、验收、影子、数据验证和下一步 |
 | [系统架构](docs/ARCHITECTURE.md) | 组件边界、数据流、存储、契约与安全 |
 | [项目结构](docs/PROJECT_STRUCTURE.md) | 目录职责和常见修改入口 |
-| [数据源策略](docs/DATA_SOURCES.md) | Wind、妙想、FRED、新闻来源及切换原则 |
+| [数据源策略](docs/DATA_SOURCES.md) | Wind、妙想、同花顺离线库、FRED、新闻来源及切换原则 |
 | [开发规范](docs/DEVELOPMENT.md) | 本地开发、测试、分支、提交和发布流程 |
 | [运行手册](docs/market-dashboard-operations.md) | 调度、诊断、密钥、回滚和服务管理 |
 | [板块评分评价](docs/sector-score-evaluation.md) | 强度／机会／风险的PIT检验、基准和解释规则 |
