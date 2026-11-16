@@ -370,3 +370,12 @@ data, recomputes no score and leaves source/availability timestamps, market date
 close classification and successful-bucket ledger unchanged. It supports older
 completed files without rerunning their collection bucket. Unknown/missing or
 cross-version universes fail before writes. No public upload or activation occurs.
+
+Every successful private cycle also constructs the safe public projection and
+bounded local publication chunks before advancing its success ledger. The cycle
+stores its own `.chunks.json` plus current `publish-chunks.json` under the shared
+writer lock; malformed projections fail without replacing the prior current
+payload/chunks or marking the new bucket complete. This keeps local preview input
+current as collection runs. Chunk construction performs no HTTP request. Public
+manifest/chunk/activation transport remains a separate explicitly authorized
+operator action, with independent server release authorization.

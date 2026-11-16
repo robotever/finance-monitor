@@ -8,6 +8,12 @@ from tools.market_dashboard import hithink_job as job
 from tools.market_dashboard.hithink_cli import SHANGHAI, HithinkError
 
 class HithinkJobTests(unittest.TestCase):
+    def public_row(self,market_date='2026-11-16'):
+        return dict(id='881001.TI',name='fixture',universe='industry',strength=55,opportunity=44,risk=33,
+            completeness=80,ranks={'strength':1,'opportunity':1,'risk':1},heatState=None,coldStart=False,
+            validCloses=250,improvementEvidence=2,membershipMode='point_in_time_snapshot',missing=[],
+            marketDate=market_date,**job._VERSIONS)
+
     def stamp(self, time, day='2026-11-16'):
         return datetime.fromisoformat(day+'T'+time).replace(tzinfo=SHANGHAI)
 
@@ -47,7 +53,7 @@ class HithinkJobTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             args=SimpleNamespace(state_root=Path(directory).resolve(),now=self.stamp('10:00'))
             calls=[]
-            deps={'calendar':['2026-11-16'],'produce':lambda *a: calls.append(1) or {'rows':[{'id':'x'}]}}
+            deps={'calendar':['2026-11-16'],'produce':lambda *a: calls.append(1) or {'rows':[self.public_row()]}}
             first=job.run_hithink_cycle(args,deps)
             self.assertEqual(first.status,'success'); self.assertFalse(first.published)
             self.assertEqual(job.run_hithink_cycle(args,deps).status,'already_complete')
@@ -184,9 +190,9 @@ class HithinkJobTests(unittest.TestCase):
         import json
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory).resolve();args=SimpleNamespace(state_root=root,now=self.stamp('15:05','2026-11-13'))
-            deps={'calendar':['2026-11-13','2026-11-16'],'produce':lambda *a:{'rows':[{'id':'one','marketDate':'2026-11-13'}],'officialClose':True,'marketDate':'2026-11-13'}}
+            deps={'calendar':['2026-11-13','2026-11-16'],'produce':lambda *a:{'rows':[self.public_row('2026-11-13')],'officialClose':True,'marketDate':'2026-11-13'}}
             self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
-            args.now=self.stamp('10:00');deps['produce']=lambda *a:{'rows':[{'id':'two'}],'officialClose':False,'marketDate':'2026-11-16'}
+            args.now=self.stamp('10:00');deps['produce']=lambda *a:{'rows':[self.public_row()],'officialClose':False,'marketDate':'2026-11-16'}
             self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
             history=json.loads((root/'hithink-live/close-history.json').read_text())
             self.assertEqual(history[0]['marketDate'],'2026-11-13')
@@ -233,6 +239,7 @@ class HithinkJobTests(unittest.TestCase):
                     future={**scored[0],'marketDate':'2099-01-01','strength':100,'metrics':{'participation':999999}}
                     self.assertEqual(scored,job.score_cycle_features([feature],prior+[future],bucket,config(),historical=True))
                     for axis in ('strength','opportunity','risk'): scored=rank_v4_universe(scored,axis)
+                    for row in scored: row['name']='fixture'
                     return {'rows':scored,'marketDate':day,'bucket':bucket.key,'historicalReconstruction':True,'officialClose':False}
                 result=job.run_hithink_cycle(args,{'calendar':dates,'produce':produce})
                 self.assertEqual(result.status,'success')
@@ -252,5 +259,36 @@ class HithinkJobTests(unittest.TestCase):
         self.assertEqual(result,[{**row,'session':'close','historicalReconstruction':True}])
         self.assertEqual(row,{'id':'881001.TI','marketDate':'2026-11-13','availableAt':None,'officialClose':False})
         self.assertEqual(job.prior_close_rows([payload],'2026-11-13'),[])
+
+
+    def test_successful_cycle_saves_480_matching_projected_rows_and_versions(self):
+        import json,hashlib
+        from tools.market_dashboard.hithink_universe import load_catalog_fixture
+        sectors=[*load_catalog_fixture(Path(job.__file__).parent/'fixtures/hithink/catalog-industry.json'),
+                 *load_catalog_fixture(Path(job.__file__).parent/'fixtures/hithink/catalog-concept.json')]
+        sectors=[s for s in sectors if s.tag!='industry' or s.code.startswith('881')]
+        rows=[{**self.public_row(),'id':s.code,'name':s.name,'universe':'industry' if s.tag=='industry' else 'concept'} for s in sectors]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();args=SimpleNamespace(state_root=root,now=self.stamp('10:00'))
+            result=job.run_hithink_cycle(args,{'calendar':['2026-11-16'],'produce':lambda *a:{'rows':rows}})
+            self.assertEqual(result.status,'success')
+            local=root/'hithink-live';chunks=json.loads((local/'publish-chunks.json').read_text())
+            saved=json.loads((local/'latest.json').read_text())['rows']
+            self.assertEqual(len(saved),480);self.assertEqual(len(chunks),10)
+            projected=[r for c in chunks for r in json.loads(c['rowsJson'])]
+            self.assertEqual(projected,[job.public_v4_row(r) for r in saved])
+            self.assertTrue(all(all(r[k]==v for k,v in job._VERSIONS.items()) for r in saved))
+            self.assertTrue(all(hashlib.sha256(c['rowsJson'].encode()).hexdigest()==c['digest'] for c in chunks))
+            self.assertEqual(json.loads((local/'state.json').read_text())['completed'],['2026-11-16:10:00'])
+
+    def test_failed_projection_preserves_previous_chunks_and_success_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();args=SimpleNamespace(state_root=root,now=self.stamp('10:00'))
+            deps={'calendar':['2026-11-16'],'produce':lambda *a:{'rows':[self.public_row()]}}
+            self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
+            local=root/'hithink-live';before={name:(local/name).read_bytes() for name in ('latest.json','publish-chunks.json','state.json')}
+            args.now=self.stamp('10:15');deps['produce']=lambda *a:{'rows':[{**self.public_row(),'featureVersion':'invalid'}]}
+            self.assertEqual(job.run_hithink_cycle(args,deps).status,'failed')
+            self.assertEqual(before,{name:(local/name).read_bytes() for name in before})
 
 if __name__=='__main__': unittest.main()

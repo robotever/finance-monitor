@@ -389,8 +389,14 @@ def run_hithink_cycle(args,deps=None):
             payload=(deps.get('produce') or produce_payload)(args,bucket,budget,client,root)
             budget.check()
             rows=payload['rows']
+            # Pure local projection must succeed before any successful artifacts
+            # advance. This constructs requests only; no transport is invoked.
+            chunks=build_publish_chunks(rows)
+            budget.check()
             with store_write_lock(root):
                 budget.check(); _atomic(local/(bucket.key.replace(':','-')+'.json'),payload)
+                _atomic(local/(bucket.key.replace(':','-')+'.chunks.json'),chunks)
+                _atomic(local/'publish-chunks.json',chunks)
                 _atomic(local/'latest.json',payload)
                 if payload.get('officialClose') or payload.get('historicalReconstruction'):
                     history=[p for p in _read(local/'close-history.json',[]) if p['marketDate']!=payload['marketDate']]
