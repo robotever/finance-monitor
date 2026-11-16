@@ -181,6 +181,14 @@ class PublishTests(unittest.TestCase):
                 self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
                 network.assert_not_called()
 
+    def test_missing_object_scores_have_allowlisted_private_validation_rule(self):
+        payload = valid_payload()
+        payload['global'].update(strength=None, heat=None, risk=None)
+        with self.assertRaises(job.ValidationError) as raised:
+            job.validate_payload(payload)
+        self.assertEqual(raised.exception.rule, 'OBJECT_SCORES_UNAVAILABLE')
+        self.assertEqual(str(raised.exception), 'INVALID_PAYLOAD')
+
     def test_low_completeness_permitted_and_configurable_minimum_enforced(self):
         job.validate_payload(valid_payload(), load_config())
         config = load_config()
@@ -499,6 +507,29 @@ class JobTests(unittest.TestCase):
                 self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
                 network.assert_not_called()
             self.assertFalse((Path(directory) / 'market-dashboard/last-success.json').exists())
+
+    def test_validation_rule_is_private_health_only_and_success_clears_it(self):
+        with TemporaryDirectory() as directory:
+            invalid = valid_payload()
+            invalid['global'].update(strength=None, heat=None, risk=None)
+            deps = self.deps(directory, now=NOW.replace(hour=12),
+                             builder=lambda inputs, previous, config: invalid)
+            failed = job.run_job(self.args(force=True), deps)
+            self.assertFalse(failed.success)
+            self.assertEqual(failed.error_code, 'INVALID_PAYLOAD')
+            self.assertNotIn('OBJECT_SCORES_UNAVAILABLE', repr(failed))
+            health_path = Path(directory) / 'service-health/market-dashboard.json'
+            health = json.loads(health_path.read_text())
+            self.assertEqual(health['validationRule'], 'OBJECT_SCORES_UNAVAILABLE')
+            self.assertLessEqual(set(health), {'stage', 'observedAt', 'sourceCounts', 'completeness',
+                                               'lastPublishStatus', 'errorCode', 'validationRule'})
+            self.assertNotIn('全球环境', json.dumps(health, ensure_ascii=False))
+
+            deps.pop('builder')
+            deps['now'] = NOW
+            recovered = job.run_job(self.args(), deps)
+            self.assertTrue(recovered.success, recovered.error_code)
+            self.assertNotIn('validationRule', json.loads(health_path.read_text()))
 
     def test_skip_publish_and_dry_run_do_not_replace_last_success(self):
         with TemporaryDirectory() as directory:

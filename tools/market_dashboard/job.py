@@ -103,13 +103,20 @@ class PublishResult:
     error_code: str | None = None
 
 
+VALIDATION_RULES = frozenset({'CONTRACT', 'OBJECT_SCORES_UNAVAILABLE'})
+
+
 class ValidationError(ValueError):
-    """Deliberately carries no payload, credential or upstream message."""
+    """Carry only an allowlisted rule, never payload values or upstream text."""
+
+    def __init__(self, rule='CONTRACT'):
+        self.rule = rule if rule in VALIDATION_RULES else 'CONTRACT'
+        super().__init__('INVALID_PAYLOAD')
 
 
-def _require(condition):
+def _require(condition, rule='CONTRACT'):
     if not condition:
-        raise ValidationError('INVALID_PAYLOAD')
+        raise ValidationError(rule)
 
 
 def _numeric(value, low=0, high=100):
@@ -142,7 +149,8 @@ def _validate_legacy_objects(objects, config):
         scores = [obj[axis] for axis in ('strength', 'heat', 'risk')]
         _require(all(value is None or isinstance(value, int) and not isinstance(value, bool)
                      and _numeric(value) for value in scores))
-        _require(any(value is not None for value in scores) and obj['completeness'] > 0)
+        _require(any(value is not None for value in scores) and obj['completeness'] > 0,
+                 'OBJECT_SCORES_UNAVAILABLE')
         if 'observedAt' in obj:
             _timestamp(obj['observedAt'])
         if 'frequency' in obj:
@@ -1644,9 +1652,13 @@ def run_job(args, deps=None):
         }.get(stage, 'JOB_FAILED')
         if not dry_run:
             try:
-                _write_json(health_path, {'stage': stage, 'observedAt': now.isoformat(), 'sourceCounts': counts,
-                            'completeness': completeness if _numeric(completeness) else None,
-                            'lastPublishStatus': 'failed' if stage == 'publish' else last_status, 'errorCode': code})
+                health = {'stage': stage, 'observedAt': now.isoformat(), 'sourceCounts': counts,
+                          'completeness': completeness if _numeric(completeness) else None,
+                          'lastPublishStatus': 'failed' if stage == 'publish' else last_status,
+                          'errorCode': code}
+                if isinstance(error, ValidationError):
+                    health['validationRule'] = error.rule
+                _write_json(health_path, health)
             except (OSError, ValueError, TypeError):
                 pass
         return JobResult(False, stage, error_code=code)

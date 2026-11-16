@@ -68,6 +68,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m tools.market_dashboard.hithink_history \
 
 全部业务时钟为 Asia/Shanghai。LaunchAgent 每 300 秒唤醒，Python gate 决定是否运行：交易日 09:30–11:30、13:00–15:00，每 15 分钟 bucket 最多成功一次；15:00–15:30 为一次最终 close 的补采窗口。收盘数据必须在当日 15:00 或之后；同日收盘观测可持续有效到当地日期结束。`--force` 只绕过时段限制，不绕过锁、schema 或成功 bucket 去重。
 
+wrapper 在上海工作日 09:25–15:35 启动单实例 `caffeinate -s` 守护。该断言只在 Mac 接通电源时阻止空闲系统睡眠；不会绕过合盖睡眠、关机、退出登录、断网或电池模式。真实交易日验收应保持电脑登录、接通电源和联网。守护失败不阻断数据任务，15:30 的正式收盘可得性边界也不会放宽。
+
 默认工作日只是运行候选日。任务先读取同一批 Wind 广度数据的市场日期：只有当前上海日期的证据才会把当天注入本次正式交易日集合；若仍是上一交易日，则写入私有负缓存并停止当日后续调用和发布。该机制不预知未来休市日，休市工作日最多消耗一次探测，但不会把旧数据冒充当日数据。
 
 仅准备（不会加载/启动）；先审核生成 plist、稳定路径与私有权限：
@@ -105,6 +107,8 @@ disable 只停止该 label；uninstall 将 plist 留为 `.plist.disabled`，保�
 ```
 
 wrapper 将摘要写入私有 `job.log`。live dry-run 仍获取锁，可能创建锁目录；不发布、不改成功/health。`--skip-publish` 会更新 health 而不推进成功 bucket，不要将它当作完全无写入检查。`--fixture` 无法真实发布。已有 day 0 close 的同一 bucket 返回 duplicate 是预期行为；不要删 state 强行重发。后续人工补采若需 `--force`，应先核验时钟、源观测、目标与未成功 bucket。
+
+本机 `state/service-health/market-dashboard.json` 在派生 payload 校验失败时可包含 `validationRule`。该值只能来自代码内固定枚举，例如 `OBJECT_SCORES_UNAVAILABLE`；它不进入公开 API、CLI 摘要或 Cloudflare，也不包含对象名称、字段值、供应商原文或凭证。下一次成功健康写入会移除旧规则。
 
 只读查看：
 
