@@ -122,15 +122,17 @@ class BreadthTests(unittest.TestCase):
             sector = SectorDefinition('881121.TI', 'test', 'industry')
             replace_catalog(db, [sector], observed_at_ms=1)
             universe = SimpleNamespace(industries=[sector], concepts=[], core_ids=[])
-            client = SimpleNamespace(constituents=lambda code: self.members('000001.SZ'))
+            client = SimpleNamespace(constituents=lambda code: self.members('000001.SZ', '834683.NQ'))
             with patch('tools.market_dashboard.hithink_breadth.load_stock_panel', return_value=iter([observation('000001.SZ')])) as loader:
                 report = backfill_breadth_history(client, db, universe,
                     HistoryWindow('2026-11-13', '2026-11-13'), None,
                     cli_path=Path('/cli'), db_path=root/'provider', state_root=root,
                     trading_dates=['2026-11-12', '2026-11-13'])
             self.assertEqual(loader.call_count, 1)
+            self.assertEqual(loader.call_args.args[3], ['000001.SZ'])
             self.assertEqual(report['rows'], 1)
             self.assertEqual(report['sectors'][0]['validCount'], 1)
+            self.assertEqual(report['sectors'][0]['totalCount'], 2)
             self.assertEqual(db.execute('SELECT count(*) FROM sector_breadth_daily').fetchone()[0], 1)
             db.close()
 

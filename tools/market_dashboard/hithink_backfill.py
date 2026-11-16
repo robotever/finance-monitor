@@ -317,7 +317,10 @@ def backfill_breadth_history(client, store, universe, window, budget, *, cli_pat
     days = {day: dates[i-1] for i, day in enumerate(dates) if i and window.start <= day <= window.end}
     if not days or any(window.start <= day <= window.end and i == 0 for i, day in enumerate(dates)):
         raise ValueError('BREADTH_PREVIOUS_SESSION_MISSING')
-    symbols = sorted({m.stock_code for versions in snapshots.values() for members in versions.values() for m in members})
+    # Provider concepts can include non-A-share identities outside local coverage.
+    # Keep them in memberships/coverage denominators; request only supported stocks.
+    symbols = sorted({m.stock_code for versions in snapshots.values() for members in versions.values()
+                      for m in members if breadth._SYMBOL.fullmatch(m.stock_code)})
     check_yield()
     observations = breadth.load_stock_panel(runner or run_command, cli_path, db_path,
         symbols, window.start, window.end, state_root/'hithink-breadth'/'panel.csv')
