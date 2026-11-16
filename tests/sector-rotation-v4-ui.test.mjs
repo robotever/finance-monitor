@@ -52,3 +52,6 @@ test('dashboard uses complete v3 fallback with flag off and NO_SNAPSHOT, switche
  }finally{app?.unmount();await instance.close()}}
  globalThis.fetch=previous;if(env===undefined)delete process.env.VITE_HITHINK_SECTOR_V4;else process.env.VITE_HITHINK_SECTOR_V4=env
 })
+test('real provider precision and missing-code families are readable in sector cards',async()=>{
+ const {default:Row}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorRow.vue');const r={...row(1),metrics:{return1d:1.9653787017455127},missing:['participation.turnoverMarketShare.missingInput','trendDeterioration.slope5d.missingInput']};const html=await renderToString(createSSRApp({render:()=>h(Row,{row:r})}));assert.match(html,/1.97%/);assert.match(html,/缺失2项/);assert.match(html,/全市场成交额占比/);assert.match(html,/短期趋势斜率/);assert.ok(!html.includes('1.9653787017455127'))
+})
