@@ -1,6 +1,6 @@
 """Pins the independently versioned Hithink score contract."""
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
 import unittest
@@ -117,6 +117,66 @@ class V4ScoringTests(unittest.TestCase):
         self.assertIsNone(rows[-1].get('observedAt'))
         self.assertTrue(rows[-1]['officialClose'])
         self.assertEqual(rows[-1]['membershipMode'],'point_in_time_snapshot')
+
+    def test_replay_late_breadth_cannot_inherit_old_index_arrival(self):
+        from tools.market_dashboard.rotation_evaluation import _available
+        indexes,breadth=panel(25)
+        stamp=lambda value:int(datetime.fromisoformat(value).timestamp()*1000)
+        for row in indexes:
+            row['observed_at_ms']=stamp(row['market_date']+'T15:10:00+08:00')
+        for row in breadth:
+            row['observed_at_ms']=stamp(row['market_date']+'T15:12:00+08:00')
+        breadth[-1]['observed_at_ms']=stamp('2026-11-16T15:20:00+08:00')
+        rows=v4.replay_v4(indexes,breadth,[dict(id='881001.TI',universe='industry')],config())
+        self.assertEqual(rows[-1]['availableAt'],'2026-11-16T15:20:00+08:00')
+        self.assertEqual(rows[-1]['observedAt'],'2026-11-16T15:20:00+08:00')
+        self.assertFalse(_available(rows[-1]))
+
+    def test_feature_availability_requires_all_inputs_and_late_history(self):
+        from tools.market_dashboard.rotation_evaluation import _available
+        indexes,breadth=panel(30)
+        stamp=lambda value:int(datetime.fromisoformat(value).timestamp()*1000)
+        for row in indexes:
+            row['observed_at_ms']=stamp(row['market_date']+'T15:10:00+08:00')
+        for row in breadth:
+            row['observed_at_ms']=stamp(row['market_date']+'T15:12:00+08:00')
+        benchmark=[dict(row,close=row['close']*.9) for row in indexes]
+        amounts={row['market_date']:dict(turnover=5000,observed_at_ms=stamp(row['market_date']+'T15:16:00+08:00')) for row in indexes}
+        day=indexes[-1]['market_date']
+        f=v4.build_v4_features(indexes,breadth,market_amounts=amounts,benchmark_rows=benchmark)
+        self.assertEqual(f['availableAt'],day+'T15:16:00+08:00')
+        self.assertEqual(f['availabilityStatus'],'verified')
+        self.assertTrue(_available(dict(f,observedAt=f['availableAt'])))
+        for field in ('index','breadth','benchmark','market'):
+            ii,bb,bench,aa=deepcopy(indexes),deepcopy(breadth),deepcopy(benchmark),deepcopy(amounts)
+            dependency={'index':ii[0],'breadth':bb[-2],'benchmark':bench[-1],'market':aa[day]}[field]
+            dependency['observed_at_ms']=stamp('2026-11-16T15:20:00+08:00')
+            late=v4.build_v4_features(ii,bb,market_amounts=aa,benchmark_rows=bench)
+            self.assertEqual(late['availableAt'],'2026-11-16T15:20:00+08:00',field)
+            dependency['observed_at_ms']=None
+            unknown=v4.build_v4_features(ii,bb,market_amounts=aa,benchmark_rows=bench)
+            self.assertIsNone(unknown['availableAt'],field)
+            dependency['observed_at_ms']=stamp(day+'T15:15:00+08:00')
+            dependency['availabilityStatus']='reconstructed'
+            reconstructed=v4.build_v4_features(ii,bb,market_amounts=aa,benchmark_rows=bench)
+            self.assertIsNone(reconstructed['availableAt'],field)
+        f=v4.build_v4_features(indexes,breadth,market_amounts={day:5000},benchmark_rows=benchmark)
+        self.assertIsNone(f['availableAt'])
+        f=v4.build_v4_features(indexes,[dict(r,observed_at_ms=None) for r in breadth])
+        self.assertIsNone(f['availableAt'])
+        self.assertFalse(_available(dict(f,observedAt=day+'T15:20:00+08:00')))
+
+    def test_score_availability_propagates_peer_and_historical_score_arrivals(self):
+        indexes,breadth=panel(30)
+        f=v4.build_v4_features(indexes,breadth)
+        day=f['marketDate']; f.update(observedAt=day+'T15:10:00+08:00',availableAt=day+'T15:10:00+08:00',availabilityStatus='verified')
+        peer=deepcopy(f); peer['id']='881002.TI'
+        peer.update(availableAt='2026-11-16T15:20:00+08:00',observedAt='2026-11-16T15:20:00+08:00')
+        score=v4.score_v4_sector(f,[],[f,peer],config())
+        self.assertEqual(score['availableAt'],'2026-11-16T15:20:00+08:00')
+        past=dict(f,marketDate='2024-01-01',session='close',availableAt='2026-11-16T15:22:00+08:00',observedAt='2026-11-16T15:22:00+08:00')
+        score=v4.score_v4_sector(f,[past],[f],config())
+        self.assertEqual(score['availableAt'],'2026-11-16T15:22:00+08:00')
 
     def test_batch_scoring_matches_single_without_mutating_inputs(self):
         indexes,breadth=panel(); first=v4.build_v4_features(indexes,breadth)

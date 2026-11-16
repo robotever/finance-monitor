@@ -84,11 +84,45 @@ def top_decile_continuity(history):
     return dict(topDecileStreak=streak,topDecileCount15d=count)
 
 
+
+def _dependency_arrival(row):
+    """Return verified input availability; explicit unknown never falls back."""
+    if not isinstance(row, dict) or row.get('availabilityStatus') in ('unknown','reconstructed') or row.get('reconstructed') is True:
+        return None
+    arrivals=[]
+    for key in ('observed_at_ms','available_at_ms','observedAt','availableAt'):
+        if key not in row:
+            continue
+        value=row[key]
+        try:
+            if key.endswith('_ms'):
+                if not _number(value) or value<0: return None
+                arrival=datetime.fromtimestamp(value/1000,ZoneInfo('Asia/Shanghai'))
+            else:
+                arrival=datetime.fromisoformat(value)
+                if arrival.tzinfo is None: return None
+            arrivals.append(arrival)
+        except (TypeError,ValueError,OverflowError,OSError):
+            return None
+    return max(arrivals) if arrivals else None
+
+
+def _availability(dependencies):
+    """Every contributing input must have known availability, not just the index."""
+    arrivals=[_dependency_arrival(row) for row in dependencies]
+    if not arrivals or any(value is None for value in arrivals):
+        return dict(observedAt=None,availableAt=None,availabilityStatus='unknown')
+    latest=max(arrivals).astimezone(ZoneInfo('Asia/Shanghai')).isoformat()
+    return dict(observedAt=latest,availableAt=latest,availabilityStatus='verified')
+
+
 def build_v4_features(index_rows, breadth_rows, *, sector_id=None, market_date=None,
                       market_amounts=None, benchmark_rows=(), prior_scores=(), universe=None):
     """Build one dated feature row from bounded official history and breadth.
 
-    ``market_amounts`` maps market date to full A-share turnover. Optional
+    ``market_amounts`` maps market date to full A-share turnover, either a
+    number (unknown arrival) or {turnover, observed_at_ms, [available_at_ms]}.
+    Arrival provenance is required for every contributing input. Optional
     ``prior_scores`` supplies already derived historical participation/strength
     and full-universe ranks. Future observations are excluded before all windows.
     Missing observations are retained as gaps, never zero or forward-filled.
@@ -118,7 +152,8 @@ def build_v4_features(index_rows, breadth_rows, *, sector_id=None, market_date=N
     turns=[r.get('turnover') for r in indexes[-20:]]
     m['turnover']=_finite(indexes[-1].get('turnover'))
     m['turnoverPercentile']=_percentile(turns,m['turnover'],normal) if len(turns)==20 and all(_number(v) for v in turns) else None
-    m['turnoverMarketShare']=_ratio(m['turnover'],(market_amounts or {}).get(today))
+    market_amount=(market_amounts or {}).get(today)
+    m['turnoverMarketShare']=_ratio(m['turnover'],market_amount.get('turnover') if isinstance(market_amount,dict) else market_amount)
     m['shortAcceleration']=_difference(m['return1d'],m['return5d']/5 if m['return5d'] is not None else None)
     m['mediumAcceleration']=_difference(m['return5d']/5 if m['return5d'] is not None else None,m['return20d']/20 if m['return20d'] is not None else None)
     recent=[breadth.get(r['market_date'],{}) for r in indexes[-6:]]
@@ -151,8 +186,17 @@ def build_v4_features(index_rows, breadth_rows, *, sector_id=None, market_date=N
     m.update(continuity)
     cov=b.get('completeness',0.)
     if not _number(cov) or not 0<=cov<=1: raise ValueError('INVALID_BREADTH_COVERAGE')
+    # Price windows, six-date breadth history, benchmark horizons and derived
+    # prior strengths all contribute to this feature. Unknown arrivals remain
+    # unknown even when another input has a plausible same-day timestamp.
+    dependencies=indexes[-250:]+[r for r in recent if r]+past[-15:]
+    if not b: dependencies.append({})
+    dependencies.extend(r for r in aligned[-26:] if r)
+    if market_amount is not None:
+        dependencies.append(market_amount if isinstance(market_amount,dict) else {})
+    availability=_availability(dependencies)
     # Missing a breadth observation is explicit, with no invented membership mode.
-    return dict(id=identity,sector_id=identity,universe=universe or ('industry' if identity.startswith('881') else 'concept'),marketDate=today,market_date=today,
+    return dict(**availability,id=identity,sector_id=identity,universe=universe or ('industry' if identity.startswith('881') else 'concept'),marketDate=today,market_date=today,
                 featureVersion=FEATURE_VERSION,sectorScoringVersion=SCORE_VERSION,
                 sectorUniverseVersion=UNIVERSE_VERSION,membershipVersion=MEMBERSHIP_VERSION,
                 membershipMode=b.get('membership_mode'),breadthCompleteness=cov,
@@ -316,6 +360,14 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
         heat='crowded' if activity>=90 else 'active' if activity>=70 else 'cold' if activity<30 else None
         if heat is None and _number(m.get('participationDelta5d')) and m['participationDelta5d']>=15: heat='warming'
     result.update({axis:math.floor(v+.5) if v is not None else None for axis,v in raw.items()})
+    dependencies=list(rows)
+    for identity in ids:
+        dependencies.extend(sorted([row for row in prior_closes
+            if row.get('id')==identity and row.get('universe')==universe
+            and row.get('marketDate','')<current['marketDate'] and row.get('session')=='close'
+            and row.get('sectorScoringVersion')==SCORE_VERSION and row.get('sectorUniverseVersion')==UNIVERSE_VERSION],
+            key=lambda row:row['marketDate'])[-15:])
+    result.update(_availability(dependencies))
     result.update(schemaVersion='market-dashboard-v4',sectorScoringVersion=SCORE_VERSION,sectorUniverseVersion=UNIVERSE_VERSION,
                   featureVersion=FEATURE_VERSION,membershipVersion=MEMBERSHIP_VERSION,membershipMode=current.get('membershipMode'),
                   source='Hithink',_rawScores=raw,components=c,metrics=m,heatState=heat,validCloses=valid,
@@ -361,8 +413,9 @@ def replay_v4(index_rows, breadth_rows, sector_definitions, config, *,
 
     Definitions are catalog-derived ``id,name,universe`` mappings. Returns every
     available dated sector, with no invented rows for absent official indexes.
-    Only actual ``observed_at_ms`` becomes observedAt; absent provenance remains
-    absent, so the evaluator cannot misrepresent reconstructed history as timely.
+    All contributing inputs must carry verified arrival provenance. The latest
+    arrival becomes observedAt/availableAt; absent provenance remains unknown,
+    so reconstructed history cannot masquerade as a timely forecast.
     """
     validate_v4_config(config)
     definitions={r['id']:dict(r) for r in sector_definitions}
@@ -383,9 +436,6 @@ def replay_v4(index_rows, breadth_rows, sector_definitions, config, *,
                                 market_amounts=market_amounts,benchmark_rows=benchmark_rows,
                                 prior_scores=result,universe=definition['universe'])
             f.update(name=definition.get('name',identity),session='close',officialClose=True)
-            observed=observation.get('observed_at_ms')
-            if observed is not None:
-                f['observedAt']=datetime.fromtimestamp(observed/1000,ZoneInfo('Asia/Shanghai')).isoformat()
             current.append(f)
         scores=score_v4_sectors(current,result,config)
         for axis in ('strength','opportunity','risk'): scores=rank_v4_universe(scores,axis)
