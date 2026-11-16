@@ -63,6 +63,7 @@ functions/
 | `rotation_diagnostics.py` | 离线历史诊断 |
 | `rotation_evaluation.py` | 强度／机会／风险的只读PIT评价、基准比较和Markdown报告 |
 | `hithink_history.py` | 同花顺本地日线的分页只读适配、严格校验和覆盖审计 |
+| `sector_mapping.py` | Wind／同花顺当前成份解析、重合度门禁和聚合证据采集 |
 | `fixtures/` | 只用于测试的受控合成／截断样本 |
 | `tests/` | Python 单元、集成和运维测试 |
 
@@ -70,6 +71,8 @@ functions/
 
 - `market-dashboard.json`：评分权重、阈值、刷新窗口、来源与发布策略。
 - `market-concepts.json`：75 个概念的固定宇宙、25 个核心概念和相关版本。
+- `sector-overlap-candidates.json`：32 个机械同名 Wind／同花顺概念代码对。
+- `sector-price-history-candidates.json`：同日成份重合度聚合证据和价格历史候选状态；不进入生产评分。
 
 配置不是普通参数文件：修改权重、阈值、身份集合或调度会改变研究含义，必须带测试、变更记录和必要的版本升级。
 
@@ -102,3 +105,4 @@ functions/
 | 修改生产部署 | `wrangler.toml`、Functions、migrations | Cloudflare 绑定、回滚和验收记录 |
 | 修改验收页面 | `acceptance*.mjs`、Dashboard | acceptance 测试、`noindex` 和隔离检查 |
 | 修改离线历史数据 | `tools/market_dashboard/hithink_history.py`、`docs/DATA_SOURCES.md` | 复权口径、身份映射、适配器测试和授权边界 |
+| 修改跨源板块映射 | `config/sector-overlap-candidates.json`、`tools/market_dashboard/sector_mapping.py` | 同日成份证据、门槛版本、差异样本和生产隔离 |

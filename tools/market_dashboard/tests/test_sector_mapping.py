@@ -1,16 +1,24 @@
 import json
+from pathlib import Path
+import tempfile
 import unittest
 
 
 from tools.market_dashboard.sector_mapping import (
     SectorMappingError,
+    collect_overlap_audit,
     evaluate_overlap,
+    make_hithink_runner,
+    make_wind_runner,
     parse_hithink_constituents,
     parse_wind_constituents,
+    run_cli,
 )
 
 
-def wind_envelope(codes, *, windcode="884201.WI", date="2026-11-16"):
+def wind_envelope(
+    codes, *, windcode="884201.WI", date="2026-11-16", extra_count_table=False
+):
     columns = [
         {"name": "指数成份代码", "type": "string"},
         {"name": "指数成份简称", "type": "string"},
@@ -19,7 +27,12 @@ def wind_envelope(codes, *, windcode="884201.WI", date="2026-11-16"):
         {"name": "日期", "type": "date"},
     ]
     rows = [[code, f"证券{index}", windcode, "人工智能指数", date] for index, code in enumerate(codes)]
-    payload = {"data": {"data": [{"columns": columns, "rows": rows}]}, "error": None}
+    tables = [{"columns": columns, "rows": rows}]
+    if extra_count_table:
+        tables.append(
+            {"columns": [{"name": "指数成份数量", "type": "number"}], "rows": [[len(rows)]]}
+        )
+    payload = {"data": {"data": tables}, "error": None}
     return {
         "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}],
         "isError": False,
@@ -102,6 +115,17 @@ class SectorMappingTests(unittest.TestCase):
                     expected_code="884201.WI",
                 )
 
+    def test_wind_parser_selects_constituent_table_when_count_summary_is_separate(self):
+        snapshot = parse_wind_constituents(
+            wind_envelope(
+                ["000001.SZ", "000002.SZ"],
+                extra_count_table=True,
+            ),
+            expected_code="884201.WI",
+        )
+
+        self.assertEqual(set(snapshot["members"]), {"000001.SZ", "000002.SZ"})
+
     def test_evaluator_rejects_name_and_snapshot_date_mismatch(self):
         codes = ["000001.SZ"]
         wind = parse_wind_constituents(wind_envelope(codes), expected_code="884201.WI")
@@ -123,6 +147,134 @@ class SectorMappingTests(unittest.TestCase):
         with self.subTest("name mismatch"):
             with self.assertRaises(SectorMappingError):
                 evaluate_overlap(wrong_name, wind, same_day_hithink)
+
+
+class SectorMappingCollectionTests(unittest.TestCase):
+    def test_collection_keeps_pass_review_and_safe_failure_visible(self):
+        candidates = [
+            {
+                "wind": {"code": "884201.WI", "name": "人工智能指数"},
+                "hithink": {"code": "885728.TI", "name": "人工智能"},
+            },
+            {
+                "wind": {"code": "884091.WI", "name": "云计算指数"},
+                "hithink": {"code": "885362.TI", "name": "云计算"},
+            },
+            {
+                "wind": {"code": "8841665.WI", "name": "数据要素指数"},
+                "hithink": {"code": "886041.TI", "name": "数据要素"},
+            },
+        ]
+
+        def wind_runner(candidate):
+            code = candidate["wind"]["code"]
+            if code == "8841665.WI":
+                raise SectorMappingError("WIND_CLI_FAILED")
+            codes = ["000001.SZ", "000002.SZ"]
+            return wind_envelope(codes, windcode=code)
+
+        def hithink_runner(candidate):
+            code = candidate["hithink"]["code"]
+            codes = (
+                ["000001.SZ", "000002.SZ"]
+                if code == "885728.TI"
+                else ["000001.SZ", "600000.SH"]
+            )
+            return hithink_envelope(codes)
+
+        audit = collect_overlap_audit(candidates, wind_runner, hithink_runner)
+
+        self.assertEqual(audit["schemaVersion"], "sector-overlap-audit-v1")
+        self.assertEqual(audit["gateVersion"], "sector-overlap-gate-v1")
+        self.assertEqual(
+            audit["summary"],
+            {"total": 3, "priceHistoryCandidates": 1, "manualReview": 1, "invalidEvidence": 1},
+        )
+        self.assertEqual(
+            [item["status"] for item in audit["candidates"]],
+            ["price_history_candidate", "manual_review", "invalid_evidence"],
+        )
+        self.assertEqual(audit["candidates"][2]["errorCode"], "WIND_CLI_FAILED")
+        self.assertNotIn("errorMessage", audit["candidates"][2])
+
+    def test_provider_runners_use_single_target_argv_and_parse_complete_json(self):
+        calls = []
+
+        def command_runner(argv, *, cwd, timeout):
+            calls.append((argv, cwd, timeout))
+            if argv[0] == "node":
+                payload = wind_envelope(["000001.SZ"])
+            else:
+                payload = hithink_envelope(["000001.SZ"])
+            return type("Result", (), {"returncode": 0, "stdout": json.dumps(payload), "stderr": ""})()
+
+        candidate = {
+            "wind": {"code": "884201.WI", "name": "人工智能指数"},
+            "hithink": {"code": "885728.TI", "name": "人工智能"},
+        }
+        wind_runner = make_wind_runner("/opt/wind-skill", command_runner=command_runner)
+        hithink_runner = make_hithink_runner("/opt/hithink-finance", command_runner=command_runner)
+
+        wind_runner(candidate)
+        hithink_runner(candidate)
+
+        self.assertEqual(calls[0][0][:4], ["node", "scripts/cli.mjs", "call", "index_data"])
+        self.assertEqual(calls[0][0][4], "get_index_basicinfo")
+        self.assertIn("884201.WI", json.loads(calls[0][0][5])["question"])
+        self.assertEqual(calls[0][1], "/opt/wind-skill")
+        self.assertEqual(
+            calls[1][0],
+            [
+                "/opt/hithink-finance",
+                "index",
+                "constituents",
+                "--thscode",
+                "885728.TI",
+                "--max-rows",
+                "0",
+                "--format",
+                "json",
+            ],
+        )
+        self.assertIsNone(calls[1][1])
+
+    def test_cli_writes_aggregate_only_audit_from_versioned_candidates(self):
+        candidate = {
+            "wind": {"code": "884201.WI", "name": "人工智能指数"},
+            "hithink": {"code": "885728.TI", "name": "人工智能"},
+        }
+        codes = ["000001.SZ", "000002.SZ"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidates_path = root / "candidates.json"
+            output_path = root / "audit.json"
+            candidates_path.write_text(
+                json.dumps(
+                    {"mappingVersion": "wind-hithink-concepts-2026-11-16", "candidates": [candidate]}
+                ),
+                encoding="utf-8",
+            )
+
+            exit_code = run_cli(
+                [
+                    "--candidates",
+                    str(candidates_path),
+                    "--output",
+                    str(output_path),
+                    "--wind-skill-dir",
+                    "/opt/wind-skill",
+                    "--hithink-cli",
+                    "/opt/hithink-finance",
+                ],
+                wind_runner=lambda item: wind_envelope(codes, windcode=item["wind"]["code"]),
+                hithink_runner=lambda item: hithink_envelope(codes),
+            )
+
+            self.assertEqual(exit_code, 0)
+            audit = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(audit["mappingVersion"], "wind-hithink-concepts-2026-11-16")
+            self.assertEqual(audit["summary"]["priceHistoryCandidates"], 1)
+            self.assertNotIn("members", output_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

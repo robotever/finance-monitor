@@ -1,0 +1,1316 @@
+{
+  "candidates": [
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 1086,
+        "intersection": 77,
+        "union": 1097,
+        "wind": 88
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000034.SZ",
+          "000035.SZ",
+          "000039.SZ",
+          "000063.SZ"
+        ],
+        "windOnly": [
+          "002073.SZ",
+          "002184.SZ",
+          "002235.SZ",
+          "002920.SZ",
+          "300245.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885728.TI",
+        "name": "人工智能"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.070902,
+        "jaccard": 0.070191,
+        "windCoverage": 0.875
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884201.WI",
+        "name": "人工智能指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 225,
+        "intersection": 40,
+        "union": 247,
+        "wind": 62
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000158.SZ",
+          "000409.SZ",
+          "000665.SZ",
+          "000818.SZ"
+        ],
+        "windOnly": [
+          "000021.SZ",
+          "000063.SZ",
+          "000066.SZ",
+          "002093.SZ",
+          "002268.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885362.TI",
+        "name": "云计算"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.177778,
+        "jaccard": 0.161943,
+        "windCoverage": 0.645161
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884091.WI",
+        "name": "云计算指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 403,
+        "intersection": 34,
+        "union": 418,
+        "wind": 49
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000158.SZ",
+          "000409.SZ",
+          "000503.SZ",
+          "000555.SZ"
+        ],
+        "windOnly": [
+          "002010.SZ",
+          "002153.SZ",
+          "002285.SZ",
+          "002343.SZ",
+          "002707.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886041.TI",
+        "name": "数据要素"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.084367,
+        "jaccard": 0.08134,
+        "windCoverage": 0.693878
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841665.WI",
+        "name": "数据要素指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 184,
+        "intersection": 24,
+        "union": 185,
+        "wind": 25
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000021.SZ",
+          "000062.SZ",
+          "000541.SZ",
+          "000576.SZ",
+          "000651.SZ"
+        ],
+        "windOnly": [
+          "688153.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885908.TI",
+        "name": "第三代半导体"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.130435,
+        "jaccard": 0.12973,
+        "windCoverage": 0.96
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841294.WI",
+        "name": "第三代半导体指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 52,
+        "intersection": 14,
+        "union": 81,
+        "wind": 43
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "002008.SZ",
+          "002549.SZ",
+          "002816.SZ",
+          "002889.SZ",
+          "003031.SZ"
+        ],
+        "windOnly": [
+          "002222.SZ",
+          "002338.SZ",
+          "002409.SZ",
+          "002643.SZ",
+          "300054.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886054.TI",
+        "name": "光刻机"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.269231,
+        "jaccard": 0.17284,
+        "windCoverage": 0.325581
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841237.WI",
+        "name": "光刻机指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 498,
+        "intersection": 57,
+        "union": 541,
+        "wind": 100
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000009.SZ",
+          "000026.SZ",
+          "000048.SZ",
+          "000049.SZ",
+          "000062.SZ"
+        ],
+        "windOnly": [
+          "000678.SZ",
+          "000988.SZ",
+          "001266.SZ",
+          "002055.SZ",
+          "002167.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886069.TI",
+        "name": "人形机器人"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.114458,
+        "jaccard": 0.10536,
+        "windCoverage": 0.57
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841699.WI",
+        "name": "人形机器人指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 120,
+        "intersection": 24,
+        "union": 125,
+        "wind": 29
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000509.SZ",
+          "000651.SZ",
+          "000657.SZ",
+          "000988.SZ",
+          "001306.SZ"
+        ],
+        "windOnly": [
+          "002265.SZ",
+          "002283.SZ",
+          "002685.SZ",
+          "300115.SZ",
+          "600243.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885930.TI",
+        "name": "工业母机"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.2,
+        "jaccard": 0.192,
+        "windCoverage": 0.827586
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884766.WI",
+        "name": "工业母机指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 143,
+        "intersection": 24,
+        "union": 146,
+        "wind": 27
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000009.SZ",
+          "000026.SZ",
+          "000551.SZ",
+          "000601.SZ",
+          "000678.SZ"
+        ],
+        "windOnly": [
+          "000559.SZ",
+          "600582.SH",
+          "600893.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886008.TI",
+        "name": "减速器"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.167832,
+        "jaccard": 0.164384,
+        "windCoverage": 0.888889
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841635.WI",
+        "name": "减速器指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 508,
+        "intersection": 57,
+        "union": 525,
+        "wind": 74
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000030.SZ",
+          "000032.SZ",
+          "000034.SZ",
+          "000063.SZ",
+          "000070.SZ"
+        ],
+        "windOnly": [
+          "000738.SZ",
+          "000821.SZ",
+          "002297.SZ",
+          "002577.SZ",
+          "002935.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886067.TI",
+        "name": "低空经济"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.112205,
+        "jaccard": 0.108571,
+        "windCoverage": 0.77027
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841750.WI",
+        "name": "低空经济指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 292,
+        "intersection": 35,
+        "union": 314,
+        "wind": 57
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000157.SZ",
+          "000409.SZ",
+          "000528.SZ",
+          "000599.SZ",
+          "000795.SZ"
+        ],
+        "windOnly": [
+          "001288.SZ",
+          "300776.SZ",
+          "300812.SZ",
+          "300857.SZ",
+          "301255.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886057.TI",
+        "name": "新型工业化"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.119863,
+        "jaccard": 0.111465,
+        "windCoverage": 0.614035
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841739.WI",
+        "name": "新型工业化指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 300,
+        "intersection": 51,
+        "union": 306,
+        "wind": 57
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000009.SZ",
+          "000049.SZ",
+          "000056.SZ",
+          "000157.SZ",
+          "000338.SZ"
+        ],
+        "windOnly": [
+          "002594.SZ",
+          "002608.SZ",
+          "300317.SZ",
+          "600206.SH",
+          "600241.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886032.TI",
+        "name": "固态电池"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.17,
+        "jaccard": 0.166667,
+        "windCoverage": 0.894737
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841671.WI",
+        "name": "固态电池指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 913,
+        "intersection": 56,
+        "union": 914,
+        "wind": 57
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000009.SZ",
+          "000021.SZ",
+          "000027.SZ",
+          "000030.SZ",
+          "000035.SZ"
+        ],
+        "windOnly": [
+          "688006.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885921.TI",
+        "name": "储能"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.061336,
+        "jaccard": 0.061269,
+        "windCoverage": 0.982456
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884790.WI",
+        "name": "储能指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 387,
+        "intersection": 45,
+        "union": 391,
+        "wind": 49
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000009.SZ",
+          "000027.SZ",
+          "000158.SZ",
+          "000417.SZ",
+          "000421.SZ"
+        ],
+        "windOnly": [
+          "002660.SZ",
+          "300471.SZ",
+          "600468.SH",
+          "603859.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885461.TI",
+        "name": "充电桩"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.116279,
+        "jaccard": 0.11509,
+        "windCoverage": 0.918367
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884114.WI",
+        "name": "充电桩指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 132,
+        "intersection": 30,
+        "union": 138,
+        "wind": 36
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000027.SZ",
+          "000070.SZ",
+          "000159.SZ",
+          "000551.SZ",
+          "000586.SZ"
+        ],
+        "windOnly": [
+          "600885.SH",
+          "603050.SH",
+          "603606.SH",
+          "688599.SH",
+          "688663.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885425.TI",
+        "name": "特高压"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.227273,
+        "jaccard": 0.217391,
+        "windCoverage": 0.833333
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884190.WI",
+        "name": "特高压指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 64,
+        "intersection": 24,
+        "union": 68,
+        "wind": 28
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000612.SZ",
+          "001280.SZ",
+          "002167.SZ",
+          "002334.SZ",
+          "002340.SZ"
+        ],
+        "windOnly": [
+          "002240.SZ",
+          "002249.SZ",
+          "300811.SZ",
+          "600330.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885343.TI",
+        "name": "稀土永磁"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.375,
+        "jaccard": 0.352941,
+        "windCoverage": 0.857143
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884086.WI",
+        "name": "稀土永磁指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 505,
+        "intersection": 59,
+        "union": 525,
+        "wind": 79
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000039.SZ",
+          "000058.SZ",
+          "000063.SZ",
+          "000066.SZ"
+        ],
+        "windOnly": [
+          "002254.SZ",
+          "002389.SZ",
+          "002903.SZ",
+          "300395.SZ",
+          "300397.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886078.TI",
+        "name": "商业航天"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.116832,
+        "jaccard": 0.112381,
+        "windCoverage": 0.746835
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841877.WI",
+        "name": "商业航天指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 114,
+        "intersection": 22,
+        "union": 132,
+        "wind": 40
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000070.SZ",
+          "000561.SZ",
+          "000576.SZ",
+          "000701.SZ",
+          "000801.SZ"
+        ],
+        "windOnly": [
+          "000519.SZ",
+          "002338.SZ",
+          "002383.SZ",
+          "002389.SZ",
+          "002625.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886076.TI",
+        "name": "军工信息化"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.192982,
+        "jaccard": 0.166667,
+        "windCoverage": 0.55
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841875.WI",
+        "name": "军工信息化指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 275,
+        "intersection": 74,
+        "union": 284,
+        "wind": 83
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000078.SZ",
+          "000534.SZ",
+          "000538.SZ",
+          "000566.SZ",
+          "000597.SZ"
+        ],
+        "windOnly": [
+          "000788.SZ",
+          "300841.SZ",
+          "301509.SZ",
+          "688046.SH",
+          "688131.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886015.TI",
+        "name": "创新药"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.269091,
+        "jaccard": 0.260563,
+        "windCoverage": 0.891566
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841049.WI",
+        "name": "创新药指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 67,
+        "intersection": 19,
+        "union": 72,
+        "wind": 24
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000411.SZ",
+          "000739.SZ",
+          "000935.SZ",
+          "000950.SZ",
+          "002038.SZ"
+        ],
+        "windOnly": [
+          "300009.SZ",
+          "301281.SZ",
+          "600488.SH",
+          "603259.SH",
+          "688687.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886051.TI",
+        "name": "减肥药"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.283582,
+        "jaccard": 0.263889,
+        "windCoverage": 0.791667
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841718.WI",
+        "name": "减肥药指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 67,
+        "intersection": 14,
+        "union": 68,
+        "wind": 15
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000155.SZ",
+          "000545.SZ",
+          "000713.SZ",
+          "000731.SZ",
+          "000830.SZ"
+        ],
+        "windOnly": [
+          "600596.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885863.TI",
+        "name": "磷化工"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.208955,
+        "jaccard": 0.205882,
+        "windCoverage": 0.933333
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841179.WI",
+        "name": "磷化工指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 283,
+        "intersection": 41,
+        "union": 289,
+        "wind": 47
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000058.SZ",
+          "000063.SZ",
+          "000066.SZ",
+          "000070.SZ",
+          "000099.SZ"
+        ],
+        "windOnly": [
+          "000561.SZ",
+          "300018.SZ",
+          "300212.SZ",
+          "601698.SH",
+          "688078.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885574.TI",
+        "name": "卫星导航"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.144876,
+        "jaccard": 0.141869,
+        "windCoverage": 0.87234
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884087.WI",
+        "name": "卫星导航指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 17,
+        "intersection": 11,
+        "union": 19,
+        "wind": 13
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "002522.SZ",
+          "300281.SZ",
+          "300332.SZ",
+          "600623.SH",
+          "601515.SH"
+        ],
+        "windOnly": [
+          "002068.SZ",
+          "300236.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885931.TI",
+        "name": "PVDF概念"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.647059,
+        "jaccard": 0.578947,
+        "windCoverage": 0.846154
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841648.WI",
+        "name": "PVDF指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 39,
+        "intersection": 11,
+        "union": 46,
+        "wind": 18
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000997.SZ",
+          "001388.SZ",
+          "002117.SZ",
+          "002161.SZ",
+          "002212.SZ"
+        ],
+        "windOnly": [
+          "002049.SZ",
+          "300077.SZ",
+          "300205.SZ",
+          "300248.SZ",
+          "300306.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885975.TI",
+        "name": "电子身份证"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.282051,
+        "jaccard": 0.23913,
+        "windCoverage": 0.611111
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841006.WI",
+        "name": "电子身份证指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 195,
+        "intersection": 37,
+        "union": 198,
+        "wind": 40
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000034.SZ",
+          "000063.SZ",
+          "000156.SZ",
+          "000158.SZ",
+          "000409.SZ"
+        ],
+        "windOnly": [
+          "000977.SZ",
+          "002049.SZ",
+          "600845.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885459.TI",
+        "name": "网络安全"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.189744,
+        "jaccard": 0.186869,
+        "windCoverage": 0.925
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884133.WI",
+        "name": "网络安全指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 75,
+        "intersection": 10,
+        "union": 76,
+        "wind": 11
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000513.SZ",
+          "000551.SZ",
+          "000566.SZ",
+          "002022.SZ",
+          "002038.SZ"
+        ],
+        "windOnly": [
+          "688276.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885994.TI",
+        "name": "猴痘概念"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.133333,
+        "jaccard": 0.131579,
+        "windCoverage": 0.909091
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841593.WI",
+        "name": "猴痘指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 215,
+        "intersection": 12,
+        "union": 221,
+        "wind": 18
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000090.SZ",
+          "000598.SZ",
+          "000625.SZ",
+          "000628.SZ"
+        ],
+        "windOnly": [
+          "002178.SZ",
+          "002512.SZ",
+          "300466.SZ",
+          "600050.SH",
+          "600590.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885820.TI",
+        "name": "数字孪生"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.055814,
+        "jaccard": 0.054299,
+        "windCoverage": 0.666667
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841192.WI",
+        "name": "数字孪生指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 54,
+        "intersection": 24,
+        "union": 57,
+        "wind": 27
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000651.SZ",
+          "002426.SZ",
+          "002434.SZ",
+          "002906.SZ",
+          "002965.SZ"
+        ],
+        "windOnly": [
+          "001696.SZ",
+          "301072.SZ",
+          "603011.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886000.TI",
+        "name": "一体化压铸"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.444444,
+        "jaccard": 0.421053,
+        "windCoverage": 0.888889
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841636.WI",
+        "name": "一体化压铸指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 11,
+        "intersection": 11,
+        "union": 12,
+        "wind": 12
+      },
+      "differenceSamples": {
+        "hithinkOnly": [],
+        "windOnly": [
+          "002219.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "886018.TI",
+        "name": "高压氧舱"
+      },
+      "metrics": {
+        "hithinkCoverage": 1.0,
+        "jaccard": 0.916667,
+        "windCoverage": 0.916667
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "price_history_candidate",
+      "wind": {
+        "code": "8841960.WI",
+        "name": "高压氧舱指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 178,
+        "intersection": 34,
+        "union": 194,
+        "wind": 50
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000032.SZ",
+          "000066.SZ",
+          "000547.SZ",
+          "000948.SZ",
+          "002152.SZ"
+        ],
+        "windOnly": [
+          "000628.SZ",
+          "002396.SZ",
+          "002771.SZ",
+          "002837.SZ",
+          "300525.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885980.TI",
+        "name": "华为鲲鹏"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.191011,
+        "jaccard": 0.175258,
+        "windCoverage": 0.68
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841284.WI",
+        "name": "华为鲲鹏指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 23,
+        "intersection": 8,
+        "union": 32,
+        "wind": 17
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "002007.SZ",
+          "002688.SZ",
+          "300147.SZ",
+          "300498.SZ",
+          "301207.SZ"
+        ],
+        "windOnly": [
+          "000078.SZ",
+          "000518.SZ",
+          "000999.SZ",
+          "002166.SZ",
+          "002566.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885508.TI",
+        "name": "禽流感"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.347826,
+        "jaccard": 0.25,
+        "windCoverage": 0.470588
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884225.WI",
+        "name": "禽流感指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 281,
+        "intersection": 57,
+        "union": 282,
+        "wind": 58
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000021.SZ",
+          "000066.SZ",
+          "000070.SZ",
+          "000333.SZ",
+          "000409.SZ"
+        ],
+        "windOnly": [
+          "300048.SZ"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885311.TI",
+        "name": "智能电网"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.202847,
+        "jaccard": 0.202128,
+        "windCoverage": 0.982759
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "884028.WI",
+        "name": "智能电网指数"
+      }
+    },
+    {
+      "allowedUse": "price_history_research_only",
+      "counts": {
+        "hithink": 98,
+        "intersection": 14,
+        "union": 102,
+        "wind": 18
+      },
+      "differenceSamples": {
+        "hithinkOnly": [
+          "000027.SZ",
+          "000521.SZ",
+          "000544.SZ",
+          "000546.SZ",
+          "000680.SZ"
+        ],
+        "windOnly": [
+          "300655.SZ",
+          "600187.SH",
+          "601388.SH",
+          "603822.SH"
+        ]
+      },
+      "gateVersion": "sector-overlap-gate-v1",
+      "hithink": {
+        "code": "885854.TI",
+        "name": "垃圾分类"
+      },
+      "metrics": {
+        "hithinkCoverage": 0.142857,
+        "jaccard": 0.137255,
+        "windCoverage": 0.777778
+      },
+      "schemaVersion": "sector-overlap-evidence-v1",
+      "snapshotDate": "2026-11-16",
+      "status": "manual_review",
+      "wind": {
+        "code": "8841041.WI",
+        "name": "垃圾分类指数"
+      }
+    }
+  ],
+  "evidenceScope": "current_constituents_only",
+  "gateVersion": "sector-overlap-gate-v1",
+  "mappingVersion": "wind-hithink-concepts-2026-11-16",
+  "schemaVersion": "sector-overlap-audit-v1",
+  "summary": {
+    "invalidEvidence": 0,
+    "manualReview": 31,
+    "priceHistoryCandidates": 1,
+    "total": 32
+  }
+}

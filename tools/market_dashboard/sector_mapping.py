@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 import json
+import os
+from pathlib import Path
 import re
+import subprocess
+import sys
+import tempfile
 from typing import Any
 
 
@@ -14,6 +20,7 @@ _A_SHARE_CODE = re.compile(r"^[0-9]{6}\.(?:SH|SZ|BJ)$")
 _WIND_INDEX_CODE = re.compile(r"^[0-9]+\.WI$")
 _HITHINK_INDEX_CODE = re.compile(r"^[0-9]{6}\.TI$")
 _ISO_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+_SAFE_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
 
 
 class SectorMappingError(ValueError):
@@ -70,9 +77,24 @@ def parse_wind_constituents(
     if payload.get("error") is not None:
         raise SectorMappingError("WIND_RESPONSE_ERROR")
     data = _require_dict(payload.get("data"), "INVALID_WIND_PAYLOAD").get("data")
-    if not isinstance(data, list) or len(data) != 1:
+    if not isinstance(data, list) or not data:
         raise SectorMappingError("INVALID_WIND_TABLE")
-    table = _require_dict(data[0], "INVALID_WIND_TABLE")
+    required = {"指数成份代码", "指数成份简称", "Wind代码", "证券简称", "日期"}
+    matching_tables = []
+    for candidate_table in data:
+        candidate_table = _require_dict(candidate_table, "INVALID_WIND_TABLE")
+        candidate_columns = candidate_table.get("columns")
+        if not isinstance(candidate_columns, list):
+            continue
+        candidate_names = [
+            column.get("name") if isinstance(column, dict) else None
+            for column in candidate_columns
+        ]
+        if required.issubset(candidate_names):
+            matching_tables.append(candidate_table)
+    if len(matching_tables) != 1:
+        raise SectorMappingError("INVALID_WIND_TABLE")
+    table = matching_tables[0]
     columns = table.get("columns")
     rows = table.get("rows")
     if not isinstance(columns, list) or not isinstance(rows, list) or not rows:
@@ -80,7 +102,6 @@ def parse_wind_constituents(
     names = []
     for column in columns:
         names.append(_require_dict(column, "INVALID_WIND_COLUMNS").get("name"))
-    required = {"指数成份代码", "指数成份简称", "Wind代码", "证券简称", "日期"}
     if not required.issubset(names) or len(set(names)) != len(names):
         raise SectorMappingError("INVALID_WIND_COLUMNS")
     positions = {name: names.index(name) for name in required}
@@ -218,3 +239,232 @@ def evaluate_overlap(
         },
         "allowedUse": "price_history_research_only",
     }
+
+
+def _default_command_runner(argv: list[str], *, cwd: str | None, timeout: int):
+    return subprocess.run(
+        argv,
+        cwd=cwd,
+        timeout=timeout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _parse_command_json(result: Any, error_code: str) -> dict[str, Any]:
+    if getattr(result, "returncode", None) != 0:
+        raise SectorMappingError(error_code)
+    stdout = getattr(result, "stdout", None)
+    if not isinstance(stdout, str):
+        raise SectorMappingError(error_code)
+    try:
+        return _require_dict(json.loads(stdout), error_code)
+    except json.JSONDecodeError as exc:
+        raise SectorMappingError(error_code) from exc
+
+
+def make_wind_runner(
+    skill_dir: str,
+    *,
+    command_runner=_default_command_runner,
+    timeout: int = 120,
+):
+    """Return a single-target Wind constituent collector."""
+
+    if not isinstance(skill_dir, str) or not skill_dir:
+        raise SectorMappingError("INVALID_WIND_SKILL_DIR")
+
+    def run(candidate: dict[str, Any]) -> dict[str, Any]:
+        wind = _require_dict(candidate.get("wind"), "INVALID_CANDIDATE")
+        code = wind.get("code")
+        name = wind.get("name")
+        _validate_index_code(code, _WIND_INDEX_CODE, "INVALID_WIND_CODE")
+        if not isinstance(name, str) or not name.strip():
+            raise SectorMappingError("INVALID_CONCEPT_NAME")
+        params = json.dumps(
+            {"question": f"查询Wind{name}{code}的全部当前成份股代码、简称和成份数量"},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        argv = [
+            "node",
+            "scripts/cli.mjs",
+            "call",
+            "index_data",
+            "get_index_basicinfo",
+            params,
+        ]
+        try:
+            result = command_runner(argv, cwd=skill_dir, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise SectorMappingError("WIND_CLI_FAILED") from exc
+        return _parse_command_json(result, "WIND_CLI_FAILED")
+
+    return run
+
+
+def make_hithink_runner(
+    cli_path: str,
+    *,
+    command_runner=_default_command_runner,
+    timeout: int = 120,
+):
+    """Return a single-target Hithink constituent collector."""
+
+    if not isinstance(cli_path, str) or not cli_path:
+        raise SectorMappingError("INVALID_HITHINK_CLI")
+
+    def run(candidate: dict[str, Any]) -> dict[str, Any]:
+        hithink = _require_dict(candidate.get("hithink"), "INVALID_CANDIDATE")
+        code = hithink.get("code")
+        _validate_index_code(code, _HITHINK_INDEX_CODE, "INVALID_HITHINK_CODE")
+        argv = [
+            cli_path,
+            "index",
+            "constituents",
+            "--thscode",
+            code,
+            "--max-rows",
+            "0",
+            "--format",
+            "json",
+        ]
+        try:
+            result = command_runner(argv, cwd=None, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise SectorMappingError("HITHINK_CLI_FAILED") from exc
+        return _parse_command_json(result, "HITHINK_CLI_FAILED")
+
+    return run
+
+
+def collect_overlap_audit(
+    candidates: list[dict[str, Any]],
+    wind_runner,
+    hithink_runner,
+) -> dict[str, Any]:
+    """Collect and evaluate candidates while retaining safe per-item failures."""
+
+    if not isinstance(candidates, list) or not candidates:
+        raise SectorMappingError("INVALID_CANDIDATE_LIST")
+    wind_codes: set[str] = set()
+    hithink_codes: set[str] = set()
+    output: list[dict[str, Any]] = []
+    for candidate in candidates:
+        candidate = _require_dict(candidate, "INVALID_CANDIDATE")
+        wind = _require_dict(candidate.get("wind"), "INVALID_CANDIDATE")
+        hithink = _require_dict(candidate.get("hithink"), "INVALID_CANDIDATE")
+        wind_code = wind.get("code")
+        hithink_code = hithink.get("code")
+        _validate_index_code(wind_code, _WIND_INDEX_CODE, "INVALID_WIND_CODE")
+        _validate_index_code(hithink_code, _HITHINK_INDEX_CODE, "INVALID_HITHINK_CODE")
+        if wind_code in wind_codes or hithink_code in hithink_codes:
+            raise SectorMappingError("DUPLICATE_CANDIDATE_CODE")
+        wind_codes.add(wind_code)
+        hithink_codes.add(hithink_code)
+        try:
+            wind_snapshot = parse_wind_constituents(
+                wind_runner(candidate), expected_code=wind_code
+            )
+            hithink_snapshot = parse_hithink_constituents(
+                hithink_runner(candidate), expected_code=hithink_code
+            )
+            output.append(evaluate_overlap(candidate, wind_snapshot, hithink_snapshot))
+        except SectorMappingError as exc:
+            error_code = str(exc)
+            if not _SAFE_ERROR_CODE.fullmatch(error_code):
+                error_code = "COLLECTION_FAILED"
+            output.append(
+                {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "gateVersion": GATE_VERSION,
+                    "status": "invalid_evidence",
+                    "wind": {"code": wind_code, "name": wind.get("name")},
+                    "hithink": {"code": hithink_code, "name": hithink.get("name")},
+                    "errorCode": error_code,
+                    "allowedUse": "none",
+                }
+            )
+
+    counts = {
+        "price_history_candidate": sum(
+            item["status"] == "price_history_candidate" for item in output
+        ),
+        "manual_review": sum(item["status"] == "manual_review" for item in output),
+        "invalid_evidence": sum(item["status"] == "invalid_evidence" for item in output),
+    }
+    return {
+        "schemaVersion": "sector-overlap-audit-v1",
+        "gateVersion": GATE_VERSION,
+        "summary": {
+            "total": len(output),
+            "priceHistoryCandidates": counts["price_history_candidate"],
+            "manualReview": counts["manual_review"],
+            "invalidEvidence": counts["invalid_evidence"],
+        },
+        "candidates": output,
+    }
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise SectorMappingError("UNSAFE_OUTPUT_PATH")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def run_cli(
+    argv: list[str] | None = None,
+    *,
+    wind_runner=None,
+    hithink_runner=None,
+) -> int:
+    parser = argparse.ArgumentParser(description="Audit current Wind/Hithink concept overlap")
+    parser.add_argument("--candidates", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--wind-skill-dir", required=True)
+    parser.add_argument("--hithink-cli", required=True)
+    args = parser.parse_args(argv)
+    try:
+        candidate_path = Path(args.candidates)
+        if candidate_path.is_symlink():
+            raise SectorMappingError("UNSAFE_CANDIDATE_PATH")
+        source = _require_dict(
+            json.loads(candidate_path.read_text(encoding="utf-8")),
+            "INVALID_CANDIDATE_FILE",
+        )
+        mapping_version = source.get("mappingVersion")
+        candidates = source.get("candidates")
+        if not isinstance(mapping_version, str) or not mapping_version:
+            raise SectorMappingError("INVALID_MAPPING_VERSION")
+        if wind_runner is None:
+            wind_runner = make_wind_runner(args.wind_skill_dir)
+        if hithink_runner is None:
+            hithink_runner = make_hithink_runner(args.hithink_cli)
+        audit = collect_overlap_audit(candidates, wind_runner, hithink_runner)
+        audit["mappingVersion"] = mapping_version
+        audit["evidenceScope"] = "current_constituents_only"
+        _write_json_atomic(Path(args.output), audit)
+        return 0 if audit["summary"]["invalidEvidence"] == 0 else 2
+    except (OSError, json.JSONDecodeError, SectorMappingError):
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(run_cli())
