@@ -1,0 +1,51 @@
+{
+  "candidate": {
+    "hithink": {
+      "code": "886018.TI",
+      "name": "高压氧舱"
+    },
+    "wind": {
+      "code": "8841960.WI",
+      "name": "高压氧舱指数"
+    }
+  },
+  "constituentGateStatus": "price_history_candidate",
+  "finalStatus": "history_rejected",
+  "historyQualification": {
+    "allowedUse": "none",
+    "commonCount": 45,
+    "dailyDirectionAgreement": 0.5,
+    "dailyReturnCorrelation": -0.033673,
+    "failedGates": [
+      "minimumCommonCloses",
+      "windDateCoverage",
+      "hithinkDateCoverage",
+      "dailyReturnCorrelation",
+      "meanAbsoluteDailyReturnDifference",
+      "dailyDirectionAgreement",
+      "windowReturnDifference20"
+    ],
+    "firstCommonDate": "2026-08-18",
+    "gateVersion": "sector-history-gate-v1",
+    "hithinkCount": 970,
+    "hithinkDateCoverage": 0.789474,
+    "hithinkOnlyDates": 925,
+    "lastCommonDate": "2026-11-12",
+    "maxAbsoluteDailyReturnDifferencePp": 6.635047,
+    "meanAbsoluteDailyReturnDifferencePp": 1.930801,
+    "medianAbsoluteDailyReturnDifferencePp": 1.33966,
+    "schemaVersion": "sector-history-qualification-v1",
+    "status": "history_rejected",
+    "windCount": 58,
+    "windDateCoverage": 0.789474,
+    "windOnlyDates": 13,
+    "windowReturns": {
+      "20": {
+        "absDiffPp": 3.204437,
+        "hithinkPct": -3.73652,
+        "windPct": -0.532083
+      }
+    }
+  },
+  "qualificationVersion": "wind-hithink-sector-history-2026-11-16"
+}

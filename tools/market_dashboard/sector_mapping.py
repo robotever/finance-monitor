@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -238,6 +240,138 @@ def evaluate_overlap(
             "hithinkOnly": sorted(hithink_codes - wind_codes)[:difference_sample_limit],
         },
         "allowedUse": "price_history_research_only",
+    }
+
+
+def _validated_close_map(rows: Any, provider: str) -> dict[str, float]:
+    if not isinstance(rows, list) or not rows:
+        raise SectorMappingError(f"INVALID_{provider}_HISTORY")
+    closes: dict[str, float] = {}
+    for row in rows:
+        row = _require_dict(row, f"INVALID_{provider}_HISTORY")
+        date = row.get("date")
+        close = row.get("close")
+        if not isinstance(date, str) or not _ISO_DATE.fullmatch(date):
+            raise SectorMappingError(f"INVALID_{provider}_HISTORY_DATE")
+        try:
+            if datetime.strptime(date, "%Y-%m-%d").date().isoformat() != date:
+                raise ValueError
+        except ValueError as exc:
+            raise SectorMappingError(f"INVALID_{provider}_HISTORY_DATE") from exc
+        if isinstance(close, bool) or not isinstance(close, (int, float)):
+            raise SectorMappingError(f"INVALID_{provider}_HISTORY_CLOSE")
+        close = float(close)
+        if not math.isfinite(close) or close <= 0:
+            raise SectorMappingError(f"INVALID_{provider}_HISTORY_CLOSE")
+        if date in closes:
+            raise SectorMappingError(f"DUPLICATE_{provider}_HISTORY_DATE")
+        closes[date] = close
+    return closes
+
+
+def _correlation(left: list[float], right: list[float]) -> float:
+    left_mean = statistics.mean(left)
+    right_mean = statistics.mean(right)
+    left_var = sum((value - left_mean) ** 2 for value in left)
+    right_var = sum((value - right_mean) ** 2 for value in right)
+    if left_var == 0 or right_var == 0:
+        return 1.0 if left == right else 0.0
+    covariance = sum(
+        (left_value - left_mean) * (right_value - right_mean)
+        for left_value, right_value in zip(left, right)
+    )
+    return covariance / math.sqrt(left_var * right_var)
+
+
+def evaluate_history_alignment(
+    wind_rows: list[dict[str, Any]], hithink_rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Qualify a current-membership candidate using price-history agreement."""
+
+    wind = _validated_close_map(wind_rows, "WIND")
+    hithink = _validated_close_map(hithink_rows, "HITHINK")
+    common_dates = sorted(set(wind) & set(hithink))
+    if len(common_dates) < 2:
+        raise SectorMappingError("INSUFFICIENT_COMMON_HISTORY")
+    first_date, last_date = common_dates[0], common_dates[-1]
+    wind_window = {date for date in wind if first_date <= date <= last_date}
+    hithink_window = {date for date in hithink if first_date <= date <= last_date}
+    common_count = len(common_dates)
+    wind_coverage = common_count / len(wind_window)
+    hithink_coverage = common_count / len(hithink_window)
+
+    wind_returns = [
+        wind[current] / wind[previous] - 1
+        for previous, current in zip(common_dates, common_dates[1:])
+    ]
+    hithink_returns = [
+        hithink[current] / hithink[previous] - 1
+        for previous, current in zip(common_dates, common_dates[1:])
+    ]
+    correlation = _correlation(wind_returns, hithink_returns)
+    absolute_differences = [
+        abs(wind_return - hithink_return) * 100
+        for wind_return, hithink_return in zip(wind_returns, hithink_returns)
+    ]
+    direction_matches = [
+        (wind_return == 0 and hithink_return == 0)
+        or wind_return * hithink_return > 0
+        for wind_return, hithink_return in zip(wind_returns, hithink_returns)
+    ]
+    mean_absolute_difference = statistics.mean(absolute_differences)
+    direction_agreement = sum(direction_matches) / len(direction_matches)
+
+    windows: dict[str, dict[str, float]] = {}
+    failed_gates: list[str] = []
+    if common_count < 250:
+        failed_gates.append("minimumCommonCloses")
+    if wind_coverage < 0.95:
+        failed_gates.append("windDateCoverage")
+    if hithink_coverage < 0.95:
+        failed_gates.append("hithinkDateCoverage")
+    if correlation < 0.95:
+        failed_gates.append("dailyReturnCorrelation")
+    if mean_absolute_difference > 0.25:
+        failed_gates.append("meanAbsoluteDailyReturnDifference")
+    if direction_agreement < 0.85:
+        failed_gates.append("dailyDirectionAgreement")
+    for size in (20, 60, 250):
+        if common_count <= size:
+            continue
+        wind_change = wind[common_dates[-1]] / wind[common_dates[-1 - size]] - 1
+        hithink_change = hithink[common_dates[-1]] / hithink[common_dates[-1 - size]] - 1
+        difference = abs(wind_change - hithink_change) * 100
+        windows[str(size)] = {
+            "windPct": round(wind_change * 100, 6),
+            "hithinkPct": round(hithink_change * 100, 6),
+            "absDiffPp": round(difference, 6),
+        }
+        if difference > 2.0:
+            failed_gates.append(f"windowReturnDifference{size}")
+
+    return {
+        "schemaVersion": "sector-history-qualification-v1",
+        "gateVersion": "sector-history-gate-v1",
+        "status": "history_qualified" if not failed_gates else "history_rejected",
+        "firstCommonDate": first_date,
+        "lastCommonDate": last_date,
+        "windCount": len(wind),
+        "hithinkCount": len(hithink),
+        "commonCount": common_count,
+        "windOnlyDates": len(set(wind) - set(hithink)),
+        "hithinkOnlyDates": len(set(hithink) - set(wind)),
+        "windDateCoverage": round(wind_coverage, 6),
+        "hithinkDateCoverage": round(hithink_coverage, 6),
+        "dailyReturnCorrelation": round(correlation, 6),
+        "meanAbsoluteDailyReturnDifferencePp": round(mean_absolute_difference, 6),
+        "medianAbsoluteDailyReturnDifferencePp": round(
+            statistics.median(absolute_differences), 6
+        ),
+        "maxAbsoluteDailyReturnDifferencePp": round(max(absolute_differences), 6),
+        "dailyDirectionAgreement": round(direction_agreement, 6),
+        "windowReturns": windows,
+        "failedGates": failed_gates,
+        "allowedUse": "price_history_research_only" if not failed_gates else "none",
     }
 
 

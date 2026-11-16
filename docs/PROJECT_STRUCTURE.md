@@ -73,6 +73,7 @@ functions/
 - `market-concepts.json`：75 个概念的固定宇宙、25 个核心概念和相关版本。
 - `sector-overlap-candidates.json`：32 个机械同名 Wind／同花顺概念代码对。
 - `sector-price-history-candidates.json`：同日成份重合度聚合证据和价格历史候选状态；不进入生产评分。
+- `sector-price-history-qualifications.json`：当前成份候选的日线一致性二次门禁；当前最终通过数为 0。
 
 配置不是普通参数文件：修改权重、阈值、身份集合或调度会改变研究含义，必须带测试、变更记录和必要的版本升级。
 

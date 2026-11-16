@@ -63,3 +63,23 @@
 - [ ] Run the real 32-candidate collection and write the versioned aggregate result.
 - [ ] Update documentation with evidence and explicit limitations.
 - [ ] Run all Python tests, Node tests and the production build; commit Task 2.
+
+### Task 3: Price-history qualification for passed membership candidates
+
+**Files:**
+- Modify: `tools/market_dashboard/sector_mapping.py`
+- Modify: `tools/market_dashboard/tests/test_sector_mapping.py`
+- Create: `config/sector-price-history-qualifications.json`
+- Modify: `docs/verification/2026-11-16-hithink-sector-mapping-feasibility.md`
+- Modify: `docs/DATA_SOURCES.md`
+- Modify: `CHANGELOG.md`
+
+**Interfaces:**
+- Consumes: validated daily close rows for both provider indices.
+- Produces: `evaluate_history_alignment(...) -> sector-history-qualification-v1` with explicit gates and no price rows.
+
+- [ ] Write failing tests for an aligned 250-day series, insufficient overlap, low correlation and duplicate dates.
+- [ ] Run focused tests and verify RED for the absent history evaluator.
+- [ ] Implement metrics and fail-closed qualification.
+- [ ] Evaluate every current-membership candidate and persist aggregate-only evidence.
+- [ ] Run complete verification, document the final qualification state and commit Task 3.

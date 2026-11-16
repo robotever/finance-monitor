@@ -79,7 +79,9 @@
 
 建议在交易日收盘且供应商增量发布后执行一次同步，再执行校验；未校验成功的数据不得进入评价或回填。映射可行性测试返回 320 个同花顺行业和 390 个概念；机械同名仅覆盖 4／35 个 Wind 行业、32／75 个 Wind 概念和 19／25 个核心概念。
 
-32 个同名概念已在 2026-11-16 完成双方当前成份验证。按双向覆盖率均不低于 80%、Jaccard 不低于 70% 的保守门槛，只有高压氧舱通过，且状态仅为 `price_history_candidate`；其余 31 项未通过。人工智能样本为 Wind 88 只、同花顺 1,086 只、交集 77 只，说明名称和单向高覆盖不能替代双向口径验证。结果由 `tools/market_dashboard/sector_mapping.py` 生成，版本化证据保存在 `config/sector-price-history-candidates.json`；生产评分、盘中来源和板块宇宙均未切换。详细证据见 [同花顺板块映射可行性验证](verification/2026-11-16-hithink-sector-mapping-feasibility.md)。
+32 个同名概念已在 2026-11-16 完成双方当前成份验证。按双向覆盖率均不低于 80%、Jaccard 不低于 70% 的保守门槛，只有高压氧舱进入价格历史二次验证；其余 31 项未通过。人工智能样本为 Wind 88 只、同花顺 1,086 只、交集 77 只，说明名称和单向高覆盖不能替代双向口径验证。
+
+高压氧舱随后也未通过历史门禁：只有 45 个共同收盘日，日收益相关系数 -0.0337，方向一致率 50%，平均日收益绝对差 1.9308 个百分点。因此最终可用的跨源价格历史映射为 0。结果由 `tools/market_dashboard/sector_mapping.py` 生成，当前成份证据和历史资格证据分别保存在 `config/sector-price-history-candidates.json`、`config/sector-price-history-qualifications.json`；生产评分、盘中来源、评价输入和板块宇宙均未切换。详细证据见 [同花顺板块映射可行性验证](verification/2026-11-16-hithink-sector-mapping-feasibility.md)。
 
 ## 已批准的目标刷新结构
 

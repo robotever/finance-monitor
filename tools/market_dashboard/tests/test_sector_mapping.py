@@ -7,6 +7,7 @@ import unittest
 from tools.market_dashboard.sector_mapping import (
     SectorMappingError,
     collect_overlap_audit,
+    evaluate_history_alignment,
     evaluate_overlap,
     make_hithink_runner,
     make_wind_runner,
@@ -275,6 +276,61 @@ class SectorMappingCollectionTests(unittest.TestCase):
             self.assertEqual(audit["mappingVersion"], "wind-hithink-concepts-2026-11-16")
             self.assertEqual(audit["summary"]["priceHistoryCandidates"], 1)
             self.assertNotIn("members", output_path.read_text(encoding="utf-8"))
+
+
+class SectorHistoryQualificationTests(unittest.TestCase):
+    def test_identical_long_history_qualifies_without_exposing_prices(self):
+        rows = [
+            {"date": f"2025-{1 + index // 28:02d}-{1 + index % 28:02d}", "close": 100 + index}
+            for index in range(280)
+        ]
+
+        result = evaluate_history_alignment(rows, rows)
+
+        self.assertEqual(result["schemaVersion"], "sector-history-qualification-v1")
+        self.assertEqual(result["gateVersion"], "sector-history-gate-v1")
+        self.assertEqual(result["status"], "history_qualified")
+        self.assertEqual(result["commonCount"], 280)
+        self.assertEqual(result["dailyReturnCorrelation"], 1.0)
+        self.assertNotIn("rows", result)
+        self.assertNotIn("prices", result)
+
+    def test_short_divergent_history_is_rejected_with_named_failed_gates(self):
+        wind = [
+            {"date": f"2026-08-{1 + index:02d}", "close": 100 * (1.01**index)}
+            for index in range(20)
+        ]
+        hithink = [
+            {
+                "date": f"2026-08-{1 + index:02d}",
+                "close": 100 + (index if index % 2 == 0 else -index / 2),
+            }
+            for index in range(20)
+        ]
+
+        result = evaluate_history_alignment(wind, hithink)
+
+        self.assertEqual(result["status"], "history_rejected")
+        self.assertIn("minimumCommonCloses", result["failedGates"])
+        self.assertIn("dailyReturnCorrelation", result["failedGates"])
+        self.assertIn("dailyDirectionAgreement", result["failedGates"])
+
+    def test_history_evaluator_rejects_duplicate_dates_and_invalid_closes(self):
+        with self.subTest("duplicate"):
+            with self.assertRaises(SectorMappingError):
+                evaluate_history_alignment(
+                    [
+                        {"date": "2026-11-12", "close": 100},
+                        {"date": "2026-11-12", "close": 101},
+                    ],
+                    [{"date": "2026-11-12", "close": 100}],
+                )
+        with self.subTest("nonpositive"):
+            with self.assertRaises(SectorMappingError):
+                evaluate_history_alignment(
+                    [{"date": "2026-11-12", "close": 0}],
+                    [{"date": "2026-11-12", "close": 100}],
+                )
 
 
 if __name__ == "__main__":
