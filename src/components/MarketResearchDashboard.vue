@@ -31,15 +31,17 @@
           <p v-else-if="!historyError">{{ loading ? '历史加载中…' : '暂无历史轨迹' }}</p>
         </div>
         <MarketStyleGrid :items="dashboard.styles" :observed-at="dashboard.observedAt" />
-        <SectorRotationBoard v-if="v3Active" :latest="rotationLatest" :history="rotationHistory" :loading="rotationLoading" :error="rotationError" @change="changeRotation" @select-sector="openSector" />
-        <IndustryHeatmap v-if="v3Active" :rotation-items="v3Industries" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
-        <ConceptRadar v-if="v3Active" :rotation-items="v3Concepts" :rotation-core="v3CoreConcepts" :rotation-dynamic="v3DynamicConcepts" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
-        <IndustryHeatmap v-if="!v3Active" :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
-        <ConceptRadar v-if="!v3Active" :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
+        <HithinkSectorBoard v-if="v4Active && v4Latest" :latest="v4Latest" :now="now" :error="v4Error" />
+        <p v-else-if="hithinkEnabled && v4Error" class="market-notice" role="status">{{ v4Error }} · 保留现有板块视图</p>
+        <SectorRotationBoard v-if="v3Active && !v4Active" :latest="rotationLatest" :history="rotationHistory" :loading="rotationLoading" :error="rotationError" @change="changeRotation" @select-sector="openSector" />
+        <IndustryHeatmap v-if="v3Active && !v4Active" :rotation-items="v3Industries" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
+        <ConceptRadar v-if="v3Active && !v4Active" :rotation-items="v3Concepts" :rotation-core="v3CoreConcepts" :rotation-dynamic="v3DynamicConcepts" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
+        <IndustryHeatmap v-if="!v3Active && !v4Active" :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
+        <ConceptRadar v-if="!v3Active && !v4Active" :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
       </template>
       <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股、六类风格与 35 个行业将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
-    <SectorRotationDetail v-if="v3Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
+    <SectorRotationDetail v-if="v3Active && !v4Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
     <footer class="market-dashboard__footer"><span>统一评分 0–100 · 高强度不等于低风险</span><span>缺失项以 — 表示 · 研究参考，非买卖建议</span></footer>
   </section>
 </template>
@@ -54,9 +56,25 @@ import MarketStyleGrid from './MarketStyleGrid.vue'
 import IndustryHeatmap from './IndustryHeatmap.vue'
 import ConceptRadar from './ConceptRadar.vue'
 import SectorRotationBoard from './SectorRotationBoard.vue'
+import HithinkSectorBoard from './sector-rotation/HithinkSectorBoard.vue'
+import { loadHithinkLatest } from '@/features/sector-rotation-v4/api.mjs'
+import { selectSectorAdapter } from '@/features/sector-rotation-v4/model.mjs'
+import type { Latest as HithinkLatest } from '@/features/sector-rotation-v4/types'
 import SectorRotationDetail from './SectorRotationDetail.vue'
 import type { MarketDashboardV3Payload, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail as DetailPayload, SectorUniverse, SectorView, SectorLeaderboardAxis, SectorMatrixCell } from '@/features/market-dashboard/types'
 const acceptanceEnabled = import.meta.env.MODE === 'sector-acceptance' && isSectorAcceptanceMode()
+const hithinkEnabled = import.meta.env.VITE_HITHINK_SECTOR_V4 === 'true' && !acceptanceEnabled
+const v4Latest = shallowRef<HithinkLatest | null>(null)
+const v4Error = ref('')
+const v4Active = computed(() => selectSectorAdapter(hithinkEnabled, v4Latest.value) === 'v4')
+async function refreshHithink(signal: AbortSignal) {
+  if (!hithinkEnabled) return
+  const result = await loadHithinkLatest({ signal })
+  if (disposed || signal.aborted) return
+  v4Error.value = result.error?.message ?? ''
+  if (result.data) v4Latest.value = result.data
+  else if (result.error?.code === 'NO_SNAPSHOT' || result.error?.code === 'INVALID_SCHEMA') v4Latest.value = null
+}
 const dashboardFetch = acceptanceEnabled ? acceptanceFetch : undefined
 const productionObservationEnabled = import.meta.env.MODE === 'production-rotation'
 // Local shadow remains release-gated; production-rotation is an explicit observation build.
@@ -95,7 +113,7 @@ const detailView = computed(() => {
     scoringVersion: v3Latest.value.sectorScoringVersion, universeVersion: v3Latest.value.sectorUniverseVersion, sectors: [] }, null, { detail: detailPayload.value }).detail } catch { return null }
 })
 async function changeRotation(selection = rotationSelection.value) {
-  if (!v3Active.value) return
+  if (!v3Active.value || v4Active.value) return
   rotationSelection.value = selection
   rotationController?.abort()
   const request = new AbortController(); rotationController = request
@@ -162,7 +180,7 @@ async function refresh() {
   const options = { signal: controller.signal }
   // Keep the independent latest result responsive even if history times out.
   await Promise.all([
-    refreshShadow(controller.signal),
+    refreshHithink(controller.signal).then(() => refreshShadow(options.signal)),
     ...(acceptanceEnabled ? [] : [loadMarketDashboard(dashboardFetch, options).then(result => {
       if (disposed) return
       latestError.value = result.error
