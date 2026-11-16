@@ -264,3 +264,44 @@ def commit_index_backfill(connection, rows, *, run_id=None, started_at_ms,
                 started_at_ms=started_at_ms, finished_at_ms=finished_at_ms,
                 request_count=request_count, coverage=1, elapsed_ms=finished_at_ms-started_at_ms,
                 safe_error_code=None)])
+
+
+def replace_membership_snapshot(connection, rows, *, sector_id, membership_date,
+                                catalog_version=CATALOG_VERSION):
+    """Replace one complete snapshot atomically; removed members do not linger."""
+    rows = tuple(rows)
+    if not rows or len({r.stock_code for r in rows}) != len(rows) or any(r.sector_code != sector_id for r in rows):
+        raise ValueError('INVALID_MEMBERSHIP_SNAPSHOT')
+    from .hithink_cli import canonical_date, shanghai_market_date
+    canonical_date(membership_date)
+    if any(shanghai_market_date(r.observed_at_ms) > membership_date for r in rows):
+        raise ValueError('FUTURE_MEMBERSHIP_OBSERVATION')
+    with _transaction(connection):
+        connection.execute('DELETE FROM sector_membership_snapshot WHERE sector_id=? AND membership_date=?',
+                           (sector_id, membership_date))
+        for record in rows:
+            _upsert(connection, 'sector_membership_snapshot', [dict(sector_id=record.sector_code,
+                stock_id=record.stock_code, observed_at_ms=record.observed_at_ms,
+                membership_date=membership_date, catalog_version=catalog_version,
+                membership_version=MEMBERSHIP_VERSION)])
+
+
+def upsert_breadth_daily(connection, rows, *, catalog_version=CATALOG_VERSION,
+                        membership_version=MEMBERSHIP_VERSION):
+    rows = tuple(rows)
+    if len(rows) > 250:
+        raise ValueError('BACKFILL_TRANSACTION_TOO_LARGE')
+    with _transaction(connection):
+        for record in rows:
+            row = _mapping(record)
+            row.update(catalog_version=catalog_version, membership_version=membership_version)
+            _upsert(connection, 'sector_breadth_daily', [row])
+
+
+def read_breadth_daily(connection, sector_id, start, end, *, membership_version=MEMBERSHIP_VERSION,
+                       limit=2000):
+    if start > end:
+        raise ValueError('INVALID_STORE_READ')
+    return _read(connection, 'sector_breadth_daily',
+        'sector_id=? AND membership_version=? AND market_date BETWEEN ? AND ?',
+        (sector_id, membership_version, start, end), 'market_date', limit)

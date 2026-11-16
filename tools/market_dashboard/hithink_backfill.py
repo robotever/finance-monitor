@@ -259,6 +259,71 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
     return report
 
 
+def backfill_breadth_history(client, store, universe, window, budget, *, cli_path,
+                              db_path, state_root=None, sectors=None, trading_dates=None,
+                              runner=None, should_yield=None):
+    """Refresh snapshots and derive historical structure from one qfq export.
+
+    Callers may bound ``sectors`` for representative runs. Returned metadata is
+    aggregate-only; memberships and the minimized panel stay in private storage.
+    ``trading_dates`` must include the preceding session before window.start.
+    """
+    from datetime import timedelta
+    from . import hithink_breadth as breadth
+    from .hithink_cli import Membership
+    from .hithink_history import run_command
+    if state_root is None:
+        state_root = Path(store.execute('PRAGMA database_list').fetchone()[2]).parent
+    state_root = Path(state_root)
+    sectors = tuple(sectors if sectors is not None else (*universe.industries, *universe.concepts))
+    today = datetime.now(SHANGHAI).date().isoformat()
+    def check_yield():
+        if should_yield and should_yield():
+            raise RuntimeError('BACKFILL_YIELDED')
+    check_yield()
+    breadth.refresh_memberships(client, store, sectors, today, state_root=state_root,
+        priority_ids=universe.core_ids, budget=budget, should_yield=should_yield)
+    snapshots = {}
+    for sector in sectors:
+        versions = {}
+        for row in store.execute('SELECT * FROM sector_membership_snapshot WHERE sector_id=? AND membership_version=? ORDER BY membership_date,stock_id',
+                                 (sector.code, 'sector-membership-ths-v1')):
+            versions.setdefault(row['membership_date'], []).append(Membership(
+                row['sector_id'], row['stock_id'], row['observed_at_ms']))
+        if not versions:
+            raise ValueError('MEMBERSHIP_MISSING')
+        snapshots[sector.code] = versions
+    if trading_dates is None:
+        check_yield()
+        calendar_window = HistoryWindow((canonical_date(window.start)-timedelta(days=45)).isoformat(), window.end)
+        trading_dates = load_observed_market_calendar(cli_path, db_path, calendar_window,
+                                                     runner=runner or run_command)
+    dates = sorted(set(trading_dates))
+    for day in dates:
+        canonical_date(day)
+    days = {day: dates[i-1] for i, day in enumerate(dates) if i and window.start <= day <= window.end}
+    if not days or any(window.start <= day <= window.end and i == 0 for i, day in enumerate(dates)):
+        raise ValueError('BREADTH_PREVIOUS_SESSION_MISSING')
+    symbols = sorted({m.stock_code for versions in snapshots.values() for members in versions.values() for m in members})
+    check_yield()
+    observations = breadth.load_stock_panel(runner or run_command, cli_path, db_path,
+        symbols, window.start, window.end, state_root/'hithink-breadth'/'panel.csv')
+    rows = breadth.derive_breadth_panel(snapshots, observations, days)
+    breadth.persist_breadth(store, rows, state_root=state_root, should_yield=should_yield)
+    coverage = []
+    for sector in sectors:
+        data = [row for row in rows if row.sector_id == sector.code]
+        latest = data[-1]
+        coverage.append(dict(code=sector.code, tag=sector.tag, rows=len(data),
+            firstDate=data[0].market_date, lastDate=latest.market_date,
+            validCount=latest.valid_count, totalCount=latest.total_count,
+            coverage=latest.valid_count/latest.total_count, completeness=latest.completeness,
+            membershipMode=latest.membership_mode))
+    return dict(schemaVersion='hithink-breadth-backfill-v1', rows=len(rows),
+        panelExports=1, requestedStockCount=len(symbols), sessions=len(days),
+        publicReleaseEligible=False, sectors=coverage)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cli', type=Path, required=True)

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "hithink-breadth-verification-v1",
+  "providerDatabaseReadOnly": true,
+  "panelExports": 1,
+  "requestedStockCount": 316,
+  "sessions": 59,
+  "rows": 118,
+  "membershipDate": "2026-11-16",
+  "membershipMode": "current_members_backfill",
+  "approximationCompletenessMultiplier": 0.8,
+  "calendarReference": "observed_market_calendar",
+  "publicReleaseEligible": false,
+  "sectors": [
+    {
+      "code": "881121.TI",
+      "name": "半导体",
+      "tag": "industry",
+      "rows": 59,
+      "firstDate": "2026-08-17",
+      "lastDate": "2026-11-13",
+      "validCount": 188,
+      "totalCount": 190,
+      "coverage": 0.9894736842105263,
+      "completeness": 0.791578947368421,
+      "minimumCoverage": 0.9842105263157894,
+      "advancingCount": 14,
+      "decliningCount": 174,
+      "unchangedCount": 0,
+      "membershipMode": "current_members_backfill"
+    },
+    {
+      "code": "886042.TI",
+      "name": "存储芯片",
+      "tag": "cn_concept",
+      "rows": 59,
+      "firstDate": "2026-08-17",
+      "lastDate": "2026-11-13",
+      "validCount": 205,
+      "totalCount": 205,
+      "coverage": 1.0,
+      "completeness": 0.8,
+      "minimumCoverage": 0.9902439024390244,
+      "advancingCount": 22,
+      "decliningCount": 183,
+      "unchangedCount": 0,
+      "membershipMode": "current_members_backfill"
+    }
+  ]
+}
