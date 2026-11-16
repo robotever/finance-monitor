@@ -1,0 +1,3405 @@
+{
+  "schemaVersion": "hithink-index-freshness-v1",
+  "observedAt": "2026-11-17T05:38:17.316220+08:00",
+  "latestVerifiedCompletedSession": "2026-11-16",
+  "latestObservedStockDate": "2026-11-16",
+  "calendarSource": "observed_market_calendar",
+  "incrementalWindow": {
+    "start": "2026-11-16",
+    "end": "2026-11-16"
+  },
+  "incrementalComplete": true,
+  "fullHistoricalWindowComplete": false,
+  "latestDateCoverage": {
+    "industries": 90,
+    "concepts": 390,
+    "total": 480
+  },
+  "normalizedHistoryBars": 429670,
+  "priorBarsThrough2026_11_13Preserved": 429190,
+  "historyCoverage": {
+    "atLeast20": 480,
+    "atLeast60": 479,
+    "atLeast250": 475
+  },
+  "logicalRemoteIndexCalls": 480,
+  "reservedRemoteAttemptUpperBound": 1920,
+  "actualRemoteAttempts": null,
+  "elapsedSeconds": 127.783,
+  "safeErrorCode": null,
+  "economicGateApplied": false,
+  "publicReleaseEligible": false,
+  "verification": {
+    "quickCheck": "ok",
+    "foreignKeyFailures": 0,
+    "invalidOHLCRows": 0,
+    "allSectorLatestDatesMatchVerifiedCompletedSession": true
+  },
+  "remainingHistoricalLimitation": {
+    "code": "886082.TI",
+    "missingDate": "2023-12-29",
+    "reason": "Original provider row lacked volume/turnover; original failed full-window checkpoint and strict valid subwindow remain preserved."
+  },
+  "sectors": [
+    {
+      "code": "885311.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885312.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885333.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885338.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885343.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885345.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885355.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885362.TI",
+      "tag": "cn_concept",
+      "historyRows": 926,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885372.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885376.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885378.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885386.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885398.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885402.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885406.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885410.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885412.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885413.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885418.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885423.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885425.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885426.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885427.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885428.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885430.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885431.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885439.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885454.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885456.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885457.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885459.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885461.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885462.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885467.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885472.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885478.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885480.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885487.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885490.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885493.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885494.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885497.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885502.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885505.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885508.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885514.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885517.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885520.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885521.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885522.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885525.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885530.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885531.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885537.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885539.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885540.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885543.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885545.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885551.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885552.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885555.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885556.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885562.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885564.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885566.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885570.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885571.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885572.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885573.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885574.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885578.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885580.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885586.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885587.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885591.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885595.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885598.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885603.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885611.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885615.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885617.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885620.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885623.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885629.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885633.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885640.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885641.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885642.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885650.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885652.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885661.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885662.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885663.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885690.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885692.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885694.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885697.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885699.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885700.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885705.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885706.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885709.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885710.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885728.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885730.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885733.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885734.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885736.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885737.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885738.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885739.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885740.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885741.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885742.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885743.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885744.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885747.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885748.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885749.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885750.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885753.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885756.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885757.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885758.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885759.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885760.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885761.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885764.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885767.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885768.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885769.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885770.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885771.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885772.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885774.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885775.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885779.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885780.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885781.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885782.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885783.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885785.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885786.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885787.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885789.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885791.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885792.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885795.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885797.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885800.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885805.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885806.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885808.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885809.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885810.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885811.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885812.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885814.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885818.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885819.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885820.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885823.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885825.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885827.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885829.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885832.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885834.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885835.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885838.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885839.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885840.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885842.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885843.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885844.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885845.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885846.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885849.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885851.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885852.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885854.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885856.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885860.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885861.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885863.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885864.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885865.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885866.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885868.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885874.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885875.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885876.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885877.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885878.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885879.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885881.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885882.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885884.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885886.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885887.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885888.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885890.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885893.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885894.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885897.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885898.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885899.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885900.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885901.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885902.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885903.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885904.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885905.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885907.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885908.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885909.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885910.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885912.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885913.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885914.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885915.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885916.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885918.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885919.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885920.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885921.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885922.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885923.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885924.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885925.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885926.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885927.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885928.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885929.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885930.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885931.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885933.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885934.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885935.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885936.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885937.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885938.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885939.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885940.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885942.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885943.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885944.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885945.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885946.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885947.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885948.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885950.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885951.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885952.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885953.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885955.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885956.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885957.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885958.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885959.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885960.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885961.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885962.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885963.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885964.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885965.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885966.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885967.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885968.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885969.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885970.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885971.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885972.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885973.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885974.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885975.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885976.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885977.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885980.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885981.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885982.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885985.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885986.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885987.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885988.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885989.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885990.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885991.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885994.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885995.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885996.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885997.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885998.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "885999.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886000.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886001.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886002.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886003.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886004.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886005.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886006.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886007.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886008.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886009.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886010.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886011.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886012.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886013.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886015.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886016.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886017.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886018.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886019.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886020.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886021.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886023.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886026.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886028.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886030.TI",
+      "tag": "cn_concept",
+      "historyRows": 922,
+      "firstDate": "2023-01-30",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886031.TI",
+      "tag": "cn_concept",
+      "historyRows": 921,
+      "firstDate": "2023-01-31",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886032.TI",
+      "tag": "cn_concept",
+      "historyRows": 915,
+      "firstDate": "2023-02-08",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886033.TI",
+      "tag": "cn_concept",
+      "historyRows": 913,
+      "firstDate": "2023-02-10",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886034.TI",
+      "tag": "cn_concept",
+      "historyRows": 911,
+      "firstDate": "2023-02-14",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886035.TI",
+      "tag": "cn_concept",
+      "historyRows": 905,
+      "firstDate": "2023-02-22",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886036.TI",
+      "tag": "cn_concept",
+      "historyRows": 899,
+      "firstDate": "2023-03-02",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886037.TI",
+      "tag": "cn_concept",
+      "historyRows": 899,
+      "firstDate": "2023-03-02",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886038.TI",
+      "tag": "cn_concept",
+      "historyRows": 893,
+      "firstDate": "2023-03-10",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886039.TI",
+      "tag": "cn_concept",
+      "historyRows": 886,
+      "firstDate": "2023-03-21",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886040.TI",
+      "tag": "cn_concept",
+      "historyRows": 876,
+      "firstDate": "2023-04-04",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886041.TI",
+      "tag": "cn_concept",
+      "historyRows": 872,
+      "firstDate": "2023-04-11",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886042.TI",
+      "tag": "cn_concept",
+      "historyRows": 870,
+      "firstDate": "2023-04-13",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886043.TI",
+      "tag": "cn_concept",
+      "historyRows": 865,
+      "firstDate": "2023-04-20",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886044.TI",
+      "tag": "cn_concept",
+      "historyRows": 860,
+      "firstDate": "2023-04-27",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886045.TI",
+      "tag": "cn_concept",
+      "historyRows": 857,
+      "firstDate": "2023-05-05",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886046.TI",
+      "tag": "cn_concept",
+      "historyRows": 846,
+      "firstDate": "2023-05-22",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886047.TI",
+      "tag": "cn_concept",
+      "historyRows": 841,
+      "firstDate": "2023-05-29",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886048.TI",
+      "tag": "cn_concept",
+      "historyRows": 840,
+      "firstDate": "2023-05-30",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886049.TI",
+      "tag": "cn_concept",
+      "historyRows": 832,
+      "firstDate": "2023-06-09",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886050.TI",
+      "tag": "cn_concept",
+      "historyRows": 831,
+      "firstDate": "2023-06-12",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886051.TI",
+      "tag": "cn_concept",
+      "historyRows": 790,
+      "firstDate": "2023-08-10",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886052.TI",
+      "tag": "cn_concept",
+      "historyRows": 778,
+      "firstDate": "2023-08-28",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886053.TI",
+      "tag": "cn_concept",
+      "historyRows": 771,
+      "firstDate": "2023-09-06",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886054.TI",
+      "tag": "cn_concept",
+      "historyRows": 769,
+      "firstDate": "2023-09-08",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886055.TI",
+      "tag": "cn_concept",
+      "historyRows": 767,
+      "firstDate": "2023-09-12",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886056.TI",
+      "tag": "cn_concept",
+      "historyRows": 762,
+      "firstDate": "2023-09-19",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886057.TI",
+      "tag": "cn_concept",
+      "historyRows": 758,
+      "firstDate": "2023-09-25",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886058.TI",
+      "tag": "cn_concept",
+      "historyRows": 742,
+      "firstDate": "2023-10-25",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886059.TI",
+      "tag": "cn_concept",
+      "historyRows": 735,
+      "firstDate": "2023-11-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886060.TI",
+      "tag": "cn_concept",
+      "historyRows": 733,
+      "firstDate": "2023-11-07",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886061.TI",
+      "tag": "cn_concept",
+      "historyRows": 719,
+      "firstDate": "2023-11-27",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886062.TI",
+      "tag": "cn_concept",
+      "historyRows": 710,
+      "firstDate": "2023-12-08",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886063.TI",
+      "tag": "cn_concept",
+      "historyRows": 702,
+      "firstDate": "2023-12-20",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886064.TI",
+      "tag": "cn_concept",
+      "historyRows": 696,
+      "firstDate": "2023-12-28",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886065.TI",
+      "tag": "cn_concept",
+      "historyRows": 694,
+      "firstDate": "2024-01-02",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886066.TI",
+      "tag": "cn_concept",
+      "historyRows": 687,
+      "firstDate": "2024-01-11",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886067.TI",
+      "tag": "cn_concept",
+      "historyRows": 676,
+      "firstDate": "2024-01-26",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886068.TI",
+      "tag": "cn_concept",
+      "historyRows": 666,
+      "firstDate": "2024-02-19",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886069.TI",
+      "tag": "cn_concept",
+      "historyRows": 660,
+      "firstDate": "2024-02-27",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886070.TI",
+      "tag": "cn_concept",
+      "historyRows": 656,
+      "firstDate": "2024-03-04",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886071.TI",
+      "tag": "cn_concept",
+      "historyRows": 655,
+      "firstDate": "2024-03-05",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886072.TI",
+      "tag": "cn_concept",
+      "historyRows": 695,
+      "firstDate": "2023-12-29",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886073.TI",
+      "tag": "cn_concept",
+      "historyRows": 644,
+      "firstDate": "2024-03-20",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886074.TI",
+      "tag": "cn_concept",
+      "historyRows": 641,
+      "firstDate": "2024-03-25",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886075.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886076.TI",
+      "tag": "cn_concept",
+      "historyRows": 622,
+      "firstDate": "2024-04-23",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886077.TI",
+      "tag": "cn_concept",
+      "historyRows": 617,
+      "firstDate": "2024-04-30",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886078.TI",
+      "tag": "cn_concept",
+      "historyRows": 599,
+      "firstDate": "2024-05-29",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886080.TI",
+      "tag": "cn_concept",
+      "historyRows": 576,
+      "firstDate": "2024-07-02",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886081.TI",
+      "tag": "cn_concept",
+      "historyRows": 575,
+      "firstDate": "2024-07-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886082.TI",
+      "tag": "cn_concept",
+      "historyRows": 694,
+      "firstDate": "2024-01-02",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886084.TI",
+      "tag": "cn_concept",
+      "historyRows": 549,
+      "firstDate": "2024-08-08",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886085.TI",
+      "tag": "cn_concept",
+      "historyRows": 545,
+      "firstDate": "2024-08-14",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886086.TI",
+      "tag": "cn_concept",
+      "historyRows": 537,
+      "firstDate": "2024-08-26",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886087.TI",
+      "tag": "cn_concept",
+      "historyRows": 536,
+      "firstDate": "2024-08-27",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886090.TI",
+      "tag": "cn_concept",
+      "historyRows": 499,
+      "firstDate": "2024-10-28",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886091.TI",
+      "tag": "cn_concept",
+      "historyRows": 483,
+      "firstDate": "2024-11-19",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886093.TI",
+      "tag": "cn_concept",
+      "historyRows": 483,
+      "firstDate": "2024-11-19",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886094.TI",
+      "tag": "cn_concept",
+      "historyRows": 483,
+      "firstDate": "2024-11-19",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886095.TI",
+      "tag": "cn_concept",
+      "historyRows": 478,
+      "firstDate": "2024-11-26",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886096.TI",
+      "tag": "cn_concept",
+      "historyRows": 468,
+      "firstDate": "2024-12-10",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886098.TI",
+      "tag": "cn_concept",
+      "historyRows": 443,
+      "firstDate": "2025-01-15",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886099.TI",
+      "tag": "cn_concept",
+      "historyRows": 436,
+      "firstDate": "2025-01-24",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886100.TI",
+      "tag": "cn_concept",
+      "historyRows": 434,
+      "firstDate": "2025-02-05",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886101.TI",
+      "tag": "cn_concept",
+      "historyRows": 431,
+      "firstDate": "2025-02-10",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886102.TI",
+      "tag": "cn_concept",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886105.TI",
+      "tag": "cn_concept",
+      "historyRows": 321,
+      "firstDate": "2025-07-21",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886108.TI",
+      "tag": "cn_concept",
+      "historyRows": 203,
+      "firstDate": "2026-01-13",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886110.TI",
+      "tag": "cn_concept",
+      "historyRows": 94,
+      "firstDate": "2026-06-30",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886111.TI",
+      "tag": "cn_concept",
+      "historyRows": 93,
+      "firstDate": "2026-07-01",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886112.TI",
+      "tag": "cn_concept",
+      "historyRows": 71,
+      "firstDate": "2026-07-31",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "886113.TI",
+      "tag": "cn_concept",
+      "historyRows": 26,
+      "firstDate": "2026-10-12",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881101.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881102.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881103.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881105.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881107.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881108.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881109.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881112.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881114.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881115.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881116.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881117.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881118.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881121.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881122.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881123.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881124.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881125.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881126.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881128.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881129.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881130.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881131.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881132.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881133.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881134.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881135.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881136.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881137.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881138.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881139.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881140.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881141.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881142.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881143.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881144.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881145.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881146.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881148.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881149.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881151.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881152.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881153.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881155.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881156.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881157.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881158.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881159.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881160.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881162.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881164.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881165.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881166.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881167.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881168.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881169.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881170.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881171.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881172.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881173.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881174.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881175.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881177.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881178.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881179.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881180.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881181.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881182.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881263.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881264.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881265.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881266.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881267.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881268.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881269.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881270.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881271.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881272.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881273.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881274.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881275.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881276.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881277.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881278.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881279.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881280.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881281.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881282.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881283.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    },
+    {
+      "code": "881284.TI",
+      "tag": "industry",
+      "historyRows": 936,
+      "firstDate": "2023-01-03",
+      "latestDate": "2026-11-16"
+    }
+  ]
+}
