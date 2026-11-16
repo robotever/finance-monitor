@@ -70,12 +70,12 @@ class ProbeTests(unittest.TestCase):
     def run_probe(self, provider=None, settings=None, budget=None):
         provider = provider or Provider()
         client = HithinkClient('/opt/hithink-finance', runner=provider)
-        report = probe.run_probe(client, settings or config(), budget or probe.ProbeBudget())
+        report = probe.run_probe(client, settings or config(), budget or probe.ProbeBudget(attempts_per_slice=1))
         self.assertIs(client.runner, provider)
         return report, provider
 
     def test_call_exhaustion_stops_before_call_51(self):
-        budget = probe.ProbeBudget()
+        budget = probe.ProbeBudget(attempts_per_slice=1)
         for _ in range(50):
             budget.before_call()
             budget.record_points(None)
@@ -158,7 +158,7 @@ class ProbeTests(unittest.TestCase):
                 probe.ProbeBudget(**kwargs)
 
     def test_small_budget_counts_batch_cross_checks(self):
-        report, provider = self.run_probe(Provider(empty_batch=True), budget=probe.ProbeBudget(max_calls=33))
+        report, provider = self.run_probe(Provider(empty_batch=True), budget=probe.ProbeBudget(max_calls=33, attempts_per_slice=1))
         self.assertEqual(len(provider.calls), 33)
         self.assertEqual(report.safe_summary()['safeErrorCode'], 'PROBE_CALL_BUDGET')
 
@@ -205,7 +205,7 @@ class ProbeTests(unittest.TestCase):
         self.assertTrue(summary['complete'])
         self.assertNotIn('private-request', json.dumps(summary))
 
-    def test_live_entry_point_caps_logical_calls_at_25_for_hidden_auth_retry(self):
+    def test_live_entry_point_reserves_four_attempts_and_caps_logical_calls_at_12(self):
         from contextlib import redirect_stdout
         from io import StringIO
         from unittest.mock import patch
@@ -213,10 +213,57 @@ class ProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = StringIO()
             with patch.object(probe, 'HithinkClient', return_value=HithinkClient('/opt/hithink-finance', runner=provider)), redirect_stdout(output):
-                result = probe.main(['--cli', '/opt/hithink-finance', '--state-root', str(Path(temporary).resolve()), '--max-calls', '25'])
+                result = probe.main(['--cli', '/opt/hithink-finance', '--state-root', str(Path(temporary).resolve()), '--max-calls', '12'])
             self.assertEqual(result, 1)
-            self.assertEqual(len(provider.calls), 25)
+            self.assertEqual(len(provider.calls), 12)
+            self.assertEqual(json.loads(output.getvalue())['remoteDataAttemptUpperBound'], 48)
             self.assertFalse(json.loads(output.getvalue())['continueAutomatically'])
+
+    def test_remote_attempt_budget_stops_before_thirteenth_four_attempt_command(self):
+        provider = Provider()
+        budget = probe.ProbeBudget(attempts_per_slice=4)
+        summary = self.run_probe(provider, budget=budget)[0].safe_summary()
+        self.assertEqual(len(provider.calls), 12)
+        self.assertEqual(summary['remoteDataAttemptUpperBound'], 48)
+        self.assertIsNone(summary['actualRemoteDataAttempts'])
+        self.assertEqual(summary['safeErrorCode'], 'PROBE_REMOTE_ATTEMPT_BUDGET')
+        self.assertFalse(summary['continueAutomatically'])
+
+    def test_history_window_splits_reserve_each_slice_before_dispatch(self):
+        provider = Provider()
+        budget = probe.ProbeBudget(attempts_per_slice=4)
+        for _ in range(10):
+            budget.before_call(remote_attempts=4)
+        runner = probe._metered_runner(provider, budget)
+        # More than one ten-year slice: eight reserved data attempts.
+        argv = ['/opt/hithink', 'index', 'history', '--thscode', '881000.TI',
+                '--start-ms', '0', '--end-ms', str(315576000000 + 1)]
+        runner(argv)
+        self.assertEqual(budget.reserved_attempts, 48)
+        with self.assertRaisesRegex(probe.ProbeStopped, 'PROBE_REMOTE_ATTEMPT_BUDGET'):
+            runner(argv)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(budget.calls, 11)
+
+    def test_point_of_dispatch_rejects_unknown_commands_before_remote_call(self):
+        provider = Provider()
+        budget = probe.ProbeBudget(attempts_per_slice=4)
+        with self.assertRaisesRegex(probe.ProbeStopped, 'UNSUPPORTED_PROBE_COMMAND'):
+            probe._metered_runner(provider, budget)(['/opt/hithink', 'fund', 'nav'])
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(budget.calls, 0)
+
+    def test_rewriting_shorter_report_leaves_exactly_one_valid_json_document(self):
+        report = probe.ProbeReport(probe.ProbeBudget())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            report.error = 'X' * 10000
+            target = probe.save_report(root, report)
+            report.error = None
+            probe.save_report(root, report)
+            self.assertEqual(json.loads(target.read_text()), report.safe_summary())
+            self.assertLess(target.stat().st_size, 10000)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
     def test_wrapper_dispatches_probe_without_production_job_or_logs(self):
         with tempfile.TemporaryDirectory() as temporary:

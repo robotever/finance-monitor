@@ -17,7 +17,10 @@
     "startDate": "2023-01-01",
     "endDate": "2026-11-13",
     "fullRunMaxCalls": 500,
-    "fullRunMaxPoints": 100
+    "fullRunMaxPoints": 100,
+    "maxRemoteAttempts": 50,
+    "remoteAttemptsPerSlice": 4,
+    "liveMaxLogicalCalls": 12
   },
   "authorization": {
     "status": "unknown",

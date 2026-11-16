@@ -20,6 +20,12 @@ from tools.market_dashboard.hithink_cli import (
 from tools.market_dashboard.hithink_store import _private_directory, _private_file
 
 
+# CLI 0.2.4: three outer nonbatch attempts plus one shared OAuth data
+# recovery. Reserve four even for batch commands (a safe overestimate).
+CLI_ATTEMPTS_PER_SLICE = 4
+CLI_WINDOW_MS = 315576000000  # floor(10 * 365.25 days), inclusive slices
+
+
 class ProbeStopped(HithinkError):
     pass
 
@@ -28,27 +34,38 @@ class ProbeStopped(HithinkError):
 class ProbeBudget:
     max_calls: int = 50
     max_points: float = 100
+    max_remote_attempts: int = 50
+    attempts_per_slice: int = CLI_ATTEMPTS_PER_SLICE
+    reserved_attempts: int = field(default=0, init=False)
     calls: int = field(default=0, init=False)
     points: float = field(default=0, init=False)
     metered_calls: int = field(default=0, init=False)
     largest_charge: float = field(default=0, init=False)
 
     def __post_init__(self):
-        if (type(self.max_calls) is not int or not 1 <= self.max_calls <= 50
+        if (type(self.max_remote_attempts) is not int or not 1 <= self.max_remote_attempts <= 50
+                or type(self.attempts_per_slice) is not int or self.attempts_per_slice not in (1, 4)
+                or type(self.max_calls) is not int or not 1 <= self.max_calls <= 50
                 or isinstance(self.max_points, bool)
                 or not isinstance(self.max_points, (int, float))
                 or not math.isfinite(self.max_points) or not 0 < self.max_points <= 100):
             raise ValueError('INVALID_PROBE_BUDGET')
 
-    def before_call(self):
+    def before_call(self, *, remote_attempts=None):
+        remote_attempts = self.attempts_per_slice if remote_attempts is None else remote_attempts
+        if type(remote_attempts) is not int or remote_attempts < 1:
+            raise ValueError('INVALID_PROBE_BUDGET')
         if self.calls >= self.max_calls:
             raise ProbeStopped('PROBE_CALL_BUDGET')
+        if self.reserved_attempts + remote_attempts > self.max_remote_attempts:
+            raise ProbeStopped('PROBE_REMOTE_ATTEMPT_BUDGET')
         # Reported usage is post-response; reserve at least the largest observed
         # charge. A provider-side tariff ceiling is not available from this CLI.
         if self.points >= self.max_points or (self.largest_charge and
                 self.points + self.largest_charge > self.max_points):
             raise ProbeStopped('PROBE_POINT_BUDGET')
         self.calls += 1
+        self.reserved_attempts += remote_attempts
 
     def record_points(self, points):
         if points is None:
@@ -101,7 +118,10 @@ class ProbeReport:
             'schemaVersion': 'hithink-sector-probe-v1',
             'actualCalls': self.budget.calls,
             'logicalCallLimit': self.budget.max_calls,
-            'remoteDataAttemptUpperBound': self.budget.calls * 2,
+            'remoteDataAttemptUpperBound': self.budget.reserved_attempts,
+            'actualRemoteDataAttempts': None,
+            'remoteAttemptLimit': self.budget.max_remote_attempts,
+            'attemptsPerSlice': self.budget.attempts_per_slice,
             'reportedPoints': self.budget.points,
             'pointsKnown': self.budget.calls > 0 and self.budget.metered_calls == self.budget.calls,
             'meteredCalls': self.budget.metered_calls,
@@ -152,6 +172,8 @@ def _validate_config(config):
                     p['expectedIndustries'], p['stockPageSize'], p['fullRunMaxCalls'], p['fullRunMaxPoints'])
                 != (50, 100, 10, 20, 90, 1000, 500, 100)):
             raise ValueError()
+        if (p['maxRemoteAttempts'], p['remoteAttemptsPerSlice'], p['liveMaxLogicalCalls']) != (50, 4, 12):
+            raise ValueError()
         start, end = canonical_date(p['startDate']), canonical_date(p['endDate'])
         if start > end or end >= datetime.now(SHANGHAI).date():
             raise ValueError()
@@ -163,9 +185,31 @@ def _validate_config(config):
         raise HithinkError('INVALID_PROBE_CONFIG') from None
 
 
+def _attempt_reservation(argv, attempts_per_slice):
+    command = tuple(argv[1:3])
+    if command not in {('index', 'catalog'), ('index', 'history'),
+                        ('index', 'history-batch'), ('index', 'snapshot'),
+                        ('market', 'snapshot')}:
+        raise ProbeStopped('UNSUPPORTED_PROBE_COMMAND')
+    slices = 1
+    if command == ('index', 'history'):
+        try:
+            start = int(argv[argv.index('--start-ms') + 1])
+            end = int(argv[argv.index('--end-ms') + 1])
+            if start < 0 or end < start:
+                raise ValueError()
+        except (ValueError, IndexError, TypeError):
+            raise ProbeStopped('INVALID_PROBE_HISTORY_WINDOW') from None
+        # Mirror the CLI's inclusive ten-year slicing conservatively even for
+        # index.history, whose current five-year capability does not split.
+        # Reserve all slices before the opaque subprocess can dispatch any.
+        slices = (end - start) // (CLI_WINDOW_MS + 1) + 1
+    return slices * attempts_per_slice
+
+
 def _metered_runner(runner, budget):
     def invoke(argv):
-        budget.before_call()
+        budget.before_call(remote_attempts=_attempt_reservation(argv, budget.attempts_per_slice))
         response = runner(argv)
         try:
             raw = json.loads(response.stdout, object_pairs_hook=_json_object)
@@ -270,6 +314,7 @@ def save_report(state_root, report):
     path = directory / 'report.json'
     fd = _private_file(path)
     with os.fdopen(fd, 'w') as output:
+        os.ftruncate(output.fileno(), 0)
         json.dump(report.safe_summary(), output, allow_nan=False, separators=(',', ':'))
         output.write('\n')
     return path
@@ -280,12 +325,14 @@ def main(argv=None):
     parser.add_argument('--cli', type=Path, required=True)
     parser.add_argument('--config', type=Path, default=Path('config/hithink-sector-dashboard.json'))
     parser.add_argument('--state-root', type=Path, required=True)
-    parser.add_argument('--max-calls', type=int, choices=range(1, 26), default=25,
-                        help='live logical data calls; reserves one hidden OAuth retry per call')
+    parser.add_argument('--max-calls', type=int, choices=range(1, 13), default=12,
+                        help='live logical calls; reserves up to four data attempts per history slice')
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.config.read_text())
-        report = run_probe(HithinkClient(args.cli), config, ProbeBudget(max_calls=args.max_calls))
+        report = run_probe(HithinkClient(args.cli), config, ProbeBudget(max_calls=args.max_calls,
+            max_remote_attempts=config['probe']['maxRemoteAttempts'],
+            attempts_per_slice=config['probe']['remoteAttemptsPerSlice']))
         save_report(args.state_root, report)
         print(json.dumps(report.safe_summary(), allow_nan=False, separators=(',', ':')))
         return 0 if report.complete else 1

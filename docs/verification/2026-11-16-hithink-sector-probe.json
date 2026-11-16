@@ -2,7 +2,7 @@
   "schemaVersion": "hithink-sector-probe-v1",
   "actualCalls": 25,
   "logicalCallLimit": 25,
-  "remoteDataAttemptUpperBound": 50,
+  "remoteDataAttemptUpperBound": 100,
   "reportedPoints": 0,
   "pointsKnown": false,
   "meteredCalls": 0,
@@ -32,5 +32,11 @@
   "publicReleaseEligible": false,
   "complete": false,
   "safeErrorCode": "PROBE_CALL_BUDGET",
-  "continueAutomatically": false
+  "continueAutomatically": false,
+  "actualRemoteDataAttempts": null,
+  "remoteAttemptLimit": 50,
+  "remoteAttemptBudgetCompliance": "unverified",
+  "previousRemoteDataAttemptUpperBound": 50,
+  "previousAttemptBoundClaim": "invalidated",
+  "accountingCorrection": "three_outer_attempts_plus_one_oauth_recovery_per_window"
 }

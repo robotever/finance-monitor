@@ -215,7 +215,7 @@ Run once for an authorized verification window, with a private state directory:
 bash ops/macos/run-market-dashboard.sh --hithink-probe \
   --cli '/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
   --state-root '/private/tmp/market-dashboard-hithink-probe-2026-11-16' \
-  --max-calls 25
+  --max-calls 12
 ```
 
 Only aggregate JSON reaches stdout and `market-dashboard-hithink-probe/report.json`
@@ -224,21 +224,38 @@ constituent rows, names, codes or local paths appear in that report. The report
 file uses mode 0600; its directory uses 0700. Probe state must remain outside Git.
 
 The budget checks every CLI data request, including automatic single-history
-cross-checks, before dispatch: at most 50 calls and 100 reported points. Point
-usage, when present, is read from numeric nonnegative `meta.points`; absent usage
-is unknown (`pointsKnown=false`, `estimatedPoints=null`), never free. The CLI
-currently does not expose a pre-request tariff ceiling; reported usage can only
-be observed after a response, so subsequent calls reserve the largest observed
-charge and stop before exhausting the remaining reported budget. No application
-retry is performed. The live command defaults to (and cannot exceed) 25 logical
-data calls because the CLI may invisibly retry one rejected OAuth data request.
-This bounds remote data attempts at 50 without inspecting credentials. The
-library/config default remains 50 logical calls for injected providers. The
-report distinguishes logical calls, their configured limit and the conservative
-remote-data-attempt upper bound; actual transport attempts are not observable.
-The live 25-call run may leave the 30-history sample incomplete and must fail
-closed without a second probe. Unmetered usage cannot establish a verified point
-bound.
+cross-checks, before dispatch. The library logical-call ceiling is 50. A separate
+remote-data-attempt reservation ceiling is 50, and live commands reserve **four
+attempts per request window**: the installed CLI defaults to three outer retry
+attempts and can add one OAuth recovery data request. The live entry point
+therefore defaults to and cannot exceed **12 logical calls** (48 reserved data
+attempts for single-window commands). Before dispatching history, the runner also
+reserves all inclusive ten-year window slices that the CLI's splitting mechanism
+could emit; a command whose complete reservation exceeds the remaining budget is
+rejected before the subprocess starts. Unrecognized command types are rejected.
+Batch commands also reserve four attempts conservatively. Actual transport
+attempts remain unobservable; the reported upper bound is reserved capacity,
+not a measured HTTP count. Authentication endpoint traffic is not a data attempt.
+
+The default reusable budget reserves four attempts per slice as well. Offline
+injected providers with no internal retries explicitly use `attempts_per_slice=1`
+to exercise the full 10+20 sample under a 50-attempt cap. This test setting does
+not relax the live entry point. An incomplete live sample fails closed.
+
+Point usage, when present, is read from numeric nonnegative `meta.points`; absent
+usage is unknown (`pointsKnown=false`, `estimatedPoints=null`), never free. The
+CLI exposes no pre-request tariff ceiling. Reported usage can only be observed
+after a response, so subsequent calls reserve the largest observed charge. This
+cannot prove an absolute point bound. No application retry is performed.
+
+**Correction to the 2026-11-16 live evidence:** the one completed run used the
+previous 25-logical-call limit. Its earlier <=50 remote-attempt claim was invalid;
+three outer attempts plus one OAuth recovery allowed up to **100** data attempts
+for those 25 single-window commands. Actual attempts were unobserved, so compliance
+with the 50-attempt limit cannot be established. The corrected checked-in evidence
+preserves the observed logical calls and coverage, retracts that claim and keeps
+`continueAutomatically=false`. No additional live probe is authorized or performed
+by this correction.
 
 The conservative initial-run estimate includes two catalogs, one single-index
 history and one membership request per sector, a shared index snapshot, and the

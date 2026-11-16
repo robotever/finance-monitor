@@ -1,11 +1,15 @@
 # Hithink sector migration probe — 2026-11-16
 
 One authorized live invocation through `--hithink-probe --max-calls 25` completed.
-The checked-in JSON is an aggregate-only copy of the private safe summary.
+The checked-in JSON retains the aggregate observations and includes an offline
+correction to the original attempt accounting. The private original was not rerun.
 
 - Logical CLI data requests: **25**; elapsed: **4.089 seconds**.
-- Remote data-request attempt upper bound: **50**, reserving a possible hidden
-  OAuth retry for each CLI request. Actual HTTP attempts are not exposed.
+- **Correction:** the previous **<=50** remote-data-attempt claim was invalid.
+  The CLI permits three outer attempts plus one OAuth recovery per window, so
+  these 25 single-window commands allowed **up to 100** data attempts. Actual
+  attempts were unobserved; compliance with the **50-attempt cap is unverified**.
+  This is not evidence that 100 attempts occurred or that the run stayed under 50.
 - Provider points: **unknown** (zero metered responses); `reportedPoints=0` is
   only the sum of reported charges, not evidence of zero actual consumption.
 - Catalog coverage: **90** primary industries and **390** concepts.
@@ -24,13 +28,16 @@ The checked-in JSON is an aggregate-only copy of the private safe summary.
 - `continueAutomatically=false`; migration **stops at Task 3**. No full backfill,
   production feature database, deployment, publishing or schedule change occurred.
 
-The 30-history sample target is deliberately incomplete because the absolute
-remote-attempt budget takes precedence. The reusable library retains the planned
-50-call budget for injected providers; the live entry point enforces at most 25
-logical calls. No credentials were inspected to select a looser authentication
-path, and the probe was not rerun after its budget stop.
+The 30-history target remained incomplete when the previous logical-call budget
+stopped. That stop did **not** establish compliance with the absolute remote
+attempt cap. The corrected implementation independently reserves up to four data
+attempts per request window, accounts for possible history splits before
+subprocess dispatch, and permits at most 12 live logical calls. Default library
+budgets use the same four-attempt reservation; explicitly retry-free offline
+providers can use one. No credentials were inspected, and **no new live probe**
+was performed while correcting this evidence.
 
 Offline tests cover the full 10+20 sample, missing/reported point metadata,
-50-call exhaustion, hidden-retry live cap, full-market paging, early rejection
+50-call exhaustion, four-attempt live reservation and split-window accounting, full-market paging, early rejection
 of 100-row paging, empty history-batch detection, authorization gates, safe
-private persistence and wrapper isolation. Those tests are not live coverage.
+private report rewrites without trailing JSON and wrapper isolation. Those tests are not live coverage.
