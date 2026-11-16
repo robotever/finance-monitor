@@ -187,7 +187,7 @@ def produce_payload(args,bucket,budget,client,root):
             close_history=[previous_payload]
         prior_closes=[r for payload in close_history for r in payload.get('rows',[]) if r.get('marketDate','')<bucket.market_date]
 
-        dynamic={r['id'] for r in previous if r.get('universe')=='concept' and r.get('metrics',{}).get('strengthRank',99999)<=40}
+        dynamic={r['id'] for r in previous if r.get('universe')=='concept' and (r.get('metrics',{}).get('strengthRank') or 99999)<=40}
         candidates={r['id'] for r in sorted([r for r in previous if r.get('universe')=='concept'],key=lambda r:-(r.get('opportunity') or 0))[:50]}
         refresh_memberships(client,store,sectors,datetime.now(SHANGHAI).date().isoformat(),state_root=root,
             priority_ids=set(universe.core_ids)|dynamic|candidates,catalog_changed=cadence.get('digest') not in (None,universe.catalog_digest))
@@ -293,8 +293,11 @@ def produce_payload(args,bucket,budget,client,root):
             budget.check()
             with store_write_lock(root):
                 upsert_sector_features(store,feature_records[offset:offset+250],intraday=not bucket.official_close and not latest_close)
+        dynamic_now={r['id'] for r in ranked if r['universe']=='concept' and r['id'] not in universe.core_ids and (r.get('metrics',{}).get('strengthRank') or 99999)<=40}
+        candidates_now={r['id'] for r in sorted([r for r in ranked if r['universe']=='concept' and r['id'] not in set(universe.core_ids)|dynamic_now],key=lambda r:-(r.get('opportunity') or 0))[:50]}
         for row in ranked:
             row['name']=next(s.name for s in sectors if s.code==row['id'])
+            row['conceptRole']=('core' if row['id'] in universe.core_ids else 'dynamic' if row['id'] in dynamic_now else 'candidate' if row['id'] in candidates_now else None) if row['universe']=='concept' else None
         return dict(schemaVersion='market-dashboard-v4',source='Hithink',mode='shadow',marketDate=day,
             bucket=bucket.key,officialClose=bucket.official_close and not latest_close,
             historicalReconstruction=latest_close,publicReleaseEligible=False,rows=ranked,
@@ -357,6 +360,62 @@ def run_hithink_cycle(args,deps=None):
         if str(error) in ('STORE_BUSY','LIVE_BUSY','CALENDAR_UNVERIFIED'): code=str(error)
         _atomic(local/'health.json',dict(mode='shadow',status='failed',published=False,safeErrorCode=code))
         return HithinkJobResult('failed',bucket.key if bucket else None,code)
+
+
+_VERSIONS={'schemaVersion':'market-dashboard-v4','sectorScoringVersion':'sector-score-v0.3',
+    'sectorUniverseVersion':'sector-universe-ths-v1','featureVersion':'sector-features-ths-v1',
+    'membershipVersion':'sector-membership-ths-v1'}
+_PUBLIC_FIELDS=('id','name','universe','strength','opportunity','risk','completeness','ranks',
+    'heatState','coldStart','validCloses','improvementEvidence','membershipMode','missing')
+
+
+def public_v4_row(row):
+    """Explicit, copied public projection. Private precision/audits remain local."""
+    if any(row.get(k)!=v for k,v in _VERSIONS.items()): raise ValueError('CROSS_VERSION_ROW')
+    if any(k not in row for k in _PUBLIC_FIELDS): raise ValueError('INVALID_PUBLIC_ROW')
+    if set(row['ranks'])!={'strength','opportunity','risk'}: raise ValueError('INVALID_PUBLIC_ROW')
+    result={k:row[k] for k in _PUBLIC_FIELDS}
+    result['conceptRole']=row.get('conceptRole') if row['universe']=='concept' else None
+    if '_rawScores' in row and 'rankKeys' not in row:
+        result['rankKeys']={axis:row['_rawScores'].get(axis) for axis in ('strength','opportunity','risk')}
+    for key in ('metrics','axisCompleteness','rankKeys'):
+        if key in row:
+            values=row[key]
+            if not isinstance(values,dict) or any(not isinstance(k,str) or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9]*',k)
+                    or not (v is None or isinstance(v,bool) or type(v) in (int,float) and math.isfinite(v)) for k,v in values.items()):
+                raise ValueError('INVALID_PUBLIC_ROW')
+            result[key]=values
+    # Roundtrip rejects NaN and copies all retained nested objects.
+    return json.loads(json.dumps(result,ensure_ascii=False,allow_nan=False))
+
+
+def build_publish_chunks(rows,max_rows=50,max_bytes=131072,*,batch_id=None):
+    """Build reviewable local protocol requests; never send or activate them.
+
+    Digests cover the exact compact UTF8 rowsJson string. The size check includes
+    the escaped outer request envelope, index and batch identity.
+    """
+    import hashlib
+    if type(max_rows) is not int or not 1<=max_rows<=50 or type(max_bytes) is not int or not 1<=max_bytes<=131072:
+        raise ValueError('INVALID_CHUNK_LIMIT')
+    projected=[public_v4_row(r) for r in rows]
+    if not projected or len({(r['universe'],r['id']) for r in projected})!=len(projected): raise ValueError('INVALID_PUBLIC_ROWS')
+    def encode(value): return json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+    if batch_id is None: batch_id='ths-'+hashlib.sha256(encode(projected).encode()).hexdigest()[:40]
+    if not isinstance(batch_id,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}',batch_id): raise ValueError('INVALID_BATCH_ID')
+    def request(items,index):
+        payload=encode(items)
+        return dict(batchId=batch_id,index=index,rowsJson=payload,digest=hashlib.sha256(payload.encode()).hexdigest())
+    chunks=[]; pending=[]
+    for row in projected:
+        candidate=request(pending+[row],len(chunks))
+        if len(pending)<max_rows and len(encode(candidate).encode())<=max_bytes:
+            pending.append(row);continue
+        if not pending: raise ValueError('ROW_EXCEEDS_CHUNK_LIMIT')
+        chunks.append(request(pending,len(chunks)));pending=[row]
+        if len(encode(request(pending,len(chunks))).encode())>max_bytes: raise ValueError('ROW_EXCEEDS_CHUNK_LIMIT')
+    if pending: chunks.append(request(pending,len(chunks)))
+    return chunks
 
 
 def main(argv=None):
