@@ -83,9 +83,11 @@ try:
     try:
         # The helper immediately exits outside the Shanghai session. During the
         # session it starts one lock-guarded, AC-only sleep assertion and returns.
+        awake_environment = {'PATH': '/usr/bin:/bin', 'LANG': os.environ.get('LANG', 'C')}
         subprocess.run([python, str(awake), 'ensure', str(root / 'state')],
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=2, check=False)
+                       stderr=subprocess.DEVNULL, timeout=2, check=False,
+                       env=awake_environment)
     except (OSError, subprocess.SubprocessError):
         # Runtime protection is best-effort and must never block a data cycle.
         pass

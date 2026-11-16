@@ -131,14 +131,18 @@ class OperationsTests(unittest.TestCase):
             'Path(os.environ["TEST_CAPTURE"]).write_text(json.dumps(sys.argv[1:]))\n')
         (self.root / 'scripts/rotate_service_logs.py').write_text('def rotate(path): pass\n')
         guard = self.repo / 'ops/macos/market_dashboard_awake.py'
-        guard.write_text('import os, sys\nfrom pathlib import Path\n'
-                         'Path(os.environ["AWAKE_CAPTURE"]).write_text(" ".join(sys.argv[1:]))\n')
+        guard.write_text('import json, os, sys\nfrom pathlib import Path\n'
+                         'root=Path(sys.argv[2]).parent\n'
+                         'root.joinpath("awake.txt").write_text(json.dumps({'
+                         '"args":sys.argv[1:],"hasSecret":"AWAKE_PRIVATE_SENTINEL" in os.environ}))\n')
         self.env.update(TEST_CAPTURE=str(self.root / 'capture.json'),
-                        AWAKE_CAPTURE=str(self.root / 'awake.txt'))
+                        AWAKE_PRIVATE_SENTINEL='must-not-reach-awake-guard')
         result = self.execute('run-market-dashboard.sh', '--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads((self.root / 'capture.json').read_text()), ['--dry-run'])
-        self.assertEqual((self.root / 'awake.txt').read_text(), f'ensure {self.root / "state"}')
+        awake = json.loads((self.root / 'awake.txt').read_text())
+        self.assertEqual(awake['args'], ['ensure', str(self.root / 'state')])
+        self.assertFalse(awake['hasSecret'])
 
     def test_wrapper_loads_literal_dotenv_executes_cli_and_rotates_private_logs(self):
         self.copy_ops()
