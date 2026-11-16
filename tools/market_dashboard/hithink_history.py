@@ -4,12 +4,12 @@ This module accepts no arbitrary SQL and retains no provider envelopes.  It is
 an offline history boundary only; it never changes production score inputs.
 """
 import argparse
-from datetime import date
 import json
-import math
 from pathlib import Path
 import re
 import subprocess
+
+from tools.market_dashboard.hithink_cli import HithinkError, canonical_date, finite_number
 
 
 SCHEMA = 'hithink-daily-history-v1'
@@ -28,12 +28,23 @@ class HithinkHistoryError(ValueError):
 
 def _day(value):
     try:
-        parsed = date.fromisoformat(value)
-        if parsed.isoformat() != value:
-            raise ValueError()
-        return parsed
-    except (TypeError, ValueError):
+        return canonical_date(value)
+    except HithinkError:
         raise HithinkHistoryError('INVALID_HISTORY_REQUEST') from None
+
+
+def _response_day(value):
+    try:
+        return canonical_date(value)
+    except HithinkError:
+        raise HithinkHistoryError() from None
+
+
+def _close(value):
+    try:
+        return finite_number(value, positive=True)
+    except HithinkError:
+        raise HithinkHistoryError() from None
 
 
 def _request(cli_path, db_path, symbols, start_date, end_date, adjustment, page_size):
@@ -113,16 +124,10 @@ def load_daily_closes(runner, cli_path: Path, db_path: Path, symbols: list[str],
             identity, raw_day, close = raw['thscode'], raw['date'], raw['close']
             if identity not in requested:
                 raise HithinkHistoryError()
-            try:
-                observed = date.fromisoformat(raw_day)
-                canonical = observed.isoformat() == raw_day
-            except (TypeError, ValueError):
-                raise HithinkHistoryError() from None
-            if not canonical or not start <= observed <= end:
+            observed = _response_day(raw_day)
+            if not start <= observed <= end:
                 raise HithinkHistoryError()
-            if (not isinstance(close, (int, float)) or isinstance(close, bool)
-                    or not math.isfinite(close) or close <= 0):
-                raise HithinkHistoryError()
+            close = _close(close)
             key = raw_day, identity
             if key in seen:
                 raise HithinkHistoryError()
@@ -182,16 +187,10 @@ def audit_history(batch: dict) -> dict:
         identity, observed = row.get('id'), row.get('date')
         if identity not in requested:
             raise HithinkHistoryError()
-        try:
-            observed_day = date.fromisoformat(observed)
-        except (TypeError, ValueError):
-            raise HithinkHistoryError() from None
-        if observed_day.isoformat() != observed or not start_day <= observed_day <= end_day:
+        observed_day = _response_day(observed)
+        if not start_day <= observed_day <= end_day:
             raise HithinkHistoryError()
-        close = row.get('close')
-        if (not isinstance(close, (int, float)) or isinstance(close, bool)
-                or not math.isfinite(close) or close <= 0):
-            raise HithinkHistoryError()
+        _close(row.get('close'))
         identities.add(identity)
         dates.append(observed)
     derived_returned = sorted(identities)

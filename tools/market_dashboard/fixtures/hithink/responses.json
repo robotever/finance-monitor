@@ -1,0 +1,147 @@
+{
+  "catalog": {
+    "ok": true,
+    "command": "index.catalog",
+    "data": {
+      "item": [
+        {
+          "thscode": "881121.TI",
+          "name": "测试行业"
+        }
+      ],
+      "timestamp": 1794758400000
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  },
+  "constituents": {
+    "ok": true,
+    "command": "index.constituents",
+    "data": {
+      "item": [
+        {
+          "thscode": "000001.SZ",
+          "ticker": "000001",
+          "name": "测试证券"
+        }
+      ],
+      "timestamp": 1794758400000
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  },
+  "history": {
+    "ok": true,
+    "command": "index.history",
+    "data": {
+      "item": [
+        {
+          "date_ms": 1794758400000,
+          "volume": 100,
+          "turnover": 1100,
+          "open_price": 10,
+          "high_price": 12,
+          "low_price": 9,
+          "close_price": 11
+        }
+      ],
+      "timestamp": 1794758400000,
+      "thscode": "881121.TI",
+      "interval": "1d",
+      "adjust": null
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  },
+  "index": {
+    "ok": true,
+    "command": "index.snapshot",
+    "data": {
+      "item": [
+        {
+          "thscode": "881121.TI",
+          "ticker": "881121",
+          "volume": 100,
+          "turnover": 1100,
+          "last_price": 11,
+          "price_change": 1,
+          "price_change_ratio_pct": 10,
+          "open_price": 10,
+          "high_price": 12,
+          "low_price": 9,
+          "prev_price": 10
+        }
+      ],
+      "timestamp": 1794758400000,
+      "total": 1
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  },
+  "stock": {
+    "ok": true,
+    "command": "market.snapshot",
+    "data": {
+      "item": [
+        {
+          "thscode": "000001.SZ",
+          "ticker": "000001",
+          "volume": 100,
+          "turnover": 1100,
+          "last_price": 11,
+          "price_change": 1,
+          "price_change_ratio_pct": 10,
+          "open_price": 10,
+          "high_price": 12,
+          "low_price": 9,
+          "prev_price": 10
+        }
+      ],
+      "timestamp": 1794758400000,
+      "total": 1
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  },
+  "batch": {
+    "ok": true,
+    "command": "index.history-batch",
+    "data": {
+      "interval": "1d",
+      "adjust": null,
+      "item": [
+        {
+          "thscode": "881121.TI",
+          "timestamp": 1794758400000,
+          "item": []
+        }
+      ]
+    },
+    "meta": {
+      "source": "remote",
+      "count": 1,
+      "truncated": false,
+      "schema_version": "1"
+    }
+  }
+}
