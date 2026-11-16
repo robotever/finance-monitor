@@ -345,6 +345,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.config.read_text())
+        _validate_config(config)  # reject malformed configuration before any client exists
         report = run_probe(HithinkClient(args.cli), config, ProbeBudget(max_calls=args.max_calls,
             max_remote_attempts=config['probe']['maxRemoteAttempts'],
             attempts_per_slice=config['probe']['remoteAttemptsPerSlice'],

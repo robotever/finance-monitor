@@ -279,6 +279,22 @@ class ProbeTests(unittest.TestCase):
                 budget.before_call()
         self.assertEqual(budget.calls, 0)
 
+    def test_empty_or_wrong_type_config_returns_safe_json_without_provider_call(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest.mock import patch
+        for value in ({}, None, [], {'probe': None}):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                configuration = root / 'config.json'
+                configuration.write_text(json.dumps(value))
+                output = StringIO()
+                with patch.object(probe, 'HithinkClient') as client, redirect_stdout(output):
+                    status = probe.main(['--cli', '/opt/hithink-finance', '--config', str(configuration), '--state-root', str(root)])
+                self.assertEqual(status, 1)
+                self.assertEqual(json.loads(output.getvalue())['safeErrorCode'], 'PROBE_FAILED')
+                client.assert_not_called()
+
     def test_wrapper_dispatches_probe_without_production_job_or_logs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
