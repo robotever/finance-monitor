@@ -75,7 +75,10 @@ console.log(count);"""
             self.assertEqual(after['officialClose'],False);self.assertEqual(after['historicalReconstruction'],True)
             self.assertEqual(after['bucket'],payload['bucket'])
             for before,row in zip(payload['rows'],after['rows']):
-                self.assertEqual({k:v for k,v in row.items() if k!='conceptRole'},before)
+                self.assertEqual({k:row[k] for k in before},before)
+                self.assertEqual(row['session'],'close')
+                self.assertTrue(row['historicalReconstruction'])
+                self.assertFalse(row['officialClose'])
             self.assertEqual((local/'state.json').read_text(),'{"completed":["unchanged"]}')
             projected=[r for c in json.loads((local/'publish-chunks.json').read_text()) for r in json.loads(c['rowsJson'])]
             self.assertEqual(sum(r['conceptRole']=='core' for r in projected),25)

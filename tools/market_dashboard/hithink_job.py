@@ -184,6 +184,31 @@ def _live_breadth(members,snapshot,day,membership_day,observed):
         None,n/total*discount,observed))
 
 
+def prior_close_rows(payloads,market_date):
+    """Recover daily-session metadata only from trusted close/reconstruction files.
+
+    Session identifies the sampled daily bar; official/timely status stays
+    separate. Arrival evidence and all score fields are copied unchanged.
+    """
+    result=[]
+    for payload in payloads:
+        if not (payload.get('officialClose') or payload.get('historicalReconstruction')): continue
+        for row in payload.get('rows',[]):
+            if row.get('marketDate','')>=market_date: continue
+            result.append({**row,'session':'close','officialClose':payload.get('officialClose') is True,
+                'historicalReconstruction':payload.get('historicalReconstruction') is True})
+    return result
+
+
+def score_cycle_features(features,prior_closes,bucket,config,*,historical=False):
+    """Tag the cycle before scoring so daily history remains usable next cycle."""
+    session='close' if historical or bucket.official_close else 'intraday'
+    tagged=[{**row,'session':session,'officialClose':bucket.official_close and not historical}
+        for row in features]
+    scored=score_v4_sectors(tagged,prior_closes,config)
+    return [{**row,'historicalReconstruction':historical} for row in scored]
+
+
 def produce_payload(args,bucket,budget,client,root):
     store=open_store(Path(getattr(args,'store',None) or root/'sector-history.sqlite3'))
     try:
@@ -205,7 +230,7 @@ def produce_payload(args,bucket,budget,client,root):
         close_history=_read(local/'close-history.json',[])
         if not close_history and (previous_payload.get('officialClose') or previous_payload.get('historicalReconstruction')):
             close_history=[previous_payload]
-        prior_closes=[r for payload in close_history for r in payload.get('rows',[]) if r.get('marketDate','')<bucket.market_date]
+        prior_closes=prior_close_rows(close_history,bucket.market_date)
 
         dynamic={r['id'] for r in previous if r.get('universe')=='concept' and (r.get('metrics',{}).get('strengthRank') or 99999)<=40}
         candidates={r['id'] for r in sorted([r for r in previous if r.get('universe')=='concept'],key=lambda r:-(r.get('opportunity') or 0))[:50]}
@@ -298,7 +323,7 @@ def produce_payload(args,bucket,budget,client,root):
             features.append(build_v4_features(indexes[sector.code],breadth,sector_id=sector.code,market_date=day,
                 benchmark_rows=benchmark,prior_scores=prior_closes,universe='industry' if sector.tag=='industry' else 'concept'))
         config=json.loads((BASE/'config/hithink-sector-dashboard.json').read_text())
-        scored=score_v4_sectors(features,prior_closes,config)
+        scored=score_cycle_features(features,prior_closes,bucket,config,historical=latest_close)
         ranked=[]
         for universe_name in ('industry','concept'):
             rows=[r for r in scored if r['universe']==universe_name]
@@ -468,7 +493,12 @@ def refresh_local_projection(state_root):
         expected={(s.code,'industry' if s.tag=='industry' else 'concept') for s in (*universe.industries,*universe.concepts)}
         if {(r['id'],r['universe']) for r in payload['rows']}!=expected or len(payload['rows'])!=len(expected):
             raise ValueError('INVALID_LOCAL_UNIVERSE')
-        updated={**payload,'rows':annotate_concept_roles(payload['rows'],universe.core_ids)}
+        session_rows=payload['rows']
+        if payload.get('officialClose') or payload.get('historicalReconstruction'):
+            session_rows=prior_close_rows([payload],'9999-12-31')
+        else:
+            session_rows=[{**r,'session':'intraday'} for r in session_rows]
+        updated={**payload,'rows':annotate_concept_roles(session_rows,universe.core_ids)}
         chunks=build_publish_chunks(updated['rows'])
         _atomic(local/(bucket.replace(':','-')+'.json'),updated)
         _atomic(local/'latest.json',updated)

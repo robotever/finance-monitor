@@ -148,6 +148,7 @@ class HithinkJobTests(unittest.TestCase):
             self.assertEqual(len(payload['rows']),2)
             self.assertEqual(payload['unsupportedStockCount'],1)
             self.assertFalse(payload['officialClose'])
+            self.assertEqual(payload['rows'][0]['session'],'intraday')
             self.assertEqual(set(payload['rows'][0]['ranks']),{'strength','opportunity','risk'})
             store=open_store(root/'sector-history.sqlite3')
             self.assertEqual(store.execute('select count(*) from sector_features_intraday').fetchone()[0],2)
@@ -211,5 +212,45 @@ class HithinkJobTests(unittest.TestCase):
             with self.assertRaises(ValueError):job.validate_snapshot_freshness([int(self.stamp(value).timestamp()*1000)],bucket,now)
         bucket=job.cycle_bucket(self.stamp('15:29'),['2026-11-16'])
         with self.assertRaises(ValueError):job.validate_snapshot_freshness([int(self.stamp('15:29').timestamp()*1000)],bucket,self.stamp('15:30'))
+
+
+    def test_sixteen_real_scoring_cycles_reuse_close_history_without_future_leak(self):
+        from tools.market_dashboard.tests.test_rotation_v4 import panel,config
+        from tools.market_dashboard.rotation_v4 import build_v4_features,rank_v4_universe
+        import json
+        indexes,breadth=panel()
+        dates=[r['market_date'] for r in indexes[-16:]]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();local=root/'hithink-live'
+            for day in dates:
+                now=datetime.fromisoformat(day+'T15:05').replace(tzinfo=SHANGHAI)
+                args=SimpleNamespace(state_root=root,now=now)
+                def produce(args,bucket,budget,client,root):
+                    history=job._read(local/'close-history.json',[])
+                    prior=job.prior_close_rows(history,day)
+                    feature=build_v4_features(indexes,breadth,market_date=day,prior_scores=prior)
+                    scored=job.score_cycle_features([feature],prior,bucket,config(),historical=True)
+                    future={**scored[0],'marketDate':'2099-01-01','strength':100,'metrics':{'participation':999999}}
+                    self.assertEqual(scored,job.score_cycle_features([feature],prior+[future],bucket,config(),historical=True))
+                    for axis in ('strength','opportunity','risk'): scored=rank_v4_universe(scored,axis)
+                    return {'rows':scored,'marketDate':day,'bucket':bucket.key,'historicalReconstruction':True,'officialClose':False}
+                result=job.run_hithink_cycle(args,{'calendar':dates,'produce':produce})
+                self.assertEqual(result.status,'success')
+            row=json.loads((local/'latest.json').read_text())['rows'][0]
+            self.assertEqual(row['session'],'close');self.assertFalse(row['officialClose'])
+            self.assertTrue(row['historicalReconstruction']);self.assertIsNone(row['availableAt'])
+            self.assertIsNotNone(row['metrics']['participationDelta5d'])
+            self.assertIsNotNone(row['metrics']['strengthSlope5d'])
+            self.assertEqual(row['metrics']['topDecileStreak'],15)
+            self.assertEqual(row['components']['persistence']['coverage'],1)
+            self.assertIsNotNone(row['components']['persistence']['value'])
+
+    def test_legacy_close_session_recovery_preserves_arrival_and_reconstruction(self):
+        row={'id':'881001.TI','marketDate':'2026-11-13','availableAt':None,'officialClose':False}
+        payload={'historicalReconstruction':True,'officialClose':False,'rows':[row]}
+        result=job.prior_close_rows([payload],'2026-11-16')
+        self.assertEqual(result,[{**row,'session':'close','historicalReconstruction':True}])
+        self.assertEqual(row,{'id':'881001.TI','marketDate':'2026-11-13','availableAt':None,'officialClose':False})
+        self.assertEqual(job.prior_close_rows([payload],'2026-11-13'),[])
 
 if __name__=='__main__': unittest.main()
