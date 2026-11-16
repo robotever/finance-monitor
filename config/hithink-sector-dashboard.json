@@ -9,23 +9,23 @@
   "publishEnabled": false,
   "probe": {
     "maxCalls": 50,
-    "maxPoints": 100,
     "industrySample": 10,
     "conceptSample": 20,
     "expectedIndustries": 90,
     "stockPageSize": 1000,
     "startDate": "2023-01-01",
     "endDate": "2026-11-13",
-    "fullRunMaxCalls": 500,
-    "fullRunMaxPoints": 100,
     "maxRemoteAttempts": 50,
     "remoteAttemptsPerSlice": 4,
-    "liveMaxLogicalCalls": 12
+    "liveMaxLogicalCalls": 12,
+    "maxElapsedSeconds": 120,
+    "minCallIntervalSeconds": 0.25
   },
   "authorization": {
     "status": "unknown",
     "localNormalizedFeatures": false,
     "publicDerivedScores": false,
     "evidenceReference": null
-  }
+  },
+  "economicPolicy": "hithink_fee_unrestricted_user_2026-11-16"
 }

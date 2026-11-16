@@ -242,19 +242,29 @@ injected providers with no internal retries explicitly use `attempts_per_slice=1
 to exercise the full 10+20 sample under a 50-attempt cap. This test setting does
 not relax the live entry point. An incomplete live sample fails closed.
 
-Point usage, when present, is read from numeric nonnegative `meta.points`; absent
-usage is unknown (`pointsKnown=false`, `estimatedPoints=null`), never free. The
-CLI exposes no pre-request tariff ceiling. Reported usage can only be observed
-after a response, so subsequent calls reserve the largest observed charge. This
-cannot prove an absolute point bound. No application retry is performed.
+**Superseding user decision, 2026-11-16:** Hithink has no usage fee restriction.
+The former 100-point and 500-call economic gates applied to Wind and are removed
+for Hithink. Reported points and estimated total calls are informational; unknown
+points do not prevent continued private migration. The bounded probe retains its
+50-attempt reservation limit, 12 live logical calls, a 120-second dispatch window,
+at least 0.25 seconds between live commands, and the CLI's existing per-command
+timeout/backoff. An in-flight command can finish after the dispatch window.
+Operational exhaustion records partial capability evidence and permits continued
+private implementation, with `complete=false` and `requiresCapabilityValidation=true`.
+Data/schema/identity/paging failures still fail closed. `continueAutomatically`
+means permission to continue private implementation, never capability completeness
+or public-release approval. Do not repeat the historical probe solely to amend
+its fee policy. The shorter-report rewrite fix preserves a valid single JSON
+report when an existing private report is replaced.
 
 **Correction to the 2026-11-16 live evidence:** the one completed run used the
 previous 25-logical-call limit. Its earlier <=50 remote-attempt claim was invalid;
 three outer attempts plus one OAuth recovery allowed up to **100** data attempts
 for those 25 single-window commands. Actual attempts were unobserved, so compliance
 with the 50-attempt limit cannot be established. The corrected checked-in evidence
-preserves the observed logical calls and coverage, retracts that claim and keeps
-`continueAutomatically=false`. No additional live probe is authorized or performed
+preserves the observed logical calls and coverage and retracts that claim. The
+superseding fee decision permits continued private implementation without claiming
+the partial probe was complete or its actual attempts measured. No additional live probe is authorized or performed
 by this correction.
 
 The conservative initial-run estimate includes two catalogs, one single-index
@@ -262,10 +272,9 @@ history and one membership request per sector, a shared index snapshot, and the
 measured stock page count. `estimatedHistoryCalls` separately identifies the
 index-only backfill. A one-code successful batch is reported as
 `SUPPORTED_SINGLE_CODE_ONLY` and does not justify a tenfold cost reduction.
-The estimate excludes future recurring refresh cycles. An estimate above 500
-calls or 100 points, unknown points, failed paging, insufficient coverage or
-exhausted budget sets `continueAutomatically=false`: stop the migration without
-starting a full backfill. If only 100 rows return for a requested 1,000-row first
+The estimate excludes future recurring refresh cycles. No estimated-call or point
+threshold stops Hithink migration. Capability gaps must be checked during the
+corresponding private tasks before production use. If only 100 rows return for a requested 1,000-row first
 page, full-market paging is rejected immediately rather than issuing dozens of
 additional requests.
 

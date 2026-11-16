@@ -2,7 +2,8 @@
 
 The initial full run estimate includes one membership per sector, index history,
 index snapshots and the measured shared stock snapshot pages. It excludes later
-recurring runs. Missing usage metadata is unknown, never zero-cost evidence.
+recurring runs. Under the 2026-11-16 user decision Hithink has no economic
+quota gate; point metadata is informational only.
 """
 import argparse
 from dataclasses import dataclass, field
@@ -33,7 +34,10 @@ class ProbeStopped(HithinkError):
 @dataclass
 class ProbeBudget:
     max_calls: int = 50
-    max_points: float = 100
+    max_elapsed_seconds: float = 120
+    min_call_interval: float = 0
+    started_at: float = field(default_factory=lambda: clock.monotonic(), init=False)
+    last_call_at: float | None = field(default=None, init=False)
     max_remote_attempts: int = 50
     attempts_per_slice: int = CLI_ATTEMPTS_PER_SLICE
     reserved_attempts: int = field(default=0, init=False)
@@ -46,9 +50,10 @@ class ProbeBudget:
         if (type(self.max_remote_attempts) is not int or not 1 <= self.max_remote_attempts <= 50
                 or type(self.attempts_per_slice) is not int or self.attempts_per_slice not in (1, 4)
                 or type(self.max_calls) is not int or not 1 <= self.max_calls <= 50
-                or isinstance(self.max_points, bool)
-                or not isinstance(self.max_points, (int, float))
-                or not math.isfinite(self.max_points) or not 0 < self.max_points <= 100):
+                or not isinstance(self.max_elapsed_seconds, (int, float))
+                or not math.isfinite(self.max_elapsed_seconds) or self.max_elapsed_seconds <= 0
+                or not isinstance(self.min_call_interval, (int, float))
+                or not math.isfinite(self.min_call_interval) or self.min_call_interval < 0):
             raise ValueError('INVALID_PROBE_BUDGET')
 
     def before_call(self, *, remote_attempts=None):
@@ -59,11 +64,16 @@ class ProbeBudget:
             raise ProbeStopped('PROBE_CALL_BUDGET')
         if self.reserved_attempts + remote_attempts > self.max_remote_attempts:
             raise ProbeStopped('PROBE_REMOTE_ATTEMPT_BUDGET')
-        # Reported usage is post-response; reserve at least the largest observed
-        # charge. A provider-side tariff ceiling is not available from this CLI.
-        if self.points >= self.max_points or (self.largest_charge and
-                self.points + self.largest_charge > self.max_points):
-            raise ProbeStopped('PROBE_POINT_BUDGET')
+        now = clock.monotonic()
+        if now - self.started_at >= self.max_elapsed_seconds:
+            raise ProbeStopped('PROBE_TIME_BUDGET')
+        delay = (max(0, self.min_call_interval - (now - self.last_call_at))
+                 if self.last_call_at is not None else 0)
+        if now + delay - self.started_at >= self.max_elapsed_seconds:
+            raise ProbeStopped('PROBE_TIME_BUDGET')
+        if delay:
+            clock.sleep(delay)
+        self.last_call_at = clock.monotonic()
         self.calls += 1
         self.reserved_attempts += remote_attempts
 
@@ -77,8 +87,6 @@ class ProbeBudget:
         self.points += points
         self.metered_calls += 1
         self.largest_charge = max(self.largest_charge, points)
-        if self.points > self.max_points:
-            raise ProbeStopped('PROBE_POINT_BUDGET')
 
 
 @dataclass(frozen=True)
@@ -144,9 +152,16 @@ class ProbeReport:
             'authorizationStatus': self.authorization_status,
             'publicReleaseEligible': self.public_eligible,
             'complete': self.complete, 'safeErrorCode': self.error,
-            'continueAutomatically': bool(self.complete and not self.error and
-                estimate.calls is not None and estimate.calls <= 500 and
-                estimate.points is not None and estimate.points <= 100),
+            'economicGateApplied': False,
+            'continuationScope': 'private_implementation',
+            'requiresCapabilityValidation': not self.complete,
+            # Operational probe exhaustion is a partial finding, not an
+            # economic veto on later private implementation. Data failures
+            # still fail closed; incomplete capabilities remain explicit.
+            'continueAutomatically': bool(
+                self.industry_count == 90 and self.concept_count >= 20 and self.history_sectors > 0
+                and self.error in (None, 'PROBE_CALL_BUDGET', 'PROBE_REMOTE_ATTEMPT_BUDGET', 'PROBE_TIME_BUDGET')),
+
         }
 
 
@@ -168,11 +183,11 @@ def _validate_config(config):
     try:
         p = config['probe']
         if (config['timezone'] != 'Asia/Shanghai' or config['publishEnabled'] is not False
-                or (p['maxCalls'], p['maxPoints'], p['industrySample'], p['conceptSample'],
-                    p['expectedIndustries'], p['stockPageSize'], p['fullRunMaxCalls'], p['fullRunMaxPoints'])
-                != (50, 100, 10, 20, 90, 1000, 500, 100)):
-            raise ValueError()
-        if (p['maxRemoteAttempts'], p['remoteAttemptsPerSlice'], p['liveMaxLogicalCalls']) != (50, 4, 12):
+                or config['economicPolicy'] != 'hithink_fee_unrestricted_user_2026-11-16'
+                or (p['maxCalls'], p['industrySample'], p['conceptSample'],
+                    p['expectedIndustries'], p['stockPageSize']) != (50, 10, 20, 90, 1000)
+                or (p['maxRemoteAttempts'], p['remoteAttemptsPerSlice'], p['liveMaxLogicalCalls']) != (50, 4, 12)
+                or p['maxElapsedSeconds'] != 120 or p['minCallIntervalSeconds'] != 0.25):
             raise ValueError()
         start, end = canonical_date(p['startDate']), canonical_date(p['endDate'])
         if start > end or end >= datetime.now(SHANGHAI).date():
@@ -332,7 +347,9 @@ def main(argv=None):
         config = json.loads(args.config.read_text())
         report = run_probe(HithinkClient(args.cli), config, ProbeBudget(max_calls=args.max_calls,
             max_remote_attempts=config['probe']['maxRemoteAttempts'],
-            attempts_per_slice=config['probe']['remoteAttemptsPerSlice']))
+            attempts_per_slice=config['probe']['remoteAttemptsPerSlice'],
+            max_elapsed_seconds=config['probe']['maxElapsedSeconds'],
+            min_call_interval=config['probe']['minCallIntervalSeconds']))
         save_report(args.state_root, report)
         print(json.dumps(report.safe_summary(), allow_nan=False, separators=(',', ':')))
         return 0 if report.complete else 1

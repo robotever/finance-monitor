@@ -83,18 +83,19 @@ class ProbeTests(unittest.TestCase):
             budget.before_call()
         self.assertEqual(budget.calls, 50)
 
-    def test_reported_points_exhaustion_stops_next_call(self):
+    def test_reported_points_are_informational_even_above_previous_cap(self):
         report, provider = self.run_probe(Provider(points=50))
-        self.assertEqual(len(provider.calls), 2)
-        self.assertEqual(report.safe_summary()['reportedPoints'], 100)
-        self.assertEqual(report.safe_summary()['safeErrorCode'], 'PROBE_POINT_BUDGET')
-        self.assertFalse(report.safe_summary()['continueAutomatically'])
+        summary = report.safe_summary()
+        self.assertGreater(summary['reportedPoints'], 100)
+        self.assertGreater(len(provider.calls), 2)
+        self.assertTrue(summary['continueAutomatically'])
 
-    def test_missing_points_are_unknown_never_free(self):
+    def test_missing_points_do_not_block_private_continuation(self):
         summary = self.run_probe()[0].safe_summary()
         self.assertIsNone(summary['estimatedPoints'])
         self.assertFalse(summary['pointsKnown'])
-        self.assertFalse(summary['continueAutomatically'])
+        self.assertTrue(summary['continueAutomatically'])
+        self.assertFalse(summary['publicReleaseEligible'])
 
     def test_samples_are_ten_industries_and_twenty_concepts(self):
         summary = self.run_probe()[0].safe_summary()
@@ -141,19 +142,19 @@ class ProbeTests(unittest.TestCase):
                                          evidenceReference='provider-contract-2026')
         self.assertTrue(self.run_probe(settings=settings)[0].safe_summary()['publicReleaseEligible'])
 
-    def test_estimate_includes_memberships_and_blocks_over_500(self):
+    def test_estimate_includes_memberships_without_economic_500_call_stop(self):
         report, _ = self.run_probe(Provider(empty_batch=True))
         estimate = probe.estimate_full_run(report)
         self.assertGreater(estimate.calls, 500)
-        self.assertFalse(report.safe_summary()['continueAutomatically'])
+        self.assertTrue(report.safe_summary()['continueAutomatically'])
 
-    def test_known_points_over_100_block_automatic_continuation(self):
+    def test_known_points_over_100_do_not_block_automatic_continuation(self):
         summary = self.run_probe(Provider(points=1))[0].safe_summary()
         self.assertGreater(summary['estimatedPoints'], 100)
-        self.assertFalse(summary['continueAutomatically'])
+        self.assertTrue(summary['continueAutomatically'])
 
     def test_caps_cannot_be_raised_or_invalid_values_supplied(self):
-        for kwargs in ({'max_calls': 51}, {'max_points': 101}, {'max_calls': True}, {'max_points': 0}):
+        for kwargs in ({'max_calls': 51}, {'max_remote_attempts': 51}, {'max_calls': True}, {'max_remote_attempts': 0}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 probe.ProbeBudget(**kwargs)
 
@@ -217,7 +218,9 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertEqual(len(provider.calls), 12)
             self.assertEqual(json.loads(output.getvalue())['remoteDataAttemptUpperBound'], 48)
-            self.assertFalse(json.loads(output.getvalue())['continueAutomatically'])
+            summary = json.loads(output.getvalue())
+            self.assertTrue(summary['continueAutomatically'])
+            self.assertFalse(summary['complete'])
 
     def test_remote_attempt_budget_stops_before_thirteenth_four_attempt_command(self):
         provider = Provider()
@@ -227,7 +230,9 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(summary['remoteDataAttemptUpperBound'], 48)
         self.assertIsNone(summary['actualRemoteDataAttempts'])
         self.assertEqual(summary['safeErrorCode'], 'PROBE_REMOTE_ATTEMPT_BUDGET')
-        self.assertFalse(summary['continueAutomatically'])
+        self.assertTrue(summary['continueAutomatically'])
+        self.assertFalse(summary['complete'])
+        self.assertTrue(summary['requiresCapabilityValidation'])
 
     def test_history_window_splits_reserve_each_slice_before_dispatch(self):
         provider = Provider()
@@ -264,6 +269,15 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(json.loads(target.read_text()), report.safe_summary())
             self.assertLess(target.stat().st_size, 10000)
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
+    def test_elapsed_operational_deadline_stops_before_dispatch(self):
+        from unittest.mock import patch
+        with patch.object(probe.clock, 'monotonic', return_value=0):
+            budget = probe.ProbeBudget(max_elapsed_seconds=120)
+        with patch.object(probe.clock, 'monotonic', return_value=121):
+            with self.assertRaisesRegex(probe.ProbeStopped, 'PROBE_TIME_BUDGET'):
+                budget.before_call()
+        self.assertEqual(budget.calls, 0)
 
     def test_wrapper_dispatches_probe_without_production_job_or_logs(self):
         with tempfile.TemporaryDirectory() as temporary:

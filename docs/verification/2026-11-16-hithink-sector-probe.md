@@ -25,7 +25,11 @@ correction to the original attempt accounting. The private original was not reru
   **157.499 seconds**, excluding unmeasured snapshot paging and future recurring
   refreshes; this is an estimate, not an acceptance timing result.
 - Provider authorization: **unknown**; public release eligible: **false**.
-- `continueAutomatically=false`; migration **stops at Task 3**. No full backfill,
+- Original decision was `continueAutomatically=false`. **Superseded by the
+  2026-11-16 user decision:** Hithink is fee-unrestricted; private implementation
+  continues (`continueAutomatically=true`) with **complete=false** and required
+  capability validation. Neither unknown points nor the 963-call estimate is a
+  stop gate. The existing data/attempt observations remain unchanged. No full backfill,
   production feature database, deployment, publishing or schedule change occurred.
 
 The 30-history target remained incomplete when the previous logical-call budget
@@ -41,3 +45,8 @@ Offline tests cover the full 10+20 sample, missing/reported point metadata,
 50-call exhaustion, four-attempt live reservation and split-window accounting, full-market paging, early rejection
 of 100-row paging, empty history-batch detection, authorization gates, safe
 private report rewrites without trailing JSON and wrapper isolation. Those tests are not live coverage.
+
+The user decision removes economic vetoes only. Provider authorization remains
+unknown and public release remains ineligible. Partial historical coverage,
+unmeasured snapshots/batch behavior, and unobserved actual remote attempts remain
+factual gaps. No additional live probe was performed for this policy correction.

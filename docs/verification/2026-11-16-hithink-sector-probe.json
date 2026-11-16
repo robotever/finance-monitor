@@ -32,11 +32,16 @@
   "publicReleaseEligible": false,
   "complete": false,
   "safeErrorCode": "PROBE_CALL_BUDGET",
-  "continueAutomatically": false,
+  "continueAutomatically": true,
   "actualRemoteDataAttempts": null,
   "remoteAttemptLimit": 50,
   "remoteAttemptBudgetCompliance": "unverified",
   "previousRemoteDataAttemptUpperBound": 50,
   "previousAttemptBoundClaim": "invalidated",
-  "accountingCorrection": "three_outer_attempts_plus_one_oauth_recovery_per_window"
+  "accountingCorrection": "three_outer_attempts_plus_one_oauth_recovery_per_window",
+  "originalContinueAutomatically": false,
+  "economicGateApplied": false,
+  "continuationScope": "private_implementation",
+  "requiresCapabilityValidation": true,
+  "supersedingDecision": "hithink_fee_unrestricted_user_2026-11-16"
 }

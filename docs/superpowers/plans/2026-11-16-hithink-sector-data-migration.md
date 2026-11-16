@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-16-hithink-sector-data-migration-design.md`
 
+## Superseding user decision — 2026-11-16
+
+Hithink is fee-unrestricted. Wind-only economic restrictions do not apply: remove the 100-point and 500-call gates and do not block on unknown points. Continue private implementation toward completion before the next trading day. Preserve operational batching, rate/retry/time bounds, factual partial capability evidence and independent public authorization. Do not rerun the completed probe merely to change its economic policy. This decision overrides earlier contradictory task wording.
+
 ## Global Constraints
 
 - Use `Asia/Shanghai` for provider timestamps, schedule buckets and market dates; never truncate Hithink `date_ms` as UTC.
@@ -17,7 +21,7 @@
 - New versions are exactly `market-dashboard-v4`, `sector-score-v0.3`, `sector-universe-ths-v1`, `sector-features-ths-v1`, and `sector-membership-ths-v1`.
 - Industry universe is the 90 `881xxx.TI` primary industries; concept universe is the complete qualified Hithink concept catalog.
 - Preserve the fixed 25 core concepts and dynamic 10 concepts; homepage industry presentation is three ranked lists of 10, with the full universe in a searchable detail view.
-- Probe budget is at most 50 remote calls and, when usage is reported, 100 points. Stop after the probe if full work is estimated above 500 calls or 100 points.
+- Probe operational budget: 50 reserved remote data attempts, four per request window including possible history slices, at most 12 live logical calls, 120-second dispatch window and at least 0.25 seconds between live calls. Points and full-run call estimates are informational; no Hithink economic stop gate.
 - Do not publish v4 until provider authorization for locally retained normalized features and publicly displayed derived scores is recorded.
 - Do not store credentials, raw provider envelopes, constituent rows or local paths in Git, D1, public payloads or ordinary logs.
 - v3/Wind state, D1 rows and UI remain intact until v4 cutover; rollback changes version switches only and deletes nothing.
@@ -106,7 +110,7 @@ Expected: PASS and no files outside test temporary directories.
 
 Run: `git add tools/market_dashboard/hithink_store.py tools/market_dashboard/sqlite/0001_hithink_sector_history.sql tools/market_dashboard/tests/test_hithink_store.py && git commit -m "feat: add private sector feature store"`
 
-### Task 3: Capability, cost and authorization probe gate
+### Task 3: Bounded capability probe and independent authorization
 
 **Files:**
 - Create: `tools/market_dashboard/hithink_probe.py`
@@ -116,11 +120,11 @@ Run: `git add tools/market_dashboard/hithink_store.py tools/market_dashboard/sql
 
 **Interfaces:**
 - Consumes: Task 1 client and Task 2 store.
-- Produces: `ProbeBudget(max_calls=50, max_points=100)`, `run_probe(client, config, budget) -> ProbeReport`, `estimate_full_run(report) -> CostEstimate`, and CLI-safe JSON containing counts, elapsed time, coverage, estimated calls/points, batch support and authorization status.
+- Produces: `ProbeBudget(max_calls=50, max_remote_attempts=50)`, `run_probe(client, config, budget) -> ProbeReport`, `estimate_full_run(report) -> CostEstimate`, and CLI-safe JSON containing counts, elapsed time, coverage, estimated calls/points, batch support and authorization status.
 
 - [ ] **Step 1: Write failing budget-gate tests**
 
-Test 50-call exhaustion, reported-point exhaustion, absent point metadata, 10-industry/20-concept sample size, full-market snapshot paging, 100-row paging rejection, history-batch empty detection, and an authorization state other than `verified` blocking public-release eligibility.
+Test bounded call exhaustion, reported/absent points never imposing an economic stop, 10-industry/20-concept sample size, full-market snapshot paging, 100-row paging rejection, history-batch empty detection, and an authorization state other than `verified` blocking public-release eligibility.
 
 - [ ] **Step 2: Verify the tests fail**
 
@@ -136,7 +140,7 @@ Set exact caps from Global Constraints. The probe may write its safe report unde
 
 Run tests first: `python3 -m unittest tools.market_dashboard.tests.test_hithink_probe -v`
 
-Then run the wrapper's documented `--hithink-probe` command once. Expected live result: a safe report with actual calls, elapsed time, coverage and a deterministic `continueAutomatically` boolean. If estimated full work exceeds 500 calls or 100 points, stop the plan here and report to the user.
+Then run the wrapper's documented `--hithink-probe` command once. Expected live result: a safe report with actual calls, elapsed time, coverage and a deterministic `continueAutomatically` boolean. Do not stop for estimated calls or points. Keep partial capability findings explicit; operational exhaustion can allow continued private implementation while `complete=false`. Public release remains separately gated by provider authorization.
 
 - [ ] **Step 5: Commit probe code and the redacted verification summary**
 
@@ -207,7 +211,7 @@ Use single-index history until the batch path passes its gate. Commit small tran
 
 - [ ] **Step 4: Run tests and approved full backfill**
 
-Run tests, then only if Task 3 says `continueAutomatically=true`, run the full index backfill. Verify 90/90 industries and every qualified concept has a deterministic coverage record.
+Run tests and continue the private index backfill under the superseding user authorization; incomplete probe capabilities must be validated during their corresponding implementation tasks. Never interpret `continueAutomatically=true` as complete capability or public-release approval. Verify 90/90 industries and every qualified concept has a deterministic coverage record.
 
 - [ ] **Step 5: Commit code and safe coverage report**
 
