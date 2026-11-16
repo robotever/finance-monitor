@@ -3,6 +3,7 @@
 This module accepts no arbitrary SQL and retains no provider envelopes.  It is
 an offline history boundary only; it never changes production score inputs.
 """
+import argparse
 from datetime import date
 import json
 import math
@@ -14,6 +15,7 @@ import subprocess
 SCHEMA = 'hithink-daily-history-v1'
 _SYMBOL = re.compile(r'^[0-9]{6}\.(?:SH|SZ|BJ)$')
 _VIEWS = {'none': 'v_daily', 'qfq': 'v_daily_qfq', 'hfq': 'v_daily_hfq'}
+AUDIT_SCHEMA = 'hithink-history-audit-v1'
 
 
 class HithinkHistoryError(ValueError):
@@ -146,3 +148,102 @@ def load_daily_closes(runner, cli_path: Path, db_path: Path, symbols: list[str],
         'pages': pages,
         'rows': rows,
     }
+
+
+def audit_history(batch: dict) -> dict:
+    """Project a validated batch to aggregate-only coverage metadata."""
+    if (not isinstance(batch, dict) or batch.get('schemaVersion') != SCHEMA
+            or batch.get('source') != 'Hithink' or batch.get('adjustment') not in _VIEWS):
+        raise HithinkHistoryError()
+    requested = batch.get('requestedSymbols')
+    returned = batch.get('returnedSymbols')
+    missing = batch.get('missingSymbols')
+    rows = batch.get('rows')
+    pages = batch.get('pages')
+    if (not isinstance(requested, list) or requested != sorted(set(requested))
+            or not requested or any(not isinstance(value, str) or not _SYMBOL.fullmatch(value)
+                                    for value in requested)
+            or not isinstance(returned, list) or returned != sorted(set(returned))
+            or not isinstance(missing, list) or missing != sorted(set(missing))
+            or not isinstance(rows, list) or not isinstance(pages, int)
+            or isinstance(pages, bool) or pages < 1):
+        raise HithinkHistoryError()
+    start, end = batch.get('startDate'), batch.get('endDate')
+    start_day, end_day = _day(start), _day(end)
+    if start_day > end_day:
+        raise HithinkHistoryError()
+    dates, identities = [], set()
+    for row in rows:
+        if (not isinstance(row, dict)
+                or set(row) != {'id', 'date', 'close', 'adjustment', 'source'}
+                or row.get('source') != 'Hithink'
+                or row.get('adjustment') != batch['adjustment']):
+            raise HithinkHistoryError()
+        identity, observed = row.get('id'), row.get('date')
+        if identity not in requested:
+            raise HithinkHistoryError()
+        try:
+            observed_day = date.fromisoformat(observed)
+        except (TypeError, ValueError):
+            raise HithinkHistoryError() from None
+        if observed_day.isoformat() != observed or not start_day <= observed_day <= end_day:
+            raise HithinkHistoryError()
+        close = row.get('close')
+        if (not isinstance(close, (int, float)) or isinstance(close, bool)
+                or not math.isfinite(close) or close <= 0):
+            raise HithinkHistoryError()
+        identities.add(identity)
+        dates.append(observed)
+    derived_returned = sorted(identities)
+    derived_missing = sorted(set(requested) - identities)
+    if (returned != derived_returned or missing != derived_missing
+            or batch.get('complete') is not (not derived_missing)):
+        raise HithinkHistoryError()
+    return {
+        'schemaVersion': AUDIT_SCHEMA,
+        'source': 'Hithink',
+        'adjustment': batch['adjustment'],
+        'startDate': start,
+        'endDate': end,
+        'requestedSymbols': len(requested),
+        'returnedSymbols': len(returned),
+        'missingSymbols': missing,
+        'rowCount': len(rows),
+        'firstDate': min(dates, default=None),
+        'lastDate': max(dates, default=None),
+        'pages': pages,
+        'complete': not missing,
+    }
+
+
+def run_command(argv):
+    """Run the official CLI without a shell and keep output private."""
+    return subprocess.run(argv, capture_output=True, text=True, timeout=90, check=False)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--cli', required=True, type=Path)
+    parser.add_argument('--db', required=True, type=Path)
+    parser.add_argument('--symbols', required=True)
+    parser.add_argument('--start', required=True)
+    parser.add_argument('--end', required=True)
+    parser.add_argument('--adjustment', choices=tuple(_VIEWS), default='qfq')
+    parser.add_argument('--page-size', type=int, default=500)
+    args = parser.parse_args(argv)
+    try:
+        symbols = [value.strip() for value in args.symbols.split(',')]
+        batch = load_daily_closes(
+            run_command, args.cli, args.db, symbols, args.start, args.end,
+            adjustment=args.adjustment, page_size=args.page_size)
+        audit = audit_history(batch)
+        print(json.dumps(audit, ensure_ascii=False, allow_nan=False, separators=(',', ':')))
+        return 0 if audit['complete'] else 1
+    except (HithinkHistoryError, OSError, subprocess.SubprocessError, TimeoutError):
+        print(json.dumps({'schemaVersion': AUDIT_SCHEMA, 'complete': False,
+                          'safeErrorCode': 'HITHINK_HISTORY_ERROR'}, separators=(',', ':')))
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -42,6 +42,28 @@ wrapper 按单行字面量解析 `.env`，不执行 `source` / `eval` / `$()`；
 
 采集不创建 Vault Inbox 或 In Progress 笔记，不上传供应商原始响应。
 
+### 同花顺离线历史库
+
+共享历史库不属于 LaunchAgent 盘中采集链路，也不发布到 Cloudflare。官方 CLI 和数据库固定在：
+
+```text
+/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance
+/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb
+```
+
+收盘且供应商增量可用后，用 `DATA_SOURCES.md` 中的 `data sync` 和 `data validate` 更新并校验。只读抽样审计从稳定 checkout 运行：
+
+```bash
+cd '/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor'
+PYTHONDONTWRITEBYTECODE=1 python3 -m tools.market_dashboard.hithink_history \
+  --cli '/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
+  --db '/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb' \
+  --symbols '600519.SH,000001.SZ' \
+  --start 2026-11-10 --end 2026-11-13 --adjustment qfq
+```
+
+成功输出仅包含 `hithink-history-audit-v1` 覆盖摘要；缺失证券或任何格式／截断／重复错误均返回非零。不要把审计命令改成任意 SQL 入口，不要把输出重定向为原始行情归档。当前板块映射门禁未通过，这个工具只能用于股票级历史读取和数据质量核验，不能直接生成现有 35 行业／75 概念的生产历史。
+
 ## 调度与服务生命周期
 
 全部业务时钟为 Asia/Shanghai。LaunchAgent 每 300 秒唤醒，Python gate 决定是否运行：交易日 09:30–11:30、13:00–15:00，每 15 分钟 bucket 最多成功一次；15:00–15:30 为一次最终 close 的补采窗口。收盘数据必须在当日 15:00 或之后；同日收盘观测可持续有效到当地日期结束。`--force` 只绕过时段限制，不绕过锁、schema 或成功 bucket 去重。

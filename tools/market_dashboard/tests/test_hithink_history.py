@@ -2,7 +2,10 @@ import json
 import math
 from pathlib import Path
 import subprocess
+from contextlib import redirect_stdout
+import io
 import unittest
+from unittest.mock import patch
 
 from tools.market_dashboard import hithink_history
 
@@ -160,6 +163,94 @@ class HithinkHistoryAdapterTests(unittest.TestCase):
                 runner, CLI, DB, ['600519.SH'], '2026-11-10', '2026-11-13', page_size=1)
 
         self.assertEqual(raised.exception.code, 'HITHINK_HISTORY_ERROR')
+
+
+class HithinkHistoryAuditTests(unittest.TestCase):
+    def batch(self, symbols=('000001.SZ', '600519.SH')):
+        rows = [
+            {'thscode': '000001.SZ', 'date': '2026-11-10', 'close': 11.86},
+            {'thscode': '600519.SH', 'date': '2026-11-10', 'close': 1439},
+            {'thscode': '000001.SZ', 'date': '2026-11-11', 'close': 11.71},
+        ]
+        selected = [row for row in rows if row['thscode'] in symbols]
+        return hithink_history.load_daily_closes(
+            SequenceRunner([envelope(selected)]), CLI, DB, list(symbols),
+            '2026-11-10', '2026-11-13')
+
+    def test_audit_contains_only_hand_checked_coverage_and_date_bounds(self):
+        audit = hithink_history.audit_history(self.batch())
+
+        self.assertEqual(audit, {
+            'schemaVersion': 'hithink-history-audit-v1',
+            'source': 'Hithink',
+            'adjustment': 'qfq',
+            'startDate': '2026-11-10',
+            'endDate': '2026-11-13',
+            'requestedSymbols': 2,
+            'returnedSymbols': 2,
+            'missingSymbols': [],
+            'rowCount': 3,
+            'firstDate': '2026-11-10',
+            'lastDate': '2026-11-11',
+            'pages': 1,
+            'complete': True,
+        })
+        serialized = json.dumps(audit)
+        for forbidden in ('rows', 'close', 'request_id', '1439', '11.86'):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_cli_missing_symbol_emits_incomplete_audit_and_nonzero_exit(self):
+        response = envelope([
+            {'thscode': '600519.SH', 'date': '2026-11-10', 'close': 1439},
+        ])
+        output = io.StringIO()
+        argv = ['--cli', str(CLI), '--db', str(DB),
+                '--symbols', '600519.SH,000001.SZ',
+                '--start', '2026-11-10', '--end', '2026-11-13']
+
+        with patch.object(hithink_history, 'run_command', return_value=response), redirect_stdout(output):
+            result = hithink_history.main(argv)
+
+        audit = json.loads(output.getvalue())
+        self.assertEqual(result, 1)
+        self.assertFalse(audit['complete'])
+        self.assertEqual(audit['missingSymbols'], ['000001.SZ'])
+        self.assertNotIn('rows', audit)
+
+    def test_cli_complete_batch_emits_audit_and_zero_exit(self):
+        response = envelope([
+            {'thscode': '000001.SZ', 'date': '2026-11-10', 'close': 11.86},
+        ])
+        output = io.StringIO()
+        argv = ['--cli', str(CLI), '--db', str(DB), '--symbols', '000001.SZ',
+                '--start', '2026-11-10', '--end', '2026-11-13', '--adjustment', 'none']
+
+        with patch.object(hithink_history, 'run_command', return_value=response), redirect_stdout(output):
+            result = hithink_history.main(argv)
+
+        audit = json.loads(output.getvalue())
+        self.assertEqual(result, 0)
+        self.assertTrue(audit['complete'])
+        self.assertEqual(audit['adjustment'], 'none')
+
+    def test_cli_external_failure_returns_only_safe_error(self):
+        external = subprocess.CompletedProcess(
+            [], 2, '{"provider":"private response"}', 'sensitive database error')
+        output = io.StringIO()
+        argv = ['--cli', str(CLI), '--db', str(DB), '--symbols', '600519.SH',
+                '--start', '2026-11-10', '--end', '2026-11-13']
+
+        with patch.object(hithink_history, 'run_command', return_value=external), redirect_stdout(output):
+            result = hithink_history.main(argv)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(json.loads(output.getvalue()), {
+            'schemaVersion': 'hithink-history-audit-v1',
+            'complete': False,
+            'safeErrorCode': 'HITHINK_HISTORY_ERROR',
+        })
+        self.assertNotIn('private response', output.getvalue())
+        self.assertNotIn('sensitive', output.getvalue())
 
 
 if __name__ == '__main__':

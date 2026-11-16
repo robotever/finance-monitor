@@ -62,6 +62,7 @@ functions/
 | `rotation_probe.py` | 只读 Wind 能力、覆盖和成本探针 |
 | `rotation_diagnostics.py` | 离线历史诊断 |
 | `rotation_evaluation.py` | 强度／机会／风险的只读PIT评价、基准比较和Markdown报告 |
+| `hithink_history.py` | 同花顺本地日线的分页只读适配、严格校验和覆盖审计 |
 | `fixtures/` | 只用于测试的受控合成／截断样本 |
 | `tests/` | Python 单元、集成和运维测试 |
 
@@ -100,3 +101,4 @@ functions/
 | 修改调度 | `config/market-dashboard.json`、`tools/market_dashboard/job.py`、`ops/macos/` | 运维测试、运行手册、成本估算 |
 | 修改生产部署 | `wrangler.toml`、Functions、migrations | Cloudflare 绑定、回滚和验收记录 |
 | 修改验收页面 | `acceptance*.mjs`、Dashboard | acceptance 测试、`noindex` 和隔离检查 |
+| 修改离线历史数据 | `tools/market_dashboard/hithink_history.py`、`docs/DATA_SOURCES.md` | 复权口径、身份映射、适配器测试和授权边界 |
