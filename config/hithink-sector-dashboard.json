@@ -27,5 +27,123 @@
     "publicDerivedScores": false,
     "evidenceReference": null
   },
-  "economicPolicy": "hithink_fee_unrestricted_user_2026-11-16"
+  "economicPolicy": "hithink_fee_unrestricted_user_2026-11-16",
+  "scoring": {
+    "version": "sector-score-v0.3",
+    "weights": {
+      "strength": {
+        "priceTrend": 30,
+        "breadth": 30,
+        "participation": 20,
+        "persistence": 20
+      },
+      "opportunity": {
+        "position": 25,
+        "breadthImprovement": 25,
+        "momentumImprovement": 20,
+        "participationWarming": 15,
+        "relativeTurn": 15
+      },
+      "risk": {
+        "downsideDiffusion": 30,
+        "trendDeterioration": 25,
+        "divergence": 20,
+        "crowding": 15,
+        "concentration": 10
+      }
+    },
+    "componentWeights": {
+      "priceTrend": {
+        "return1d": 20,
+        "return5d": 45,
+        "return20d": 35
+      },
+      "breadth": {
+        "advancingShare": 40,
+        "medianReturn": 30,
+        "strongStockShare": 30
+      },
+      "participation": {
+        "turnoverPercentile": 40,
+        "turnoverMarketShare": 30,
+        "volumeExpansionShare": 30
+      },
+      "persistence": {
+        "meanPercentile": 60,
+        "topDecileStreak": 40
+      },
+      "position": {
+        "position60d": 50,
+        "position250d": 50
+      },
+      "breadthImprovement": {
+        "delta5d": 70,
+        "improvingDays": 30
+      },
+      "momentumImprovement": {
+        "shortAcceleration": 50,
+        "mediumAcceleration": 50
+      },
+      "participationWarming": {
+        "current": 40,
+        "delta5d": 60
+      },
+      "relativeTurn": {
+        "relativeTurn5d": 60,
+        "relativeTurn20d": 40
+      },
+      "downsideDiffusion": {
+        "current": 60,
+        "delta5d": 40
+      },
+      "trendDeterioration": {
+        "return5d": 30,
+        "return20d": 40,
+        "slope5d": 30
+      },
+      "divergence": {
+        "indexBreadth": 60,
+        "indexMedian": 40
+      },
+      "crowding": {
+        "activity": 60,
+        "acceleration": 40
+      },
+      "concentration": {
+        "top5TurnoverShare": 60,
+        "top1ContributionShare": 40
+      }
+    },
+    "normalization": {
+      "winsorLower": 0.05,
+      "winsorUpper": 0.95
+    },
+    "history": {
+      "shortBaseline": 5,
+      "minimumPersistenceCloses": 3,
+      "persistenceCloses": 15,
+      "positionWindows": [
+        60,
+        250
+      ],
+      "turnoverCloses": 20
+    },
+    "gates": {
+      "minimumCloses": 20,
+      "coldStartCloses": 60,
+      "minimumOpportunityCompleteness": 70,
+      "improvementThreshold": 60,
+      "requiredImprovementComponents": 2,
+      "unconfirmedOpportunityCap": 69
+    },
+    "heat": {
+      "coldBelow": 30,
+      "activeAt": 70,
+      "crowdedAt": 90,
+      "concentrationCrowdedAt": 95,
+      "warmingImprovement": 15,
+      "minimumCompleteness": 70
+    },
+    "approximationCompletenessFactor": 0.8
+  }
 }

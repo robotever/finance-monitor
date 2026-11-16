@@ -276,3 +276,32 @@ class RotationEvaluationCliTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class HithinkEvaluationTests(unittest.TestCase):
+    def test_v4_replay_separates_membership_modes_and_keeps_forward_outcomes(self):
+        rows,dates,_,_=sample_rows(12)
+        config=json.loads(Path('config/hithink-sector-dashboard.json').read_text())
+        for index,row in enumerate(rows):
+            row.update(id='881%03d.TI' % (index%10),schemaVersion='market-dashboard-v4',
+                       sectorScoringVersion=config['scoreVersion'],sectorUniverseVersion=config['universeVersion'],
+                       featureVersion=config['featureVersion'],membershipVersion=config['membershipVersion'],
+                       membershipMode='point_in_time_snapshot' if row['marketDate']>=dates[5] else 'current_members_backfill')
+        old=deepcopy(rows)
+        result=rotation_evaluation.evaluate_v4(rows,dates,config,
+            {'industry':{r['id'] for r in rows},'concept':set()})
+        self.assertEqual(rows,old)
+        strict=result['membershipSensitivity']['point_in_time_snapshot']['universes']['industry']['signals']['strength']
+        approx=result['membershipSensitivity']['current_members_backfill']['universes']['industry']['signals']['strength']
+        self.assertEqual(strict['nativeCoverage']['scoreDates'],7)
+        self.assertEqual(approx['nativeCoverage']['scoreDates'],5)
+        # Approximate membership may score on day 5 and mature on strict day 6;
+        # the outcome is the official index and does not inherit membership bias.
+        self.assertEqual(approx['horizons']['1']['validDates'],5)
+        self.assertEqual(result['inputAudit']['membershipModes'],{'current_members_backfill':50,'point_in_time_snapshot':70})
+        self.assertEqual(result['versions']['sectorScoringVersion'],'sector-score-v0.3')
+
+    def test_v4_rejects_unknown_provenance_and_cross_version(self):
+        c=json.loads(Path('config/hithink-sector-dashboard.json').read_text())
+        rows,dates,_,_=sample_rows(2)
+        with self.assertRaises(ValueError): rotation_evaluation.evaluate_v4(rows,dates,c)

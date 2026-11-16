@@ -361,6 +361,10 @@ def evaluate(rows: list[dict], official_dates: list[str], config: dict) -> dict:
     """Evaluate current scores without fitting or mutating the supplied rows."""
     dates = calendar_dates(official_dates)
     grouped, versions, audit = _validate(rows, dates, config)
+    return _evaluate_grouped(grouped, versions, audit, dates)
+
+
+def _evaluate_grouped(grouped, versions, audit, dates):
     universes = {}
     for universe in ('industry', 'concept'):
         signals = {
@@ -384,6 +388,72 @@ def evaluate(rows: list[dict], official_dates: list[str], config: dict) -> dict:
         'limitations': ['NO_AUTOMATIC_WEIGHT_TUNING', 'NO_TRANSACTION_COSTS',
                         'NO_OVERLAP_ADJUSTMENT', 'CANONICAL_STATE_DOES_NOT_REPROVE_PROVIDER_ARRIVAL'],
     }
+
+
+
+def evaluate_v4(rows, official_dates, config, universe_definitions=None):
+    """Evaluate Hithink closes, exposing separate strict/approximate score cohorts.
+
+    Cohort selection affects scoring dates only. Official index forward returns
+    remain usable across a membership-mode boundary. Strict here describes
+    membership provenance: existing arrival-time checks still apply and cannot
+    independently prove provider availability. Callers may pass catalog-derived
+    identity sets for authoritative universe validation.
+    """
+    from .rotation_v4 import validate_v4_config
+    validate_v4_config(config)
+    dates = calendar_dates(official_dates)
+    versions = {'sectorScoringVersion': config['scoreVersion'],
+                'sectorUniverseVersion': config['universeVersion'],
+                'featureVersion': config['featureVersion'],
+                'membershipVersion': config['membershipVersion']}
+    if not isinstance(rows, list):
+        raise ValueError('INVALID_STATE')
+    grouped, seen, modes = defaultdict(dict), set(), defaultdict(int)
+    definitions = universe_definitions
+    if definitions is not None and set(definitions) != {'industry', 'concept'}:
+        raise ValueError('INVALID_SECTOR_UNIVERSE')
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError('INVALID_STATE')
+        universe, identity, day = row.get('universe'), row.get('id'), row.get('marketDate')
+        if universe not in ('industry','concept') or not isinstance(identity,str) or not identity.endswith('.TI'):
+            raise ValueError('IDENTITY_MISMATCH')
+        if definitions is not None and identity not in definitions[universe]:
+            raise ValueError('IDENTITY_MISMATCH')
+        if row.get('schemaVersion') != 'market-dashboard-v4' or any(row.get(k)!=v for k,v in versions.items()):
+            raise ValueError('VERSION_MISMATCH')
+        mode = row.get('membershipMode')
+        if mode not in ('point_in_time_snapshot','current_members_backfill'):
+            raise ValueError('INVALID_MEMBERSHIP_MODE')
+        if day not in dates or row.get('session') != 'close' or row.get('officialClose') is not True:
+            continue
+        key = universe, identity, day
+        if key in seen:
+            raise ValueError('DUPLICATE_CLOSE')
+        seen.add(key)
+        modes[mode] += 1
+        grouped[universe,day][identity] = row
+    audit = {'inputRows':len(rows), 'acceptedRows':len(seen), 'skippedRows':len(rows)-len(seen),
+             'membershipModes':dict(modes)}
+    report = _evaluate_grouped(grouped,versions,audit,dates)
+    report['schemaVersion'] = 'sector-score-evaluation-v2'
+    report['membershipSensitivity'] = {}
+    for mode in ('point_in_time_snapshot','current_members_backfill'):
+        cohort = defaultdict(dict)
+        for key, points in grouped.items():
+            for identity,row in points.items():
+                # Keep official future returns, but remove every selectable
+                # score/baseline from the other cohort, including position.
+                cohort[key][identity] = row if row['membershipMode']==mode else {
+                    **row, '_rawScores':{}, 'axisCompleteness':{}, 'components':{},
+                    'metrics':{'return1d':row.get('metrics',{}).get('return1d')}}
+        selected = _evaluate_grouped(cohort,versions,audit,dates)
+        report['membershipSensitivity'][mode] = {
+            'membershipMode':mode, 'universes':selected['universes'],
+            'interpretation':'STRICT_MEMBERSHIP_ONLY' if mode=='point_in_time_snapshot' else 'APPROXIMATE_CURRENT_MEMBERS'}
+    report['limitations'].append('CURRENT_MEMBER_BACKFILLS_ARE_NOT_STRICT_PIT')
+    return report
 
 
 def _display(value, digits=3):
