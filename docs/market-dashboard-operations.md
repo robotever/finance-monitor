@@ -332,11 +332,29 @@ CSI300 history supplies the relative-return benchmark. Historical reconstruction
 never counts as a timely official-close success. Run from the intended checkout;
 `--store`, `--state-root`, `--stock-db` and `--cli` accept explicit local paths.
 
-For future operator review, the installer supports an isolated
-`--hithink-shadow --prepare` label. Preparation never starts a job. An explicit
-`--hithink-shadow --enable` would activate only that shadow service; this migration
-has not enabled, deployed or published it. Its five-minute timer enters the
-fifteen-minute producer gate. Existing service prepare/enable behavior is unchanged.
+The installer supports an isolated `--hithink-shadow --prepare` label;
+preparation never starts a job. Operational update, 2026-11-17 Shanghai: the
+controller explicitly enabled the private shadow service using the reviewed
+`--hithink-shadow --allow-worktree --enable` installer. The loaded label is
+`com.robot-ever.newsmonitor.market-dashboard.hithink-shadow`, with a300-second
+wake-up interval and the internal fifteen-minute trading-session gate. launchctl
+confirmed the loaded job; the first kickstart had runs=1, exit=0 and safe health
+`outside_session`, `published=false`. This proves safe outside-session handling,
+not an intraday collection or natural-day acceptance. Public publication and the
+homepage v4 flag remain off; no v4 remote migration, deployment or upload occurred.
+Existing Wind v3 service behavior is unchanged.
+
+The loaded job currently executes code from
+`/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`, with
+`MARKET_DASHBOARD_PROJECT_ROOT` pointing to
+`/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor` for private
+state/data. Keep that worktree until the reviewed implementation is transferred
+to the stable checkout and the service is regenerated/reloaded with its new path.
+A Git commit alone does not migrate the loaded service. The Mac must be powered
+on, logged in, online and awake during trading sessions; a300-second timer does
+not itself guarantee execution while the machine sleeps. Verify future natural
+buckets and official close from safe health/ledger; a successful outside-session
+kickstart is not a substitute. Public authorization remains independently unknown.
 
 Live snapshot timestamps must also belong to the current bucket and be no more
 than120seconds old when collection completes. Close source timestamps must be

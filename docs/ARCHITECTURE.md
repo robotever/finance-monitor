@@ -57,7 +57,7 @@ NewsMonitor 由四个运行边界组成：浏览器前端、Cloudflare 边缘接
 6. `rotation_operations.py` 维护影子运行账本和发布资格证据。
 7. `rotation_probe.py` 只输出白名单元数据，用于 Wind 能力、历史覆盖和调用成本验证。
 
-生产任务由 macOS LaunchAgent 每 300 秒唤醒，实际是否采集由北京时间交易时段门禁决定。v2 当前按 15 分钟 bucket 运行；v3 仍保留四个关键窗口；Hithink v4 使用独立的 15 分钟上海交易时段门禁，默认不启用。旧 Wind 分频策略不因此视为已部署，见 [数据源策略](DATA_SOURCES.md)。
+生产任务由 macOS LaunchAgent 每 300 秒唤醒，实际是否采集由北京时间交易时段门禁决定。v2 当前按 15 分钟 bucket 运行；v3 仍保留四个关键窗口；Hithink v4 使用独立的 15 分钟上海交易时段门禁；私有影子服务现已启用，公开开关仍关闭。旧 Wind 分频策略不因此视为已部署，见 [数据源策略](DATA_SOURCES.md)。
 
 ## 4. Cloudflare 接口与存储
 
@@ -137,4 +137,4 @@ D1 迁移：
 
 新增迁移 `0003_hithink_sector_rotation_v4.sql` 仅附加 manifest、chunk、sector 三张表。`POST /api/sector-rotation/v4/manifest|chunk|activate` 使用认证和独立公开授权门禁，校验每块最多 50 行、完整请求最多 131072 字节及 SHA-256 摘要；激活前校验整批数量、身份和摘要，原子激活后才可读。`GET /api/sector-rotation/v4/latest|catalog|history|detail` 只读取 active manifest 和完整五版本组合，无数据返回 `NO_SNAPSHOT`，不从 v3 拼接。公开投影排除成份列表、原始响应、私有分数容器和本地路径。
 
-`src/features/sector-rotation-v4/` 拥有独立契约；首页开关 `VITE_HITHINK_SECTOR_V4` 默认关闭，`HithinkSectorBoard.vue` 展示三组行业榜和核心／动态概念，`/sectors/hithink` 提供搜索分页。无有效 v4 快照时保留原有 v3／v2 视图。配置 `publishEnabled=false`；公开接口的实现存在不代表已部署。所有 v4 远端迁移、发布、启用与切换仍待独立授权和自然交易日验收，见 [验证记录](verification/2026-11-17-hithink-sector-v4.md)。
+`src/features/sector-rotation-v4/` 拥有独立契约；首页开关 `VITE_HITHINK_SECTOR_V4` 默认关闭，`HithinkSectorBoard.vue` 展示三组行业榜和核心／动态概念，`/sectors/hithink` 提供搜索分页。无有效 v4 快照时保留原有 v3／v2 视图。配置 `publishEnabled=false`；公开接口的实现存在不代表已部署。私有影子服务已启用并由每 300 秒唤醒的独立 LaunchAgent 调用当前工作树，机器须保持唤醒；公开 v4 远端迁移、发布与切换仍待独立授权和自然交易日验收，见 [验证记录](verification/2026-11-17-hithink-sector-v4.md)。
