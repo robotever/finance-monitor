@@ -52,6 +52,12 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--hithink-shadow' in arguments:
+        # Private v4 producer owns an isolated ledger and never publishes.
+        arguments.remove('--hithink-shadow')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.hithink_job', *arguments], os.environ)
     if '--hithink-backfill-indexes' in arguments:
         # Private manual ingestion; exits before any v2/v3 job or schedule state.
         arguments.remove('--hithink-backfill-indexes')

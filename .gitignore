@@ -33,3 +33,5 @@ data/market-dashboard/sector-history.lock
 data/market-dashboard/hithink-index-backfill/
 data/market-dashboard/hithink-live-priority
 data/market-dashboard/hithink-breadth/
+data/market-dashboard/hithink-live/
+data/market-dashboard/hithink-live.lock

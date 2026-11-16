@@ -282,3 +282,58 @@ Provider authorization is independent of cost approval. `publicReleaseEligible`
 requires status `verified`, both locally retained normalized features and public
 derived scores explicitly covered, and a nonempty evidence reference. The
 versioned default is `unknown`; no v4 public release is authorized by this probe.
+
+### Private Hithink fifteen-minute producer
+
+`ops/macos/run-market-dashboard.sh --hithink-shadow` dispatches only the v4
+private producer. It uses Shanghai's official provider calendar and gates
+09:30–11:30 / 13:00–15:00 into fifteen-minute buckets, with one official close
+bucket from 15:00 through 15:30. Lunch, holidays and already successful buckets
+make no data request after the calendar gate. A failed cycle never advances its
+success ledger. The calendar must be obtainable and valid; there is no weekday
+or local-price-date holiday guess. `--calendar /absolute/verified-dates.json`
+provides an explicit reviewed ISO-date array when necessary.
+
+The producer writes only `data/market-dashboard/hithink-live/`, the normalized
+private SQLite feature store, membership/panel files and shared private locks.
+Files are owner-readable only. Safe health has fixed status/error codes and
+aggregate counts. Provider envelopes, credentials and constituent lists are never
+included in health or the local score payload. The existing v2/v3 service,
+feature flags and publisher are unchanged.
+
+Each live cycle assembles one stock snapshot in exact, explicit-code chunks of
+80 and reuses it for every sector. Returned identities/counts must match every
+chunk and assembly timestamps must span no more than120seconds. Default100-row
+responses cannot silently satisfy larger requests. Supported A-share prices are
+used for breadth; legitimate NQ constituents remain in the denominator as
+unsupported coverage, with an aggregate unsupported-stock count. Snapshot daily
+price ratios supply live breadth; raw live prices are never compared with qfq
+history. A missing verified volume baseline or full-market turnover denominator
+stays missing. The official close additionally requires same-day official index
+daily bars; a response assembly timestamp alone cannot prove a close.
+
+Industries and core/dynamic/candidate concepts refresh memberships daily, other
+concepts weekly; catalog changes require reviewed version compatibility. Catalog
+checks run daily. Network work occurs outside the shared SQLite writer lock;
+short writes use the same `sector-history.lock` as backfill. A live-priority marker
+makes cooperative backfills yield before their next request/write. Each cycle
+has an840-second total deadline and1200-command operational ceiling, with each
+command bounded by the remaining deadline. These are reliability limits,
+independent of Hithink's unrestricted fee policy. Partial membership refreshes are
+restartable; only a complete payload receives a successful bucket marker.
+
+`python3 -m tools.market_dashboard.hithink_job --latest-close` produces an explicitly
+labelled historical reconstruction using the newest date available across local
+index histories and the verified official calendar. It records the latest
+completed official session and lag in sessions; a lagged local date is never
+called the latest market close. One qfq stock export is shared across all sectors;
+unsupported constituents remain in coverage denominators. An explicit official
+CSI300 history supplies the relative-return benchmark. Historical reconstruction
+never counts as a timely official-close success. Run from the intended checkout;
+`--store`, `--state-root`, `--stock-db` and `--cli` accept explicit local paths.
+
+For future operator review, the installer supports an isolated
+`--hithink-shadow --prepare` label. Preparation never starts a job. An explicit
+`--hithink-shadow --enable` would activate only that shadow service; this migration
+has not enabled, deployed or published it. Its five-minute timer enters the
+fifteen-minute producer gate. Existing service prepare/enable behavior is unchanged.

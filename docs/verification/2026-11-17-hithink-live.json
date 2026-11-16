@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "hithink-live-verification-v1",
+  "mode": "private-shadow",
+  "marketDate": "2026-11-16",
+  "latestOfficialCompletedDate": "2026-11-16",
+  "historyLagSessions": 0,
+  "historicalReconstruction": true,
+  "officialClose": false,
+  "published": false,
+  "publicReleaseEligible": false,
+  "industryCount": 90,
+  "conceptCount": 390,
+  "normalizedRows": 480,
+  "unsupportedStockCount": 1,
+  "minimumCompleteness": 68,
+  "medianCompleteness": 75.0,
+  "currentMembersBackfillCount": 478,
+  "pointInTimeCount": 2,
+  "benchmark": "000300.SH",
+  "missingFullMarketTurnover": true,
+  "verifiedSnapshotChunkSizes": {
+    "index": 80,
+    "stock": 80
+  },
+  "officialCalendarRows": 243,
+  "safeErrorCode": null,
+  "providerPayloadsCommitted": false
+}
