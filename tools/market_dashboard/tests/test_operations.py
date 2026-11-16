@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +25,14 @@ def health_module():
     if not path.exists():
         raise unittest.SkipTest('Financial Knowledge Repository health script is not available')
     spec = importlib.util.spec_from_file_location('dashboard_health_operations', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def awake_module():
+    path = OPS / 'market_dashboard_awake.py'
+    spec = importlib.util.spec_from_file_location('market_dashboard_awake_operations', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -69,6 +78,67 @@ class OperationsTests(unittest.TestCase):
     def execute(self, script, *args):
         return subprocess.run(['/bin/bash', str(self.repo / 'ops/macos' / script), *args],
                               env=self.env, capture_output=True, text=True, timeout=15)
+
+    def test_awake_guard_uses_shanghai_session_and_never_holds_weekends(self):
+        awake = awake_module()
+        cases = [
+            ('2026-11-16T09:24:59+08:00', 0),
+            ('2026-11-16T09:25:00+08:00', 6 * 3600 + 10 * 60),
+            ('2026-11-16T15:34:59+08:00', 1),
+            ('2026-11-16T15:35:00+08:00', 0),
+            ('2026-11-16T01:25:00+00:00', 6 * 3600 + 10 * 60),
+            ('2026-11-14T10:00:00+08:00', 0),
+        ]
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(awake.session_seconds(datetime.fromisoformat(value)), expected)
+
+    def test_awake_guard_is_single_instance_and_rejects_symlink_state(self):
+        awake = awake_module()
+        state = self.root / 'state'
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append(command)
+            entered.set()
+            release.wait(5)
+            return subprocess.CompletedProcess(command, 0)
+
+        now = datetime.fromisoformat('2026-11-16T10:00:00+08:00')
+        thread = threading.Thread(target=lambda: awake.hold_awake(state, now=now, runner=runner))
+        thread.start()
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(awake.hold_awake(state, now=now, runner=runner), 'already-held')
+        release.set(); thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:3], ['/usr/bin/caffeinate', '-s', '-t'])
+
+        outside = self.root / 'outside-state'; outside.mkdir()
+        linked = self.root / 'linked-state'; linked.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            awake.hold_awake(linked, now=now, runner=runner)
+
+    def test_wrapper_invokes_awake_guard_without_changing_cli_arguments(self):
+        self.copy_ops()
+        package = self.repo / 'tools/market_dashboard'
+        package.mkdir(parents=True)
+        (self.repo / 'tools/__init__.py').touch()
+        (package / '__init__.py').touch()
+        (package / 'job.py').write_text(
+            'import json, os, sys\nfrom pathlib import Path\n'
+            'Path(os.environ["TEST_CAPTURE"]).write_text(json.dumps(sys.argv[1:]))\n')
+        (self.root / 'scripts/rotate_service_logs.py').write_text('def rotate(path): pass\n')
+        guard = self.repo / 'ops/macos/market_dashboard_awake.py'
+        guard.write_text('import os, sys\nfrom pathlib import Path\n'
+                         'Path(os.environ["AWAKE_CAPTURE"]).write_text(" ".join(sys.argv[1:]))\n')
+        self.env.update(TEST_CAPTURE=str(self.root / 'capture.json'),
+                        AWAKE_CAPTURE=str(self.root / 'awake.txt'))
+        result = self.execute('run-market-dashboard.sh', '--dry-run')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((self.root / 'capture.json').read_text()), ['--dry-run'])
+        self.assertEqual((self.root / 'awake.txt').read_text(), f'ensure {self.root / "state"}')
 
     def test_wrapper_loads_literal_dotenv_executes_cli_and_rotates_private_logs(self):
         self.copy_ops()

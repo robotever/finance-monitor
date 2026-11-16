@@ -12,6 +12,7 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 repo, root = (Path(value).resolve() for value in sys.argv[1:3])
@@ -78,6 +79,16 @@ try:
     os.close(fd)
     os.chdir(repo)
     python = os.environ.get('MARKET_DASHBOARD_PYTHON') or os.environ.get('PYTHON_BIN') or sys.executable
+    awake = repo / 'ops/macos/market_dashboard_awake.py'
+    try:
+        # The helper immediately exits outside the Shanghai session. During the
+        # session it starts one lock-guarded, AC-only sleep assertion and returns.
+        subprocess.run([python, str(awake), 'ensure', str(root / 'state')],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        # Runtime protection is best-effort and must never block a data cycle.
+        pass
     command = [python, '-u', '-m', 'tools.market_dashboard.job']
     if not arguments and os.environ.get('MARKET_DASHBOARD_ROTATION_SHADOW') == '1':
         # One process runs rotation first and lets v2 reuse the same lazy batch.
