@@ -1,7 +1,7 @@
 import hashlib
 import json
 import unittest
-from tools.market_dashboard.hithink_job import build_publish_chunks
+from tools.market_dashboard.hithink_job import build_publish_chunks, refresh_local_projection
 
 class HithinkPublishTests(unittest.TestCase):
     def row(self,i):
@@ -50,5 +50,34 @@ console.log(count);"""
             text=True,capture_output=True,timeout=10,cwd=Path(__file__).resolve().parents[3])
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(result.stdout.strip(),'3')
+
+
+    def test_offline_metadata_refresh_preserves_scores_availability_and_bucket(self):
+        from pathlib import Path
+        import tempfile
+        from unittest.mock import patch
+        from tools.market_dashboard import hithink_job as job
+        from tools.market_dashboard.hithink_universe import load_catalog_fixture
+        sectors=[*load_catalog_fixture(Path(job.__file__).parent/'fixtures/hithink/catalog-industry.json'),
+                 *load_catalog_fixture(Path(job.__file__).parent/'fixtures/hithink/catalog-concept.json')]
+        sectors=[s for s in sectors if s.tag!='industry' or s.code.startswith('881')]
+        rows=[{**self.row(i),'id':s.code,'name':s.name,'universe':'industry' if s.tag=='industry' else 'concept',
+               'ranks':{'strength':None,'opportunity':None,'risk':None},'observedAt':'2026-11-17T01:00:00+08:00','availableAt':None} for i,s in enumerate(sectors)]
+        payload={'marketDate':'2026-11-16','bucket':'2026-11-16:reconstructed-close','historicalReconstruction':True,'officialClose':False,'rows':rows}
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();local=root/'hithink-live';local.mkdir()
+            (local/'latest.json').write_text(json.dumps(payload));(local/'state.json').write_text('{"completed":["unchanged"]}')
+            with patch.object(job,'HithinkClient',side_effect=AssertionError('network forbidden')):
+                summary=refresh_local_projection(root)
+                self.assertEqual(summary,refresh_local_projection(root))
+            after=json.loads((local/'latest.json').read_text())
+            self.assertEqual(summary['coreCount'],25);self.assertEqual(summary['rows'],480)
+            self.assertEqual(after['officialClose'],False);self.assertEqual(after['historicalReconstruction'],True)
+            self.assertEqual(after['bucket'],payload['bucket'])
+            for before,row in zip(payload['rows'],after['rows']):
+                self.assertEqual({k:v for k,v in row.items() if k!='conceptRole'},before)
+            self.assertEqual((local/'state.json').read_text(),'{"completed":["unchanged"]}')
+            projected=[r for c in json.loads((local/'publish-chunks.json').read_text()) for r in json.loads(c['rowsJson'])]
+            self.assertEqual(sum(r['conceptRole']=='core' for r in projected),25)
 
 if __name__=='__main__':unittest.main()

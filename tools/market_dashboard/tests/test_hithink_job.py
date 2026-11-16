@@ -153,6 +153,12 @@ class HithinkJobTests(unittest.TestCase):
             self.assertEqual(store.execute('select count(*) from sector_features_intraday').fetchone()[0],2)
             self.assertEqual(store.execute('select count(*) from stock_market_snapshot').fetchone()[0],1)
             store.close()
+            for stale_time in ('14:00','15:05'):
+                args.now=self.stamp(stale_time)
+                with patch.object(job,'build_universe',return_value=universe):
+                    stale=job.run_hithink_cycle(args,{'calendar':['2026-11-13','2026-11-16'],'client':client})
+                self.assertEqual(stale.status,'failed')
+            self.assertEqual(json.loads((root/'hithink-live/state.json').read_text())['completed'],['2026-11-16:10:00'])
 
 
     def test_shadow_installer_requires_its_producer_and_prepares_separate_label(self):
@@ -183,5 +189,27 @@ class HithinkJobTests(unittest.TestCase):
             self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
             history=json.loads((root/'hithink-live/close-history.json').read_text())
             self.assertEqual(history[0]['marketDate'],'2026-11-13')
+
+
+    def test_stale_afternoon_and_morning_close_sources_fail_without_marker(self):
+        for collection,source in [('14:00','09:30'),('15:05','09:30'),('15:01','14:59')]:
+            with self.subTest(collection=collection,source=source),tempfile.TemporaryDirectory() as directory:
+                now=self.stamp(collection); bucket=job.cycle_bucket(now,['2026-11-16'])
+                def produce(*a):
+                    job.validate_snapshot_freshness([int(self.stamp(source).timestamp()*1000)],bucket,now)
+                    return {'rows':[],'officialClose':bucket.official_close}
+                root=Path(directory).resolve()
+                result=job.run_hithink_cycle(SimpleNamespace(state_root=root,now=now),{'calendar':['2026-11-16'],'produce':produce})
+                self.assertEqual(result.status,'failed')
+                self.assertFalse((root/'hithink-live/state.json').exists())
+                self.assertFalse((root/'hithink-live/latest.json').exists())
+
+    def test_snapshot_freshness_bucket_and_close_cutoff_boundaries(self):
+        now=self.stamp('14:05');bucket=job.cycle_bucket(now,['2026-11-16'])
+        job.validate_snapshot_freshness([int(self.stamp('14:03').timestamp()*1000)],bucket,now)
+        for value in ['14:02:59','13:59:59']:
+            with self.assertRaises(ValueError):job.validate_snapshot_freshness([int(self.stamp(value).timestamp()*1000)],bucket,now)
+        bucket=job.cycle_bucket(self.stamp('15:29'),['2026-11-16'])
+        with self.assertRaises(ValueError):job.validate_snapshot_freshness([int(self.stamp('15:29').timestamp()*1000)],bucket,self.stamp('15:30'))
 
 if __name__=='__main__': unittest.main()

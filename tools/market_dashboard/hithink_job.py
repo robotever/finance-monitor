@@ -126,6 +126,26 @@ def collect_stock_snapshot(client,codes,page_size=80):
     return result
 
 
+def validate_snapshot_freshness(timestamps,bucket,collection_now):
+    """Reject coherent but stale snapshots before any normalized stock write.
+
+    Sources must belong to this bucket, be at most120seconds old at collection,
+    and never reach the next bucket/15:30close cutoff.120seconds future clock skew
+    is tolerated only within the same bucket. Close sources must be>=15:00.
+    """
+    now=collection_now.astimezone(SHANGHAI)
+    if not timestamps or now>=bucket.deadline: raise ValueError('SNAPSHOT_STALE')
+    if bucket.official_close:
+        start=now.replace(hour=15,minute=0,second=0,microsecond=0)
+    else:
+        start=datetime.fromisoformat(bucket.key[:10]+'T'+bucket.key[11:]).replace(tzinfo=SHANGHAI)
+    lower=max(start,now-timedelta(seconds=120)); upper=min(bucket.deadline,now+timedelta(seconds=120))
+    for timestamp in timestamps:
+        source=datetime.fromtimestamp(timestamp/1000,SHANGHAI)
+        if source.date().isoformat()!=bucket.market_date or not lower<=source<=upper or source>=bucket.deadline:
+            raise ValueError('SNAPSHOT_STALE')
+
+
 def _official_calendar(client):
     # Adapter envelope validation rejects truncation/count ambiguity. Calendar
     # capability failures are fatal; weekdays/local price dates are no fallback.
@@ -229,6 +249,9 @@ def produce_payload(args,bucket,budget,client,root):
             for offset in range(0,len(ids),80): snapshots.extend(client.index_snapshots(ids[offset:offset+80]))
             if len(snapshots)!=len(ids) or {r.code for r in snapshots}!=set(ids): raise HithinkError('SNAPSHOT_INCOMPLETE')
             shared=collect_stock_snapshot(client,[m.stock_code for _,members,_ in memberships.values() for m in members])
+            all_times=[r.timestamp_ms for r in snapshots]+[r.timestamp_ms for r in shared.values()]
+            collection_now=getattr(args,'now',None) or datetime.now(SHANGHAI)
+            validate_snapshot_freshness(all_times,bucket,collection_now)
             stock_records=list(shared.values())
             for offset in range(0,len(stock_records),250):
                 budget.check()
@@ -293,11 +316,8 @@ def produce_payload(args,bucket,budget,client,root):
             budget.check()
             with store_write_lock(root):
                 upsert_sector_features(store,feature_records[offset:offset+250],intraday=not bucket.official_close and not latest_close)
-        dynamic_now={r['id'] for r in ranked if r['universe']=='concept' and r['id'] not in universe.core_ids and (r.get('metrics',{}).get('strengthRank') or 99999)<=40}
-        candidates_now={r['id'] for r in sorted([r for r in ranked if r['universe']=='concept' and r['id'] not in set(universe.core_ids)|dynamic_now],key=lambda r:-(r.get('opportunity') or 0))[:50]}
-        for row in ranked:
-            row['name']=next(s.name for s in sectors if s.code==row['id'])
-            row['conceptRole']=('core' if row['id'] in universe.core_ids else 'dynamic' if row['id'] in dynamic_now else 'candidate' if row['id'] in candidates_now else None) if row['universe']=='concept' else None
+        ranked=annotate_concept_roles(ranked,universe.core_ids)
+        for row in ranked: row['name']=next(s.name for s in sectors if s.code==row['id'])
         return dict(schemaVersion='market-dashboard-v4',source='Hithink',mode='shadow',marketDate=day,
             bucket=bucket.key,officialClose=bucket.official_close and not latest_close,
             historicalReconstruction=latest_close,publicReleaseEligible=False,rows=ranked,
@@ -418,6 +438,50 @@ def build_publish_chunks(rows,max_rows=50,max_bytes=131072,*,batch_id=None):
     return chunks
 
 
+def annotate_concept_roles(rows,core_ids):
+    """Copy reviewed role metadata without changing scores or provenance."""
+    core=set(core_ids)
+    dynamic={r['id'] for r in rows if r['universe']=='concept' and r['id'] not in core
+        and (r.get('metrics',{}).get('strengthRank') or 99999)<=40}
+    candidates={r['id'] for r in sorted([r for r in rows if r['universe']=='concept' and r['id'] not in core|dynamic],
+        key=lambda r:(-(r.get('opportunity') or 0),r['id']))[:50]}
+    return [{**r,'conceptRole':('core' if r['id'] in core else 'dynamic' if r['id'] in dynamic else 'candidate' if r['id'] in candidates else None)
+        if r['universe']=='concept' else None} for r in rows]
+
+
+def refresh_local_projection(state_root):
+    """Refresh existing local role metadata/chunks offline; no bucket rerun.
+
+    No provider access, score recomputation, source/availability timestamps or
+    timely-close flags change. The reviewed pinned catalog/mapping is mandatory.
+    """
+    root=_private_directory(Path(state_root)); local=_private_directory(root/'hithink-live')
+    with _live_guard(root),store_write_lock(root):
+        payload=_read(local/'latest.json',None)
+        if not isinstance(payload,dict) or not isinstance(payload.get('rows'),list): raise ValueError('INVALID_LOCAL_PAYLOAD')
+        bucket=payload.get('bucket','')
+        if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}:(?:reconstructed-close|close|[0-9]{2}:[0-9]{2})',bucket):
+            raise ValueError('INVALID_LOCAL_PAYLOAD')
+        fixtures=Path(__file__).parent/'fixtures/hithink'
+        universe=build_universe(load_catalog_fixture(fixtures/'catalog-industry.json'),
+            load_catalog_fixture(fixtures/'catalog-concept.json'),json.loads((BASE/'config/hithink-core-concepts.json').read_text()))
+        expected={(s.code,'industry' if s.tag=='industry' else 'concept') for s in (*universe.industries,*universe.concepts)}
+        if {(r['id'],r['universe']) for r in payload['rows']}!=expected or len(payload['rows'])!=len(expected):
+            raise ValueError('INVALID_LOCAL_UNIVERSE')
+        updated={**payload,'rows':annotate_concept_roles(payload['rows'],universe.core_ids)}
+        chunks=build_publish_chunks(updated['rows'])
+        _atomic(local/(bucket.replace(':','-')+'.json'),updated)
+        _atomic(local/'latest.json',updated)
+        history=_read(local/'close-history.json',[])
+        if history:
+            _atomic(local/'close-history.json',[updated if p.get('bucket')==bucket else p for p in history])
+        _atomic(local/'publish-chunks.json',chunks)
+        return dict(status='reprojected',marketDate=payload['marketDate'],rows=len(updated['rows']),
+            coreCount=sum(r['conceptRole']=='core' for r in updated['rows']),chunks=len(chunks),
+            providerCalls=0,published=False,officialClose=payload.get('officialClose',False),
+            historicalReconstruction=payload.get('historicalReconstruction',False))
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state-root',type=Path,default=Path('data/market-dashboard'))
@@ -425,10 +489,15 @@ def main(argv=None):
     parser.add_argument('--cli',default=CLI)
     parser.add_argument('--stock-db',type=Path)
     parser.add_argument('--calendar',type=Path,help='explicit verified JSON trading-date array; no weekday fallback')
+    parser.add_argument('--refresh-local-projection',action='store_true',help='offline reviewed role metadata/chunk refresh; preserve score/timing evidence')
     parser.add_argument('--latest-close',action='store_true',help='private historical reconstruction, never a timely close success')
     parser.add_argument('--max-calls',type=int,default=1200)
     parser.add_argument('--max-seconds',type=float,default=840)
-    args=parser.parse_args(argv); result=run_hithink_cycle(args)
+    args=parser.parse_args(argv)
+    if args.refresh_local_projection:
+        print(json.dumps(refresh_local_projection(args.state_root),separators=(',',':')))
+        return 0
+    result=run_hithink_cycle(args)
     print(json.dumps(asdict(result),separators=(',',':')))
     return int(result.status=='failed')
 

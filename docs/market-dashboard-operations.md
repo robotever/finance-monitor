@@ -337,3 +337,18 @@ For future operator review, the installer supports an isolated
 `--hithink-shadow --enable` would activate only that shadow service; this migration
 has not enabled, deployed or published it. Its five-minute timer enters the
 fifteen-minute producer gate. Existing service prepare/enable behavior is unchanged.
+
+Live snapshot timestamps must also belong to the current bucket and be no more
+than120seconds old when collection completes. Close source timestamps must be
+15:00or later; completion at or after15:30is rejected. Coherent same-day morning
+responses cannot complete an afternoon bucket or an official close. Validation
+runs before normalized stock writes.
+
+For an existing reviewed local score file, run
+`python3 -m tools.market_dashboard.hithink_job --refresh-local-projection` to refresh
+concept-role metadata against the pinned catalog/core mapping and regenerate the
+local `hithink-live/publish-chunks.json`. This offline action requests no provider
+data, recomputes no score and leaves source/availability timestamps, market date,
+close classification and successful-bucket ledger unchanged. It supports older
+completed files without rerunning their collection bucket. Unknown/missing or
+cross-version universes fail before writes. No public upload or activation occurs.
