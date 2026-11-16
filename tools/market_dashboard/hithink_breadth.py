@@ -238,6 +238,8 @@ def load_stock_panel(runner, cli_path, db_path, symbols, start_date, end_date, o
             raise ValueError('PANEL_EXPORT_FAILED')
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         raise ValueError('PANEL_EXPORT_FAILED') from None
+    # The provider may replace the precreated file with its process umask.
+    os.close(_private_file(output_path))
     seen = set()
     with output_path.open(newline='') as source:
         reader = csv.DictReader(source)
