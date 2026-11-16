@@ -1325,6 +1325,11 @@ def _run_rotation_job(args, deps):
                 _write_json(health_path, metadata)
                 return JobResult(False, 'publish', payload, error_code='PUBLISH_FAILED',
                                  publish_result=publish_result, metadata=metadata)
+            # A successful retry supersedes the transient publish failure. Restore
+            # the payload's durable rollout warnings before recording the event so
+            # health cannot retain a stale PUBLISH_FAILED code.
+            metadata['safeCodes'] = list(payload['sectorRotation']['safeCodes'])
+            metadata['rotationSafeErrorCode'] = None
             event = pending_publication['shadowOperation']
             stage = 'persist'
             def acknowledge_pending_replace():
@@ -1357,6 +1362,11 @@ def _run_rotation_job(args, deps):
             # Repair an interrupted audit write from the authoritative committed
             # snapshot before returning duplicate. Never recollect or republish.
             if state.get('shadowOperation') and not dry_run:
+                payload_block = state.get('payload', {}).get('sectorRotation', {})
+                if state['shadowOperation'].get('success') is True and isinstance(
+                        payload_block.get('safeCodes'), list):
+                    metadata['safeCodes'] = list(payload_block['safeCodes'])
+                    metadata['rotationSafeErrorCode'] = None
                 try:
                     record_operation(state['shadowOperation'])
                 except (OSError, ValueError, TypeError):

@@ -974,6 +974,20 @@ class RotationShadowTests(unittest.TestCase):
             self.assertEqual(payloads[0], payloads[1])
             self.assertFalse(pending.exists())
             self.assertTrue((root/'market-dashboard-shadow/last-success.json').exists())
+            health = json.loads((root/'market-dashboard-shadow/health.json').read_text())
+            self.assertNotIn('PUBLISH_FAILED', retry.metadata['safeCodes'])
+            self.assertNotIn('PUBLISH_FAILED', health['safeCodes'])
+            self.assertIsNone(health['rotationSafeErrorCode'])
+            self.assertIn('LIVE_HISTORY_UNVERIFIED', health['safeCodes'])
+            health['safeCodes'] = ['PUBLISH_FAILED']
+            health['rotationSafeErrorCode'] = 'PUBLISH_FAILED'
+            (root/'market-dashboard-shadow/health.json').write_text(json.dumps(health))
+            duplicate = job.run_job({'rotation_publish': True}, {'now': self.now.replace(minute=50),
+                'state_root': root, 'collector': lambda config: self.fail('duplicate recollected')})
+            self.assertEqual(duplicate.status, 'duplicate')
+            repaired = json.loads((root/'market-dashboard-shadow/health.json').read_text())
+            self.assertNotIn('PUBLISH_FAILED', repaired['safeCodes'])
+            self.assertIsNone(repaired['rotationSafeErrorCode'])
 
     def test_reenabled_publish_does_not_replace_a_newer_shadow_snapshot_with_old_pending_state(self):
         with TemporaryDirectory() as directory:
