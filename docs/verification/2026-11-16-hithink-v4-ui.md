@@ -19,3 +19,13 @@ The actual data represents market date 2026-11-16 reconstructed after midnight o
 A temporary, loopback-only reconstructed-data inspector at `http://127.0.0.1:5184/__hithink-preview` renders the same production sector-card components, uses actual public row projections and the actual read handlers, and supports core/dynamic choices, full-directory search/paging and details. A persistent warning distinguishes historical reconstruction from natural-session acceptance. Its private SQLite bridge and temporary entry are outside the repository. This inspector is review evidence, not an enabled production board or a natural trading-day acceptance result. The actual payload has no official close history yet; that absence is shown explicitly.
 
 Publishing, enabling the production flag and the natural trading-day acceptance remain outside Task 11. No public deployment or data upload was performed.
+
+## Fifteen-date reconstruction follow-up
+
+The private inspector was updated to read the authoritative `current-snapshot.json` bundle exactly once. Its matching `closeHistory` and `historyChunks` contain 15 actual market dates (2026-10-27 through 2026-11-16), 7,200 sector rows and 150 chunks. Compatibility files are not read by this inspector.
+
+The local reconstruction route displays a 15-column, ten-rank matrix built from actual scores/ranks, plus producer-computed changes against the preceding reconstructed market date. All original arrival times and `officialClose=false` are preserved. The first visible date has no prior comparison and displays missing changes as em dashes. No reconstructed day is inserted as an official close.
+
+A browser click on the first-ranked `信托概念` cell dated 2026-10-27 opened a detail panel with all 15 market dates and the selected date highlighted first. The complete 15-column matrix, selected historical detail and 390px mobile view were captured in private screenshots. The browser also reconfirmed core25, dynamic10 and literal `885522.TI` returning exactly one match. The phone check rejected horizontal page overflow and passed.
+
+The production detail handler correctly canonicalizes batches sharing an arrival timestamp, so it does not present these reconstructed days as 15 separate contemporaneous observations. The inspector's explicitly local reconstruction adapter uses the matching published projections per actual market date for this view; production handlers and contracts remain unchanged. New screenshots are `hithink-actual-15date-matrix-expanded.png`, `hithink-actual-15date-history-detail.png` and `hithink-actual-15date-mobile-top.png` under the private, untracked screenshot directory.
