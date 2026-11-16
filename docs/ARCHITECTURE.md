@@ -7,7 +7,7 @@ NewsMonitor 由四个运行边界组成：浏览器前端、Cloudflare 边缘接
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ External sources                                             │
-│ Wind · 东方财富妙想 · FRED · RSS/JSON 新闻源                  │
+│ Wind · Hithink · 东方财富妙想 · FRED · RSS/JSON 新闻源       │
 └───────────────────────────┬──────────────────────────────────┘
                             │ credentials stay local
                             ▼
@@ -37,7 +37,7 @@ NewsMonitor 由四个运行边界组成：浏览器前端、Cloudflare 边缘接
 前端使用 Vue 3、TypeScript、Pinia、Vue Router、Vite 和 Tailwind CSS。
 
 - `HomeView.vue` 负责首页组合。
-- `MarketResearchDashboard.vue` 加载 v2 市场首页，并在明确的验收或本地影子边界内加载 v3。
+- `MarketResearchDashboard.vue` 加载 v2 市场首页，可加载 Wind v3 真实数据观察版；Hithink v4 通过独立默认关闭开关选择。
 - `SectorRotationBoard.vue` 与 `SectorRotationDetail.vue` 展示板块轮动视图。
 - `DebtRiskDashboard.vue` 独立处理全球债务风险。
 - `stores/news.ts` 管理新闻抓取、5 分钟刷新和深色模式。
@@ -57,7 +57,7 @@ NewsMonitor 由四个运行边界组成：浏览器前端、Cloudflare 边缘接
 6. `rotation_operations.py` 维护影子运行账本和发布资格证据。
 7. `rotation_probe.py` 只输出白名单元数据，用于 Wind 能力、历史覆盖和调用成本验证。
 
-生产任务由 macOS LaunchAgent 每 300 秒唤醒，实际是否采集由北京时间交易时段门禁决定。v2 当前按 15 分钟 bucket 运行；v3 影子代码当前仍配置四个关键窗口。计划中的分频策略尚未实现，见 [数据源策略](DATA_SOURCES.md)。
+生产任务由 macOS LaunchAgent 每 300 秒唤醒，实际是否采集由北京时间交易时段门禁决定。v2 当前按 15 分钟 bucket 运行；v3 仍保留四个关键窗口；Hithink v4 使用独立的 15 分钟上海交易时段门禁，默认不启用。旧 Wind 分频策略不因此视为已部署，见 [数据源策略](DATA_SOURCES.md)。
 
 ## 4. Cloudflare 接口与存储
 
@@ -87,9 +87,12 @@ D1 迁移：
 | 市场评分 | `market-score-v0.1` | 生产 |
 | 概念选择 | `concept-selection-v0.1` | 生产 |
 | 概念评分 | `concept-score-v0.1` | 生产 |
-| 板块轮动 schema | `market-dashboard-v3` | 验收／影子 |
-| 板块评分 | `sector-score-v0.2` | 验收／影子 |
-| 板块宇宙 | `sector-universe-v0.1` | 验收／影子 |
+| 板块轮动 schema | `market-dashboard-v3` | 已有生产观察版记录 |
+| 板块评分 | `sector-score-v0.2` | 观察期，未验证预测有效性 |
+| 板块宇宙 | `sector-universe-v0.1` | Wind v3 保留 |
+| Hithink schema / 评分 | `market-dashboard-v4` / `sector-score-v0.3` | 私有实现，未部署 |
+| Hithink 宇宙 | `sector-universe-ths-v1` | 90 行业 / 390 概念 |
+| Hithink 特征 / 成份 | `sector-features-ths-v1` / `sector-membership-ths-v1` | 独立版本门禁 |
 
 任何改变对象身份、字段含义、评分算法或板块集合的不兼容修改，都必须产生新版本，并同步修改 Python 生产者、Functions 校验、D1 查询、前端模型、测试和文档。
 
@@ -127,3 +130,11 @@ D1 迁移：
 - **验收隔离：** 合成界面验收与真实数据验证分开，防止测试数据进入生产。
 
 运行操作详见 [运行手册](market-dashboard-operations.md)，当前真实状态见 [项目状态](STATUS.md)。
+
+## 10. Hithink v4 隔离链路
+
+`hithink_cli.py` 严格接收官方 CLI 标准化数据并按上海时区处理时间；`hithink_store.py` 保存私有 SQLite 标量，`hithink_backfill.py` / `hithink_breadth.py` 提供指数与广度历史；`rotation_v4.py` 负责独立特征和评分；`hithink_job.py` 调度实时优先、批量复用股票快照、持久化私有 payload 及健康状态。供应商股票 DuckDB 仅经官方 CLI 只读使用。当前成份回填明确标记 `current_members_backfill`；严格成份快照标记 `point_in_time_snapshot`，另保留真实可得时间，后者也不能自动证明历史预测及时性。
+
+新增迁移 `0003_hithink_sector_rotation_v4.sql` 仅附加 manifest、chunk、sector 三张表。`POST /api/sector-rotation/v4/manifest|chunk|activate` 使用认证和独立公开授权门禁，校验每块最多 50 行、完整请求最多 131072 字节及 SHA-256 摘要；激活前校验整批数量、身份和摘要，原子激活后才可读。`GET /api/sector-rotation/v4/latest|catalog|history|detail` 只读取 active manifest 和完整五版本组合，无数据返回 `NO_SNAPSHOT`，不从 v3 拼接。公开投影排除成份列表、原始响应、私有分数容器和本地路径。
+
+`src/features/sector-rotation-v4/` 拥有独立契约；首页开关 `VITE_HITHINK_SECTOR_V4` 默认关闭，`HithinkSectorBoard.vue` 展示三组行业榜和核心／动态概念，`/sectors/hithink` 提供搜索分页。无有效 v4 快照时保留原有 v3／v2 视图。配置 `publishEnabled=false`；公开接口的实现存在不代表已部署。所有 v4 远端迁移、发布、启用与切换仍待独立授权和自然交易日验收，见 [验证记录](verification/2026-11-17-hithink-sector-v4.md)。
