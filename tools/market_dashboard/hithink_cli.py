@@ -187,7 +187,7 @@ class HithinkClient:
         argv = [self.cli_path, domain, command, *options, '--format', 'json']
         try:
             result = self.runner(argv)
-        except (OSError, subprocess.SubprocessError, TimeoutError):
+        except (OSError, subprocess.SubprocessError, TimeoutError, UnicodeError):
             raise HithinkError('HITHINK_COMMAND_FAILED') from None
         if not hasattr(result, 'returncode') or result.returncode != 0:
             raise HithinkError('HITHINK_COMMAND_FAILED')

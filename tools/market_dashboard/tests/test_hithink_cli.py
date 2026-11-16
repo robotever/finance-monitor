@@ -231,3 +231,14 @@ class HithinkClientTests(unittest.TestCase):
         self.assertEqual(result[0].name, '测试行业')
         self.assertEqual(run.call_args.args[0], [str(CLI), 'index', 'catalog', '--tag', 'industry', '--format', 'json'])
         self.assertFalse(run.call_args.kwargs.get('shell', False))
+
+    def test_default_runner_decoding_failure_returns_only_safe_error(self):
+        for stream in ('stdout', 'stderr'):
+            error = UnicodeDecodeError('utf-8', b'private-\xff', 8, 9, f'private {stream}')
+            with self.subTest(stream=stream), patch.object(api.subprocess, 'run', side_effect=error):
+                with self.assertRaises(api.HithinkError) as raised:
+                    api.HithinkClient(CLI).catalog('industry')
+                self.assertEqual(raised.exception.code, 'HITHINK_COMMAND_FAILED')
+                self.assertEqual(str(raised.exception), 'HITHINK_COMMAND_FAILED')
+                self.assertTrue(raised.exception.__suppress_context__)
+                self.assertIsNone(raised.exception.__cause__)
