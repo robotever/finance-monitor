@@ -183,6 +183,25 @@ class BreadthTests(unittest.TestCase):
             self.assertTrue(refresh.call_args.kwargs['catalog_changed'])
             db.close()
 
+    def test_export_checks_requested_symbols_with_constant_time_lookup(self):
+        comparisons = []
+        class Symbol(str):
+            __hash__ = str.__hash__
+            def __eq__(self, other):
+                comparisons.append(1)
+                return str.__eq__(self, other)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            provider = root/'provider'; provider.touch()
+            output = root/'panel.csv'
+            def runner(argv):
+                output.write_text('thscode,date,close,prev_close,volume,turnover,prev_date,volume_mean_5d\n000999.SZ,2026-11-13,11,10,100,1000,2026-11-12,50\n')
+                return subprocess.CompletedProcess(argv, 0, '{"ok":true,"command":"db.export","meta":{"truncated":false}}', '')
+            rows = list(load_stock_panel(runner, Path('/cli'), provider,
+                [Symbol(f'{i:06}.SZ') for i in range(1000)], '2026-11-13', '2026-11-13', output))
+            self.assertEqual(len(rows), 1)
+            self.assertLess(len(comparisons), 10)
+
     def test_export_cannot_overwrite_provider(self):
         with tempfile.TemporaryDirectory() as directory:
             provider = Path(directory).resolve()/'provider.duckdb'

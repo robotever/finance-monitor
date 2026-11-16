@@ -204,7 +204,8 @@ def load_stock_panel(runner, cli_path, db_path, symbols, start_date, end_date, o
     are checked against the caller's actual market calendar, never filled as zero.
     """
     start, end = canonical_date(start_date), canonical_date(end_date)
-    symbols = sorted(set(symbols))
+    symbol_set = set(symbols)
+    symbols = sorted(symbol_set)
     if (start > end or not symbols or any(not _SYMBOL.fullmatch(s) for s in symbols)
             or not Path(cli_path).is_absolute() or not Path(db_path).is_absolute()
             or not Path(db_path).is_file()):
@@ -249,7 +250,7 @@ def load_stock_panel(runner, cli_path, db_path, symbols, start_date, end_date, o
         for row in reader:
             day = canonical_date(row['date']).isoformat()
             key = row['thscode'], day
-            if row['thscode'] not in symbols or not start_date <= day <= end_date or key in seen:
+            if row['thscode'] not in symbol_set or not start_date <= day <= end_date or key in seen:
                 raise ValueError('INVALID_PANEL_ROWS')
             seen.add(key)
             def number(field):
