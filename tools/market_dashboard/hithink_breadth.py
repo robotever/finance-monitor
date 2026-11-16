@@ -102,6 +102,8 @@ def refresh_memberships(client, store, sectors, today, *, state_root, priority_i
         if budget is not None:
             budget.before_call()
         rows = tuple(client.constituents(sector.code))
+        if should_yield and should_yield():
+            raise RuntimeError('BACKFILL_YIELDED')
         if not rows or any(r.sector_code != sector.code for r in rows):
             raise ValueError('INVALID_MEMBERSHIP_SNAPSHOT')
         with store_write_lock(state_root):
@@ -229,7 +231,10 @@ def load_stock_panel(runner, cli_path, db_path, symbols, start_date, end_date, o
     try:
         result = runner(argv)
         envelope = json.loads(result.stdout)
-        if result.returncode != 0 or envelope.get('ok') is not True or envelope.get('command') != 'db.export':
+        if (result.returncode != 0 or not isinstance(envelope, dict)
+                or envelope.get('ok') is not True or envelope.get('command') != 'db.export'
+                or not isinstance(envelope.get('meta'), dict)
+                or envelope['meta'].get('truncated') is not False):
             raise ValueError('PANEL_EXPORT_FAILED')
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         raise ValueError('PANEL_EXPORT_FAILED') from None

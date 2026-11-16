@@ -134,6 +134,55 @@ class BreadthTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT count(*) FROM sector_breadth_daily').fetchone()[0], 1)
             db.close()
 
+    def test_export_rejects_truncation_and_unknown_completeness(self):
+        import json
+        for metadata in ({'truncated': True}, {}, None):
+            with self.subTest(metadata=metadata), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve()
+                provider = root/'provider'; provider.touch()
+                output = root/'panel.csv'
+                def runner(argv):
+                    output.write_text('thscode,date,close,prev_close,volume,turnover,prev_date,volume_mean_5d\n000001.SZ,2026-11-13,11,10,100,1000,2026-11-12,50\n')
+                    return subprocess.CompletedProcess(argv, 0, json.dumps({
+                        'ok': True, 'command': 'db.export', 'meta': metadata}), '')
+                with self.assertRaisesRegex(ValueError, 'PANEL_EXPORT_FAILED'):
+                    list(load_stock_panel(runner, Path('/cli'), provider, ['000001.SZ'],
+                                          '2026-11-13', '2026-11-13', output))
+
+    def test_membership_refresh_yields_after_fetch_before_any_commit(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            db = open_store(root/'store.sqlite3'); migrate_store(db)
+            sector = SectorDefinition('881121.TI', 'test', 'industry')
+            replace_catalog(db, [sector], observed_at_ms=1)
+            refresh_memberships(SimpleNamespace(constituents=lambda code: self.members('000001.SZ')),
+                                db, [sector], '2026-11-13', state_root=root)
+            priority = Mock(side_effect=[False, True])
+            with self.assertRaisesRegex(RuntimeError, 'BACKFILL_YIELDED'):
+                refresh_memberships(SimpleNamespace(constituents=lambda code: self.members('000002.SZ')),
+                    db, [sector], '2026-11-13', state_root=root, force=True, should_yield=priority)
+            self.assertEqual([r['stock_id'] for r in read_memberships(db, sector.code, '2026-11-13')], ['000001.SZ'])
+            self.assertEqual(priority.call_count, 2)
+            db.close()
+
+    def test_backfill_forwards_priority_concepts_and_catalog_change(self):
+        from unittest.mock import patch
+        from tools.market_dashboard.hithink_backfill import backfill_breadth_history, HistoryWindow
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            db = open_store(root/'store.sqlite3'); migrate_store(db)
+            universe = SimpleNamespace(industries=[], concepts=[], core_ids=['885001.TI'])
+            # Stop at the delegation boundary to inspect the scheduler inputs.
+            with patch('tools.market_dashboard.hithink_breadth.refresh_memberships', side_effect=RuntimeError('stop')) as refresh:
+                with self.assertRaisesRegex(RuntimeError, 'stop'):
+                    backfill_breadth_history(None, db, universe, HistoryWindow('2026-11-13', '2026-11-13'), None,
+                        cli_path=Path('/cli'), db_path=root/'provider', state_root=root,
+                        dynamic_ids=['885002.TI'], candidate_ids=['885003.TI','885002.TI'], catalog_changed=True)
+            self.assertEqual(set(refresh.call_args.kwargs['priority_ids']), {'885001.TI','885002.TI','885003.TI'})
+            self.assertTrue(refresh.call_args.kwargs['catalog_changed'])
+            db.close()
+
     def test_export_cannot_overwrite_provider(self):
         with tempfile.TemporaryDirectory() as directory:
             provider = Path(directory).resolve()/'provider.duckdb'

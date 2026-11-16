@@ -270,12 +270,15 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
 
 def backfill_breadth_history(client, store, universe, window, budget, *, cli_path,
                               db_path, state_root=None, sectors=None, trading_dates=None,
-                              runner=None, should_yield=None):
+                              runner=None, should_yield=None, dynamic_ids=(),
+                              candidate_ids=(), catalog_changed=False):
     """Refresh snapshots and derive historical structure from one qfq export.
 
     Callers may bound ``sectors`` for representative runs. Returned metadata is
     aggregate-only; memberships and the minimized panel stay in private storage.
     ``trading_dates`` must include the preceding session before window.start.
+    Core, dynamic and candidate concept memberships refresh daily; catalog changes
+    force refresh of every requested sector regardless of normal weekly cadence.
     """
     from datetime import timedelta
     from . import hithink_breadth as breadth
@@ -291,7 +294,8 @@ def backfill_breadth_history(client, store, universe, window, budget, *, cli_pat
             raise RuntimeError('BACKFILL_YIELDED')
     check_yield()
     breadth.refresh_memberships(client, store, sectors, today, state_root=state_root,
-        priority_ids=universe.core_ids, budget=budget, should_yield=should_yield)
+        priority_ids=set(universe.core_ids) | set(dynamic_ids) | set(candidate_ids),
+        catalog_changed=catalog_changed, budget=budget, should_yield=should_yield)
     snapshots = {}
     for sector in sectors:
         versions = {}
