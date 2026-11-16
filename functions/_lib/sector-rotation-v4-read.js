@@ -118,7 +118,24 @@ async function readHistory(db,m,q) {
   return { ...metadata(m,result.results), ...q, dates, rows: [...grouped.values()].map(r => ({id:r.id,name:safeText(r.name)?r.name:r.id,values:dates.map(d => r.values.get(d) ?? {marketDate:d,score:null,rank:null})})) }
 }
 async function readDetail(db,m,q) {
-  const result = await db.prepare(`WITH dates AS (SELECT DISTINCT m.market_date FROM ${joined} WHERE ${active} AND s.universe=? AND s.sector_id=? AND m.observed_at<=? ORDER BY m.market_date DESC LIMIT ?) SELECT s.*,m.observed_at,m.market_date,m.session,m.official_close FROM ${joined} JOIN dates d ON d.market_date=m.market_date WHERE ${active} AND s.universe=? AND s.sector_id=? AND m.observed_at<=? ORDER BY m.observed_at,m.batch_id`).bind(...versionValues,q.universe,q.id,m.observed_at,q.days,...versionValues,q.universe,q.id,m.observed_at).all()
+  // A corrected publication may reuse an observation timestamp. Choose the same
+  // whole-batch winner as latest before sector filtering and the date window.
+  const result = await db.prepare(`
+    WITH canonical AS (
+      SELECT m.*, ROW_NUMBER() OVER (PARTITION BY m.observed_at ORDER BY ${chronological}) AS ordinal
+      FROM sector_rotation_v4_manifests m WHERE ${active} AND m.observed_at<=?
+    ), dates AS (
+      SELECT DISTINCT m.market_date FROM sector_rotation_v4_sectors s
+      JOIN canonical m ON m.batch_id=s.batch_id
+      WHERE m.ordinal=1 AND s.universe=? AND s.sector_id=?
+      ORDER BY m.market_date DESC LIMIT ?
+    )
+    SELECT s.*,m.observed_at,m.market_date,m.session,m.official_close
+    FROM sector_rotation_v4_sectors s JOIN canonical m ON m.batch_id=s.batch_id
+    JOIN dates d ON d.market_date=m.market_date
+    WHERE m.ordinal=1 AND s.universe=? AND s.sector_id=?
+    ORDER BY m.observed_at
+  `).bind(...versionValues,m.observed_at,q.universe,q.id,q.days,q.universe,q.id).all()
   if (!result.results.length) return null
   const closes = await db.prepare(`WITH ranked AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND m.official_close=1 AND m.market_date<?) SELECT m.market_date,s.strength,s.opportunity,s.risk FROM ranked m LEFT JOIN sector_rotation_v4_sectors s ON s.batch_id=m.batch_id AND s.universe=? AND s.sector_id=? WHERE m.ordinal=1 ORDER BY m.market_date DESC`).bind(...versionValues,m.market_date,q.universe,q.id).all()
   const priorFor = date => closes.results.find(r => r.market_date < date)

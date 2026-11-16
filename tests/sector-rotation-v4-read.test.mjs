@@ -138,3 +138,40 @@ test('homepage dynamic selection and catalog roles agree on the same immutable s
  const detail=await(await get('detail',db,'?universe=concept&id='+latest.concept.dynamic[0].id)).json()
  assert.equal(detail.history.at(-1).conceptRole,'dynamic')
 })
+
+test('detail canonicalizes corrected batches per timestamp before date limits and validates in the frontend',async t=>{
+ const db=database(t)
+ await seed(db,{id:'prior-z',date:'2026-11-12',offset:4})
+ await seed(db,{id:'prior-a',date:'2026-11-12',offset:8})
+ await seed(db,{id:'intraday',time:'06:00',close:false,offset:3})
+ // Upload order must not override the same batch-ID tie break used by latest.
+ await seed(db,{id:'current-z',offset:2})
+ await seed(db,{id:'current-a',offset:9})
+ await seed(db,{id:'current-zz-staging',active:false,offset:15})
+ const latest=await(await get('latest',db)).json()
+ assert.equal(latest.batchId,'current-z')
+ const {validateDetail}=await import('../src/features/sector-rotation-v4/model.mjs')
+ for(const [universe,id]of [['industry','881001.TI'],['concept','885001.TI']]){
+  const p=await(await get('detail',db,`?universe=${universe}&id=${id}`)).json()
+  assert.equal(p.history.length,3)
+  assert.deepEqual(p.history.map(r=>r.strength),[76,77,78])
+  assert.equal(p.batchId,latest.batchId)
+  assert.deepEqual(p.history.at(-1).change1d,{strength:2,opportunity:2,risk:2})
+  assert.equal(validateDetail(p,{universe,id}),p)
+  const one=await(await get('detail',db,`?universe=${universe}&id=${id}&days=1`)).json()
+  assert.equal(one.history.length,2)
+  assert.ok(one.history.every(r=>r.marketDate==='2026-11-13'))
+  assert.equal(validateDetail(one,{universe,id,days:1}),one)
+ }
+})
+
+test('detail chooses canonical batches before selecting the sector date window',async t=>{
+ const db=database(t)
+ await seed(db,{id:'prior',date:'2026-11-12',offset:4})
+ await seed(db,{id:'current-a',offset:9})
+ await seed(db,{id:'current-z',mutate:r=>{if(r.id==='881001.TI')r.id='881999.TI'}})
+ const p=await(await get('detail',db,'?universe=industry&id=881001.TI&days=1')).json()
+ assert.equal(p.history.length,1)
+ assert.equal(p.history[0].marketDate,'2026-11-12')
+ assert.equal(p.history[0].strength,76)
+})
