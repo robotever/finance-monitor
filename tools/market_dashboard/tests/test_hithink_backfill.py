@@ -205,9 +205,11 @@ class BackfillTests(unittest.TestCase):
     def test_completed_checkpoint_revalidates_stored_ohlc(self):
         self.assertTrue(self.run_backfill().complete)
         self.store.execute('update sector_index_daily set open=100 where sector_id=?', (self.a.code,))
-        self.assertTrue(self.run_backfill().complete)
-        self.assertEqual(self.calls, [self.a.code, self.b.code, self.a.code])
-        self.assertEqual(self.store.execute('select max(open) from sector_index_daily').fetchone()[0], 1)
+        report = self.run_backfill()
+        self.assertFalse(report.complete)
+        self.assertEqual(report.safe_error_code, 'INVALID_STORED_HISTORY')
+        self.assertEqual(self.calls, [self.a.code, self.b.code])
+        self.assertEqual(self.store.execute('select max(open) from sector_index_daily').fetchone()[0], 100)
 
     def test_observed_calendar_uses_readonly_cli_query_and_validates_dates(self):
         from tools.market_dashboard.hithink_backfill import load_observed_market_calendar
@@ -237,3 +239,26 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(result, 1)
         calendar.assert_called_once()
         self.assertEqual(json.loads(output.getvalue())['calendarSource'], 'observed_market_calendar')
+
+    def test_invalid_extra_stored_date_fails_closed_without_refetch_or_repair(self):
+        self.assertTrue(self.run_backfill().complete)
+        from tools.market_dashboard.hithink_store import upsert_index_daily
+        upsert_index_daily(self.store, [IndexDailyBar(self.a.code, '2023-01-08', 1, 2, 1, 2, 10, 20)])
+        before = [tuple(r) for r in self.store.execute('select * from sector_index_daily order by sector_id,market_date')]
+        calls = list(self.calls)
+        report = self.run_backfill()
+        self.assertFalse(report.complete)
+        self.assertEqual(report.safe_error_code, 'INVALID_STORED_HISTORY')
+        self.assertEqual(report.coverage[0]['status'], 'failed')
+        self.assertEqual(self.calls, calls)
+        self.assertEqual([tuple(r) for r in self.store.execute('select * from sector_index_daily order by sector_id,market_date')], before)
+        self.assertFalse(self.run_backfill().complete)
+
+    def test_missing_calendar_with_complete_checkpoints_never_reports_complete(self):
+        self.assertTrue(self.run_backfill().complete)
+        calls = list(self.calls)
+        report = backfill_index_history(self.client, self.store, self.universe, self.window,
+            BackfillBudget(min_call_interval=0), state_root=self.root)
+        self.assertEqual(report.safe_error_code, 'CALENDAR_UNVERIFIED')
+        self.assertFalse(report.complete)
+        self.assertEqual(self.calls, calls)

@@ -167,6 +167,7 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
     state_root = Path(state_root)
     sectors = tuple(universe.industries) + tuple(universe.concepts)
     report = BackfillReport()
+    invalid_stored_codes = set()
     began = clock.monotonic()
     calls_before = budget.calls
     attempts_before = budget.reserved_attempts
@@ -198,16 +199,20 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
         for sector in sectors:
             checkpoint = _checkpoint_id(universe, window, sector.code)
             existing = _coverage(store, sector, window, checkpoint)
+            stored = store.execute('SELECT sector_id,market_date,open,high,low,close,volume,turnover '
+                'FROM sector_index_daily WHERE sector_id=? AND market_date BETWEEN ? AND ? ORDER BY market_date',
+                (sector.code, window.start, window.end)).fetchall()
+            try:
+                _validate_history_rows([IndexDailyBar(*r) for r in stored], sector.code, window, allowed_dates)
+                if existing['status'] == 'complete' and not stored:
+                    raise HithinkError('HISTORY_EMPTY')
+            except HithinkError:
+                invalid_stored_codes.add(sector.code)
+                # Upserts cannot remove an invalid extra stored date. Fail
+                # closed and preserve evidence for an explicit repair decision.
+                raise ProbeStopped('INVALID_STORED_HISTORY') from None
             if existing['status'] == 'complete':
-                stored = store.execute('SELECT sector_id,market_date,open,high,low,close,volume,turnover '
-                    'FROM sector_index_daily WHERE sector_id=? AND market_date BETWEEN ? AND ? ORDER BY market_date',
-                    (sector.code, window.start, window.end)).fetchall()
-                try:
-                    _validate_history_rows([IndexDailyBar(*r) for r in stored], sector.code, window, allowed_dates)
-                    if stored:
-                        continue
-                except HithinkError:
-                    pass  # Only corrupt completed sectors are fetched again.
+                continue
             yield_if_needed()
             started = int(clock.time()*1000)
             count_before = budget.calls
@@ -255,7 +260,11 @@ def backfill_index_history(client, store, universe, window, budget, *, state_roo
         report.reserved_attempts = budget.reserved_attempts-attempts_before
         report.elapsed = clock.monotonic()-began
         report.coverage = [_coverage(store, sector, window, _checkpoint_id(universe, window, sector.code)) for sector in sectors]
-        report.complete = bool(report.coverage) and all(r['status'] == 'complete' for r in report.coverage)
+        for row in report.coverage:
+            if row['code'] in invalid_stored_codes:
+                row.update(status='failed', safeErrorCode='INVALID_STORED_HISTORY')
+        report.complete = (report.safe_error_code is None and bool(report.coverage)
+                           and all(r['status'] == 'complete' for r in report.coverage))
     return report
 
 
