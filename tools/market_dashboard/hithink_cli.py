@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 _INDEX = re.compile(r'^[0-9]{6}\.(?:TI|SH|SZ|BJ)$')
 _STOCK = re.compile(r'^[0-9]{6}\.(?:SH|SZ|BJ)$')
+_MEMBER = re.compile(r'^[0-9]{6}\.(?:SH|SZ|BJ|NQ)$')
 
 
 class HithinkError(ValueError):
@@ -238,7 +239,7 @@ class HithinkClient:
         rows = []
         for raw in data['item']:
             _fields(raw, ('thscode', 'ticker', 'name'))
-            stock = _code(raw['thscode'], _STOCK)
+            stock = _code(raw['thscode'], _MEMBER)
             if raw['ticker'] != stock.split('.')[0]:
                 raise HithinkError()
             _text(raw['name'])

@@ -62,6 +62,16 @@ class HithinkClientTests(unittest.TestCase):
                 self.assertEqual(runner.calls[0][0], str(CLI))
                 self.assertEqual(runner.calls[0][-2:], ['--format', 'json'])
 
+    def test_neeq_member_retained_but_not_allowed_as_a_share_snapshot(self):
+        response = deepcopy(self.fixtures['constituents'])
+        response['data']['item'][0]['thscode'] = '830001.NQ'
+        response['data']['item'][0]['ticker'] = '830001'
+        rows, _ = self.invoke('constituents', response)
+        self.assertEqual(rows[0].stock_code, '830001.NQ')
+        client = api.HithinkClient(CLI, runner=Runner())
+        with self.assertRaises(api.HithinkError):
+            client.stock_snapshots(['830001.NQ'])
+
     def test_installed_cli_camelcase_metadata_acceptance_and_collision_rejection(self):
         response = deepcopy(self.fixtures['catalog'])
         response['meta']['schemaVersion'] = response['meta'].pop('schema_version')
