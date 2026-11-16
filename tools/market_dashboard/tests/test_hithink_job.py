@@ -291,4 +291,61 @@ class HithinkJobTests(unittest.TestCase):
             self.assertEqual(job.run_hithink_cycle(args,deps).status,'failed')
             self.assertEqual(before,{name:(local/name).read_bytes() for name in before})
 
+
+    def test_every_artifact_write_failure_keeps_committed_bundle_and_retry_recovers(self):
+        from unittest.mock import patch
+        import json
+        # All mutation steps, including generation allocation and final visibility.
+        stages=['generation','10-15.json','10-15.chunks.json','publish-chunks.json','latest.json',
+                'close-history.json','health.json','state.json','current-snapshot.json']
+        for stage in stages:
+            with self.subTest(stage=stage),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory).resolve();local=root/'hithink-live'
+                args=SimpleNamespace(state_root=root,now=self.stamp('10:00'))
+                deps={'calendar':['2026-11-16'],'produce':lambda *a:{'rows':[self.public_row()]}}
+                self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
+                prior=job.read_committed_snapshot(local)
+                args.now=self.stamp('10:15');deps['produce']=lambda *a:{'rows':[{**self.public_row(),'strength':88}]}
+                original=job._atomic;failed=[]
+                def injected(path,value):
+                    match=path.name.startswith('generation-') if stage=='generation' else path.name.endswith(stage)
+                    if match and not failed:
+                        failed.append(1);raise OSError('injected write failure')
+                    return original(path,value)
+                with patch.object(job,'_atomic',side_effect=injected):
+                    result=job.run_hithink_cycle(args,deps)
+                self.assertEqual(result.status,'failed');self.assertTrue(failed)
+                self.assertEqual(job.read_committed_snapshot(local),prior)
+                self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
+                after=job.read_committed_snapshot(local)
+                self.assertEqual(after['payload']['rows'][0]['strength'],88)
+                self.assertEqual(json.loads(after['chunks'][0]['rowsJson'])[0]['strength'],88)
+                self.assertIn('2026-11-16:10:15',after['state']['completed'])
+                self.assertEqual(job.run_hithink_cycle(args,deps).status,'already_complete')
+                self.assertEqual(job.read_committed_snapshot(local),after)
+
+
+    def test_interrupted_alias_write_cannot_mix_authoritative_rows_or_block_retry(self):
+        from unittest.mock import patch
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();local=root/'hithink-live'
+            args=SimpleNamespace(state_root=root,now=self.stamp('10:00'))
+            deps={'calendar':['2026-11-16'],'produce':lambda *a:{'rows':[self.public_row()]}}
+            self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
+            before=job.read_committed_snapshot(local)
+            args.now=self.stamp('10:15');deps['produce']=lambda *a:{'rows':[{**self.public_row(),'strength':88}]}
+            atomic=job._atomic
+            def interrupted(path,value):
+                if path.name=='latest.json': raise KeyboardInterrupt()
+                return atomic(path,value)
+            with patch.object(job,'_atomic',side_effect=interrupted),self.assertRaises(KeyboardInterrupt):
+                job.run_hithink_cycle(args,deps)
+            # The uncommitted aliases disagree; readers must use the bundle.
+            self.assertEqual(json.loads((local/'latest.json').read_text())['rows'][0]['strength'],55)
+            self.assertEqual(json.loads(json.loads((local/'publish-chunks.json').read_text())[0]['rowsJson'])[0]['strength'],88)
+            self.assertEqual(job.read_committed_snapshot(local),before)
+            self.assertEqual(job.run_hithink_cycle(args,deps).status,'success')
+            self.assertEqual(job.read_committed_snapshot(local)['payload']['rows'][0]['strength'],88)
+
 if __name__=='__main__': unittest.main()

@@ -379,3 +379,21 @@ payload/chunks or marking the new bucket complete. This keeps local preview inpu
 current as collection runs. Chunk construction performs no HTTP request. Public
 manifest/chunk/activation transport remains a separate explicitly authorized
 operator action, with independent server release authorization.
+
+**Atomic visibility correction:** individual compatibility files are not a
+multi-file transaction. The authoritative current state is the single atomically
+replaced `hithink-live/current-snapshot.json` bundle. Read it once for a consistent
+`payload`, `chunks`, `closeHistory`, `historyChunks`, `state` and `health`; its
+`generation` identifies that snapshot. Private immutable generation artifacts
+retain each current payload and its matching chunks. Current payload/chunk/history
+and state files remain compatibility mirrors and must not be read independently
+as a committed snapshot.
+
+The producer prepares the generation and compatibility mirrors first, then commits
+that one bundle last. It reads retry/idempotency state and scoring history from the
+bundle. A failure before that commit retains the preceding complete bundle;
+mirror restoration is best-effort. Even a process interruption that leaves mirrors
+disagreeing cannot expose mixed rows to bundle readers or prevent the next retry.
+The supported offline projection refresh migrates reviewed legacy files into this
+bundle without provider requests or score/timing changes. The local preview reads
+all fifteen historical dates from the same bundle's `historyChunks`.

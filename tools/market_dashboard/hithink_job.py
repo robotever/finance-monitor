@@ -225,9 +225,10 @@ def produce_payload(args,bucket,budget,client,root):
         observed=int(time.time()*1000)
         with store_write_lock(root): replace_catalog(store,sectors,observed_at_ms=observed)
         _atomic(local/'catalog-state.json',{'date':datetime.now(SHANGHAI).date().isoformat(),'digest':universe.catalog_digest})
-        previous_payload=_read(local/'latest.json',{})
+        committed=read_committed_snapshot(local)
+        previous_payload=(committed['payload'] or {}) if committed else _read(local/'latest.json',{})
         previous=previous_payload.get('rows',[])
-        close_history=_read(local/'close-history.json',[])
+        close_history=committed['closeHistory'] if committed else _read(local/'close-history.json',[])
         if not close_history and (previous_payload.get('officialClose') or previous_payload.get('historicalReconstruction')):
             close_history=[previous_payload]
         prior_closes=prior_close_rows(close_history,bucket.market_date)
@@ -382,7 +383,8 @@ def run_hithink_cycle(args,deps=None):
             if bucket is None: return HithinkJobResult('outside_session')
             args._calendar=days
             budget.seconds=min(budget.seconds,(bucket.deadline-now.astimezone(SHANGHAI)).total_seconds())
-            state=_read(local/'state.json',{'completed':[]})
+            with store_write_lock(root): committed=_ensure_committed_snapshot(local)
+            state=committed['state']
             if bucket.key in state['completed']: return HithinkJobResult('already_complete',bucket.key)
             # Fail fast before remote work if a writer already owns the store.
             with store_write_lock(root): pass
@@ -394,17 +396,13 @@ def run_hithink_cycle(args,deps=None):
             chunks=build_publish_chunks(rows)
             budget.check()
             with store_write_lock(root):
-                budget.check(); _atomic(local/(bucket.key.replace(':','-')+'.json'),payload)
-                _atomic(local/(bucket.key.replace(':','-')+'.chunks.json'),chunks)
-                _atomic(local/'publish-chunks.json',chunks)
-                _atomic(local/'latest.json',payload)
-                if payload.get('officialClose') or payload.get('historicalReconstruction'):
-                    history=[p for p in _read(local/'close-history.json',[]) if p['marketDate']!=payload['marketDate']]
-                    history=sorted(history+[payload],key=lambda p:p['marketDate'])[-15:]
-                    _atomic(local/'close-history.json',history)
-                _atomic(local/'health.json',dict(mode='shadow',status='success',bucket=bucket.key,rowCount=len(rows),published=False,safeErrorCode=None))
                 budget.check()
-                _atomic(local/'state.json',{'completed':(state['completed']+[bucket.key])[-2000:]})
+                history=committed['closeHistory']
+                if payload.get('officialClose') or payload.get('historicalReconstruction'):
+                    history=sorted([p for p in history if p['marketDate']!=payload['marketDate']]+[payload],key=lambda p:p['marketDate'])[-15:]
+                payload={**payload,'bucket':bucket.key}
+                health=dict(mode='shadow',status='success',bucket=bucket.key,rowCount=len(rows),published=False,safeErrorCode=None)
+                _commit_snapshot(local,payload,chunks,{'completed':(state['completed']+[bucket.key])[-2000:]},history,health,budget=budget)
             return HithinkJobResult('success',bucket.key,row_count=len(rows))
     except Exception as error:
         code='CYCLE_EXPIRED' if isinstance(error,(TimeoutError,subprocess.TimeoutExpired)) else 'COLLECTION_FAILED'
@@ -488,7 +486,8 @@ def refresh_local_projection(state_root):
     """
     root=_private_directory(Path(state_root)); local=_private_directory(root/'hithink-live')
     with _live_guard(root),store_write_lock(root):
-        payload=_read(local/'latest.json',None)
+        committed=_ensure_committed_snapshot(local)
+        payload=committed['payload']
         if not isinstance(payload,dict) or not isinstance(payload.get('rows'),list): raise ValueError('INVALID_LOCAL_PAYLOAD')
         bucket=payload.get('bucket','')
         if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}:(?:reconstructed-close|close|[0-9]{2}:[0-9]{2})',bucket):
@@ -506,16 +505,85 @@ def refresh_local_projection(state_root):
             session_rows=[{**r,'session':'intraday'} for r in session_rows]
         updated={**payload,'rows':annotate_concept_roles(session_rows,universe.core_ids)}
         chunks=build_publish_chunks(updated['rows'])
-        _atomic(local/(bucket.replace(':','-')+'.json'),updated)
-        _atomic(local/'latest.json',updated)
-        history=_read(local/'close-history.json',[])
-        if history:
-            _atomic(local/'close-history.json',[updated if p.get('bucket')==bucket else p for p in history])
-        _atomic(local/'publish-chunks.json',chunks)
+        history=[updated if p.get('bucket')==bucket else p for p in committed['closeHistory']]
+        _commit_snapshot(local,updated,chunks,committed['state'],history,committed['health'])
         return dict(status='reprojected',marketDate=payload['marketDate'],rows=len(updated['rows']),
             coreCount=sum(r['conceptRole']=='core' for r in updated['rows']),chunks=len(chunks),
             providerCalls=0,published=False,officialClose=payload.get('officialClose',False),
             historicalReconstruction=payload.get('historicalReconstruction',False))
+
+
+def _snapshot_digest(value):
+    import hashlib
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def read_committed_snapshot(local):
+    """One authoritative atomic read. Compatibility current files are mirrors."""
+    snapshot=_read(Path(local)/'current-snapshot.json',None)
+    if snapshot is None: return None
+    body={k:v for k,v in snapshot.items() if k!='generation'}
+    if snapshot.get('generation')!=_snapshot_digest(body): raise ValueError('INVALID_CURRENT_SNAPSHOT')
+    return snapshot
+
+
+def _snapshot(payload,chunks,state,history,health):
+    value=dict(payload=payload,chunks=chunks,state=state,closeHistory=history,health=health,
+        historyChunks={p['marketDate']:build_publish_chunks(p['rows']) for p in history})
+    return dict(generation=_snapshot_digest(value),**value)
+
+
+def _write_generation(local,snapshot):
+    path=local/('generation-'+snapshot['generation']+'.json')
+    archived={key:snapshot[key] for key in ('generation','payload','chunks')}
+    if path.exists():
+        if _read(path,None) not in (archived,snapshot): raise ValueError('GENERATION_CONFLICT')
+    else: _atomic(path,archived)
+
+
+def _ensure_committed_snapshot(local):
+    current=read_committed_snapshot(local)
+    if current is not None: return current
+    # One-time migration of reviewed legacy artifacts. Never trust an old chunks
+    # alias independently: derive it from the same payload used in this bundle.
+    payload=_read(local/'latest.json',None)
+    value=_snapshot(payload,build_publish_chunks(payload['rows']) if payload else [],
+        _read(local/'state.json',{'completed':[]}),_read(local/'close-history.json',[]),_read(local/'health.json',{}))
+    _write_generation(local,value);_atomic(local/'current-snapshot.json',value)
+    return value
+
+
+def _mirror_snapshot(local,value):
+    if value['payload'] is not None:
+        _atomic(local/'publish-chunks.json',value['chunks'])
+        _atomic(local/'latest.json',value['payload'])
+    _atomic(local/'close-history.json',value['closeHistory'])
+    _atomic(local/'health.json',value['health'])
+    _atomic(local/'state.json',value['state'])
+
+
+def _commit_snapshot(local,payload,chunks,state,history,health,*,budget=None):
+    prior=_ensure_committed_snapshot(local)
+    value=_snapshot(payload,chunks,state,history,health)
+    try:
+        _write_generation(local,value)
+        bucket=payload.get('bucket')
+        if bucket:
+            _atomic(local/(bucket.replace(':','-')+'.json'),payload)
+            _atomic(local/(bucket.replace(':','-')+'.chunks.json'),chunks)
+        _mirror_snapshot(local,value)
+        if budget: budget.check()
+        # Sole visibility/ledger commit point. No fallible artifact write follows.
+        _atomic(local/'current-snapshot.json',value)
+    except Exception:
+        # A post-rename durability error may still have installed the complete
+        # new bundle. Its self-consistent generation is already the commit point.
+        visible=read_committed_snapshot(local)
+        if visible and visible['generation']==value['generation']: return value
+        try: _mirror_snapshot(local,prior)
+        except Exception: pass  # Mirrors can be repaired; prior bundle stays authoritative.
+        raise
+    return value
 
 
 def main(argv=None):
