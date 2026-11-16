@@ -35,7 +35,7 @@ export function validateV4Row(r,m) {
  check(axes.every(a=>r[a]===null||integer(r[a],0,100)) && integer(r.completeness,0,100))
  const count=r.universe==='industry'?m.industryCount:m.conceptCount
  check(shape(r.ranks,axes) && axes.every(a=>r.ranks[a]===null||integer(r.ranks[a],1,count)))
- check([null,'cold','neutral','warming','active','crowded'].includes(r.heatState) && typeof r.coldStart==='boolean' && integer(r.validCloses,0,100000) && integer(r.improvementEvidence,0,3))
+ check([null,'cold','neutral','warming','active','crowded'].includes(r.heatState) && typeof r.coldStart==='boolean' && integer(r.validCloses,0,100000) && integer(r.improvementEvidence,0,4))
  check(['current_members_backfill','point_in_time_snapshot'].includes(r.membershipMode) && [null,'core','dynamic','candidate'].includes(r.conceptRole) && (r.universe==='concept'||r.conceptRole===null))
  check(Array.isArray(r.missing) && r.missing.length<=200 && r.missing.every(x=>safeText(x)))
  for(const key of ['metrics','axisCompleteness','rankKeys']) if(key in r) check(scalarMap(r[key]))
