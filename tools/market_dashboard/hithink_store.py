@@ -231,3 +231,36 @@ def read_sector_features(connection, sector_id, start, end, *, intraday=False,
     time = 'observed_at' if intraday else 'market_date'
     return _read(connection, table, f'sector_id=? AND feature_version=? AND {time} BETWEEN ? AND ?',
                  (sector_id, feature_version, start, end), time, limit)
+
+
+def record_ingest_run(connection, *, run_id, started_at_ms, finished_at_ms,
+                      request_count, coverage, safe_error_code=None):
+    with _transaction(connection):
+        _upsert(connection, 'ingest_runs', [dict(run_id=run_id, kind='backfill',
+            started_at_ms=started_at_ms, finished_at_ms=finished_at_ms,
+            request_count=request_count, coverage=coverage, safe_error_code=safe_error_code,
+            elapsed_ms=finished_at_ms-started_at_ms)])
+
+
+def commit_index_backfill(connection, rows, *, run_id=None, started_at_ms,
+                          finished_at_ms, request_count, catalog_version=CATALOG_VERSION):
+    """Commit at most 250 normalized bars with an optional atomic final checkpoint.
+
+    Earlier chunks can survive interruption; without the final checkpoint the
+    entire sector is safely fetched again and upserted on resume.
+    """
+    rows = tuple(rows)
+    if len(rows) > 250:
+        raise ValueError('BACKFILL_TRANSACTION_TOO_LARGE')
+    with _transaction(connection):
+        for record in rows:
+            row = _mapping(record)
+            row['sector_id'] = row.pop('code', row.get('sector_id'))
+            row['market_date'] = row.pop('date', row.get('market_date'))
+            row.update(catalog_version=catalog_version, observed_at_ms=finished_at_ms)
+            _upsert(connection, 'sector_index_daily', [row])
+        if run_id is not None:
+            _upsert(connection, 'ingest_runs', [dict(run_id=run_id, kind='backfill',
+                started_at_ms=started_at_ms, finished_at_ms=finished_at_ms,
+                request_count=request_count, coverage=1, elapsed_ms=finished_at_ms-started_at_ms,
+                safe_error_code=None)])

@@ -52,6 +52,12 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--hithink-backfill-indexes' in arguments:
+        # Private manual ingestion; exits before any v2/v3 job or schedule state.
+        arguments.remove('--hithink-backfill-indexes')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.hithink_backfill', *arguments], os.environ)
     if '--hithink-probe' in arguments:
         # Manual read-only mode exits before log rotation, awake protection or
         # scheduled job dispatch. The probe owns only its private safe report.

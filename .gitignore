@@ -26,3 +26,9 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# Private normalized Hithink feature store and runtime checkpoints
+data/market-dashboard/sector-history.sqlite3*
+data/market-dashboard/sector-history.lock
+data/market-dashboard/hithink-index-backfill/
+data/market-dashboard/hithink-live-priority
