@@ -62,6 +62,16 @@ class HithinkClientTests(unittest.TestCase):
                 self.assertEqual(runner.calls[0][0], str(CLI))
                 self.assertEqual(runner.calls[0][-2:], ['--format', 'json'])
 
+    def test_installed_cli_camelcase_metadata_acceptance_and_collision_rejection(self):
+        response = deepcopy(self.fixtures['catalog'])
+        response['meta']['schemaVersion'] = response['meta'].pop('schema_version')
+        response['meta']['requestId'] = response['meta'].pop('request_id', 'private-request')
+        rows, _ = self.invoke('catalog', response)
+        self.assertEqual(len(rows), 1)
+        response['meta']['schema_version'] = '1'
+        with self.assertRaises(api.HithinkError):
+            self.invoke('catalog', response)
+
     def test_unknown_and_missing_fields_fail_at_every_schema_level(self):
         for kind, original in self.fixtures.items():
             if kind == 'batch':

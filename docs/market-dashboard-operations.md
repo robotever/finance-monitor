@@ -199,3 +199,60 @@ The private `state/market-dashboard-shadow/rotation-ledger.json` records each se
 Use the [shadow verification record](verification/2026-11-14-sector-rotation-shadow.md) for the ten-date live template, offline diagnostic/evaluation commands, exact gates and metric definitions. Historical schema/quota/20/60/250 coverage, ten real trading days and production-switch approval remain unsatisfied. Both read-only tools refuse to authorize production changes; the historical CLI always reports `liveVerified=false`. Synthetic tests and calculations must never be entered as live results.
 
 The broader score research workflow is documented in [板块评分评价方法](sector-score-evaluation.md). `rotation_evaluation.py` is separate from the release-gate diagnostic: it evaluates strength, opportunity and risk over 1/3/5/10 official dates, compares fixed baselines on common eligible identities, and emits JSON or Markdown. The CLI requires a canonical state that passes `rotation_store` validation. It never changes weights or release state; fewer than 20 greedily selected non-overlapping evidence dates remains `INSUFFICIENT_EVIDENCE` while all matured descriptive observations stay visible.
+
+## Hithink migration capability/cost gate
+
+The manual probe is isolated from scheduled jobs. It reads the versioned
+`config/hithink-sector-dashboard.json`, samples 10 primary industries and 20
+concept histories, checks the history batch path against single history, and
+collects one shared paged full-market stock snapshot. It never opens the
+production feature database or changes v3, publication switches or schedules.
+The wrapper exits into this mode before log rotation and awake protection.
+
+Run once for an authorized verification window, with a private state directory:
+
+```bash
+bash ops/macos/run-market-dashboard.sh --hithink-probe \
+  --cli '/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
+  --state-root '/private/tmp/market-dashboard-hithink-probe-2026-11-16' \
+  --max-calls 25
+```
+
+Only aggregate JSON reaches stdout and `market-dashboard-hithink-probe/report.json`
+under the selected private state root. No credentials, provider envelopes,
+constituent rows, names, codes or local paths appear in that report. The report
+file uses mode 0600; its directory uses 0700. Probe state must remain outside Git.
+
+The budget checks every CLI data request, including automatic single-history
+cross-checks, before dispatch: at most 50 calls and 100 reported points. Point
+usage, when present, is read from numeric nonnegative `meta.points`; absent usage
+is unknown (`pointsKnown=false`, `estimatedPoints=null`), never free. The CLI
+currently does not expose a pre-request tariff ceiling; reported usage can only
+be observed after a response, so subsequent calls reserve the largest observed
+charge and stop before exhausting the remaining reported budget. No application
+retry is performed. The live command defaults to (and cannot exceed) 25 logical
+data calls because the CLI may invisibly retry one rejected OAuth data request.
+This bounds remote data attempts at 50 without inspecting credentials. The
+library/config default remains 50 logical calls for injected providers. The
+report distinguishes logical calls, their configured limit and the conservative
+remote-data-attempt upper bound; actual transport attempts are not observable.
+The live 25-call run may leave the 30-history sample incomplete and must fail
+closed without a second probe. Unmetered usage cannot establish a verified point
+bound.
+
+The conservative initial-run estimate includes two catalogs, one single-index
+history and one membership request per sector, a shared index snapshot, and the
+measured stock page count. `estimatedHistoryCalls` separately identifies the
+index-only backfill. A one-code successful batch is reported as
+`SUPPORTED_SINGLE_CODE_ONLY` and does not justify a tenfold cost reduction.
+The estimate excludes future recurring refresh cycles. An estimate above 500
+calls or 100 points, unknown points, failed paging, insufficient coverage or
+exhausted budget sets `continueAutomatically=false`: stop the migration without
+starting a full backfill. If only 100 rows return for a requested 1,000-row first
+page, full-market paging is rejected immediately rather than issuing dozens of
+additional requests.
+
+Provider authorization is independent of cost approval. `publicReleaseEligible`
+requires status `verified`, both locally retained normalized features and public
+derived scores explicitly covered, and a nonempty evidence reference. The
+versioned default is `unknown`; no v4 public release is authorized by this probe.

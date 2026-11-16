@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "market-dashboard-v4",
+  "scoreVersion": "sector-score-v0.3",
+  "universeVersion": "sector-universe-ths-v1",
+  "featureVersion": "sector-features-ths-v1",
+  "membershipVersion": "sector-membership-ths-v1",
+  "sourceMode": "hithink",
+  "timezone": "Asia/Shanghai",
+  "publishEnabled": false,
+  "probe": {
+    "maxCalls": 50,
+    "maxPoints": 100,
+    "industrySample": 10,
+    "conceptSample": 20,
+    "expectedIndustries": 90,
+    "stockPageSize": 1000,
+    "startDate": "2023-01-01",
+    "endDate": "2026-11-13",
+    "fullRunMaxCalls": 500,
+    "fullRunMaxPoints": 100
+  },
+  "authorization": {
+    "status": "unknown",
+    "localNormalizedFeatures": false,
+    "publicDerivedScores": false,
+    "evidenceReference": null
+  }
+}

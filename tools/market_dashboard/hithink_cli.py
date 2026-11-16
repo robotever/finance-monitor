@@ -198,7 +198,17 @@ class HithinkClient:
         _fields(raw, ('ok', 'command', 'data', 'meta'))
         if raw['ok'] is not True or raw['command'] != f'{domain}.{command}':
             raise HithinkError()
-        meta = _fields(raw['meta'], ('source', 'count', 'truncated', 'schema_version'), ('request_id',))
+        metadata = raw['meta']
+        if isinstance(metadata, dict):
+            metadata = dict(metadata)
+            # Installed CLI 0.2.4 uses camelCase; retain recorded fixture
+            # compatibility, but reject ambiguous mixed spellings.
+            for actual, normalized in (('schemaVersion', 'schema_version'), ('requestId', 'request_id')):
+                if actual in metadata:
+                    if normalized in metadata:
+                        raise HithinkError()
+                    metadata[normalized] = metadata.pop(actual)
+        meta = _fields(metadata, ('source', 'count', 'truncated', 'schema_version'), ('request_id',))
         if (meta['source'] != 'remote' or meta['truncated'] is not False
                 or meta['schema_version'] != '1'):
             raise HithinkError()

@@ -52,6 +52,13 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--hithink-probe' in arguments:
+        # Manual read-only mode exits before log rotation, awake protection or
+        # scheduled job dispatch. The probe owns only its private safe report.
+        arguments.remove('--hithink-probe')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.hithink_probe', *arguments], os.environ)
     rotation_only = any(flag in arguments for flag in (
         '--rotation-shadow', '--skip-rotation-publish', '--rotation-report'))
     logs = root / ('logs/market-dashboard-shadow' if rotation_only else 'logs/market-dashboard')
