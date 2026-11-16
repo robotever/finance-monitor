@@ -131,6 +131,69 @@ def _strings(value):
     return isinstance(value, list) and all(isinstance(s, str) and len(s) <= 200 for s in value)
 
 
+def _validate_legacy_objects(objects, config):
+    required = {'id', 'strength', 'heat', 'risk', 'completeness', 'missing',
+                'contributors', 'sourceTimestamps', 'change1d', 'change5d'}
+    allowed = required | {'name', 'frequency', 'observedAt', 'stage', 'comparisonFallback',
+                          'comparisonUnavailable', 'selectionScore', 'selectedOn', 'retainedTradingDays'}
+    for obj in objects:
+        _require(isinstance(obj, dict) and required <= obj.keys() and obj.keys() <= allowed)
+        _require(_numeric(obj['completeness']) and _strings(obj['missing']))
+        scores = [obj[axis] for axis in ('strength', 'heat', 'risk')]
+        _require(all(value is None or isinstance(value, int) and not isinstance(value, bool)
+                     and _numeric(value) for value in scores))
+        _require(any(value is not None for value in scores) and obj['completeness'] > 0)
+        if 'observedAt' in obj:
+            _timestamp(obj['observedAt'])
+        if 'frequency' in obj:
+            _require(obj['frequency'] in ('intraday', 'daily', 'monthly'))
+        if 'name' in obj:
+            _require(isinstance(obj['name'], str) and len(obj['name']) <= 100)
+        if obj['completeness'] < config['completeness']['stageThreshold']:
+            _require(obj.get('stage') is None)
+        if obj.get('stage') is not None:
+            _require(obj['stage'] in [stage['label'] for stage in config['stages']] + [config['defaultStage']])
+        for change in ('change1d', 'change5d'):
+            value = obj[change]
+            _require(value is None or isinstance(value, dict) and set(value) == {'strength', 'heat', 'risk'}
+                     and all(item is None or _numeric(item, -100, 100) for item in value.values()))
+        timestamps = obj['sourceTimestamps']
+        _require(isinstance(timestamps, list) and bool(timestamps))
+        for provenance in timestamps:
+            _require(isinstance(provenance, dict) and set(provenance) == {'source', 'timestamp'}
+                     and provenance['source'] in ('Wind', 'FRED', 'MX', 'Derived'))
+            _timestamp(provenance['timestamp'])
+        contributors = obj['contributors']
+        _require(isinstance(contributors, list) and len(contributors) <= 3)
+        for contributor in contributors:
+            _require(isinstance(contributor, dict) and {'label', 'impact'} <= contributor.keys()
+                     and contributor.keys() <= {'label', 'impact', 'evidence'}
+                     and isinstance(contributor['label'], str) and len(contributor['label']) <= 200
+                     and _numeric(contributor['impact'], -100, 100))
+            if 'evidence' in contributor:
+                _require(isinstance(contributor['evidence'], str) and len(contributor['evidence']) <= 200)
+        if 'comparisonFallback' in obj:
+            _require(obj['comparisonFallback'] == 'close')
+        if 'comparisonUnavailable' in obj:
+            unavailable = obj['comparisonUnavailable']
+            _require(isinstance(unavailable, dict) and unavailable.keys() <= {'change1d', 'change5d'}
+                     and all(reason in ('missingObservation', 'missingCurrentScores', 'missingTradingCalendar',
+                                        'missingTargetTradingDate') for reason in unavailable.values()))
+
+
+def _validate_source_mode(modes):
+    _require(isinstance(modes, dict) and set(modes) == {
+        'breadth', 'styles', 'industries', 'concepts', 'conceptDiscovery', 'global'})
+    for group, mode in modes.items():
+        if group == 'global':
+            _require(isinstance(mode, dict) and all(isinstance(key, str) and key.isalnum()
+                     and value in ('fred', 'wind', 'mx') for key, value in mode.items()))
+        elif group == 'conceptDiscovery':
+            _require(mode == 'mx')
+        else:
+            _require(mode == 'wind')
+
+
 def validate_payload(payload, config=None):
     """Validate derived-only v1 shape, identity coverage and evidence before I/O.
 
@@ -189,53 +252,7 @@ def validate_payload(payload, config=None):
         except ValueError:
             raise ValidationError('INVALID_PAYLOAD') from None
     objects.extend(core + dynamic)
-    required_obj = {'id', 'strength', 'heat', 'risk', 'completeness', 'missing',
-                    'contributors', 'sourceTimestamps', 'change1d', 'change5d'}
-    allowed_obj = required_obj | {'name', 'frequency', 'observedAt', 'stage',
-                                  'comparisonFallback', 'comparisonUnavailable',
-                                  'selectionScore', 'selectedOn', 'retainedTradingDays'}
-    for obj in objects:
-        _require(required_obj <= obj.keys() and obj.keys() <= allowed_obj)
-        _require(_numeric(obj['completeness']) and _strings(obj['missing']))
-        scores = [obj[axis] for axis in ('strength', 'heat', 'risk')]
-        _require(all(v is None or isinstance(v, int) and _numeric(v) for v in scores))
-        _require(any(v is not None for v in scores) and obj['completeness'] > 0)
-        if 'observedAt' in obj:
-            _timestamp(obj['observedAt'])
-        if 'frequency' in obj:
-            _require(obj['frequency'] in ('intraday', 'daily', 'monthly'))
-        if 'name' in obj:
-            _require(isinstance(obj['name'], str) and len(obj['name']) <= 100)
-        if obj['completeness'] < config['completeness']['stageThreshold']:
-            _require(obj.get('stage') is None)
-        if obj.get('stage') is not None:
-            _require(obj['stage'] in [stage['label'] for stage in config['stages']] + [config['defaultStage']])
-        for change in ('change1d', 'change5d'):
-            value = obj[change]
-            _require(value is None or isinstance(value, dict) and set(value) == {'strength', 'heat', 'risk'}
-                     and all(v is None or _numeric(v, -100, 100) for v in value.values()))
-        timestamps = obj['sourceTimestamps']
-        _require(isinstance(timestamps, list) and bool(timestamps))
-        for provenance in timestamps:
-            _require(isinstance(provenance, dict) and set(provenance) == {'source', 'timestamp'}
-                     and provenance['source'] in ('Wind', 'FRED', 'MX', 'Derived'))
-            _timestamp(provenance['timestamp'])
-        contributors = obj['contributors']
-        _require(isinstance(contributors, list) and len(contributors) <= 3)
-        for contributor in contributors:
-            _require(isinstance(contributor, dict) and {'label', 'impact'} <= contributor.keys()
-                     and contributor.keys() <= {'label', 'impact', 'evidence'}
-                     and isinstance(contributor['label'], str) and len(contributor['label']) <= 200
-                     and _numeric(contributor['impact'], -100, 100))
-            if 'evidence' in contributor:
-                _require(isinstance(contributor['evidence'], str) and len(contributor['evidence']) <= 200)
-        if 'comparisonFallback' in obj:
-            _require(obj['comparisonFallback'] == 'close')
-        if 'comparisonUnavailable' in obj:
-            unavailable = obj['comparisonUnavailable']
-            _require(isinstance(unavailable, dict) and unavailable.keys() <= {'change1d', 'change5d'}
-                     and all(reason in ('missingObservation', 'missingCurrentScores', 'missingTradingCalendar',
-                                        'missingTargetTradingDate') for reason in unavailable.values()))
+    _validate_legacy_objects(objects, config)
     status = payload['dataStatus']
     _require(isinstance(status, dict) and set(status) == {'completeness', 'stale', 'missing'}
              and _numeric(status['completeness']) and isinstance(status['stale'], bool)
@@ -245,23 +262,198 @@ def validate_payload(payload, config=None):
     minimum = config.get('publication', {}).get('minimumCompleteness', 0)
     _require(_numeric(minimum) and status['completeness'] > 0 and status['completeness'] >= minimum)
     if 'sourceMode' in payload:
-        modes = payload['sourceMode']
-        _require(isinstance(modes, dict) and set(modes) == {
-            'breadth', 'styles', 'industries', 'concepts', 'conceptDiscovery', 'global'})
-        for group, mode in modes.items():
-            if group == 'global':
-                _require(isinstance(mode, dict) and all(isinstance(key, str) and key.isalnum()
-                         and value in ('fred', 'wind', 'mx') for key, value in mode.items()))
-            elif group == 'conceptDiscovery':
-                _require(mode == 'mx')
-            else:
-                _require(mode == 'wind')
+        _validate_source_mode(payload['sourceMode'])
     # Catch NaN, unserializable objects and excessive derived bodies before transport.
     try:
         _require(len(json.dumps(payload, allow_nan=False).encode()) <= 256 * 1024)
     except (TypeError, ValueError):
         raise ValidationError('INVALID_PAYLOAD') from None
     return payload
+
+
+DERIVED_ONLY_FORBIDDEN = {'token', 'rawResponse', 'rawRows', 'metrics', '_rawScores', '_units',
+                          '_timestamp', 'netFlow1d', 'amount1d', 'close'}
+
+
+def _derived_only_tree(value):
+    if isinstance(value, dict):
+        return not (DERIVED_ONLY_FORBIDDEN & value.keys()) and all(
+            isinstance(key, str) and _derived_only_tree(child) for key, child in value.items())
+    if isinstance(value, list):
+        return all(_derived_only_tree(child) for child in value)
+    return value is None or isinstance(value, (str, bool)) or _numeric(value, -math.inf, math.inf)
+
+
+def _integer(value, low=0, high=1_000_000):
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+
+def _validate_component_nodes(block):
+    _require(block['componentEncoding'] == 'node-mask-v1'
+             and block['componentFields'] == list(COMPONENT_FIELDS)
+             and _strings(block['componentPartNames'])
+             and len(set(block['componentPartNames'])) == len(block['componentPartNames'])
+             and _strings(block['missingReasons'])
+             and len(set(block['missingReasons'])) == len(block['missingReasons'])
+             and all(re.fullmatch(r'[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*', reason)
+                     for reason in block['missingReasons'])
+             and isinstance(block['componentNodes'], list) and bool(block['componentNodes']))
+    for node in block['componentNodes']:
+        _require(isinstance(node, list) and node and _integer(node[0], 0, 255)
+                 and len(node) == 1 + node[0].bit_count())
+        offset = 1
+        for bit, field in enumerate(COMPONENT_FIELDS):
+            if not node[0] & (1 << bit):
+                continue
+            value = node[offset]; offset += 1
+            if field == 'missing':
+                _require(isinstance(value, list) and all(
+                    _integer(item, 0, len(block['missingReasons']) - 1) for item in value))
+            elif field == 'parts':
+                _require(isinstance(value, list) and all(isinstance(part, list) and len(part) == 2
+                    and _integer(part[0], 0, len(block['componentPartNames']) - 1)
+                    and _integer(part[1], 0, len(block['componentNodes']) - 1) for part in value))
+            else:
+                _require(value is None or _numeric(value, 0, 100 if field in ('value', 'percentile') else math.inf))
+                if field == 'coverage':
+                    _require(value is None or value <= 1)
+
+
+def validate_rotation_publish_payload(payload, config=None):
+    """Validate the private v3 transport envelope before the server's full audit decode."""
+    config = config or load_config()
+    required = {'observedAt', 'marketDate', 'session', 'schemaVersion', 'scoringVersion', 'global',
+                'aShare', 'styles', 'industries', 'dataStatus', 'concepts', 'sectorScoringVersion',
+                'sectorUniverseVersion', 'sectorRotation'}
+    _require(isinstance(payload, dict) and required <= payload.keys()
+             and payload.keys() <= required | {'sourceMode'})
+    _require(_derived_only_tree(payload))
+    _require(payload['schemaVersion'] == 'market-dashboard-v3'
+             and payload['scoringVersion'] == config['scoringVersion']
+             and payload['sectorScoringVersion'] == config['sectorScoringVersion']
+             and payload['sectorUniverseVersion'] == config['sectorUniverseVersion'])
+    observed = _timestamp(payload['observedAt'])
+    _require(payload['marketDate'] == str(observed.astimezone(SHANGHAI).date())
+             and payload['session'] in ('intraday', 'close'))
+    _require(isinstance(payload['global'], dict) and payload['global'].get('id') == 'global'
+             and isinstance(payload['aShare'], dict) and payload['aShare'].get('id') == 'a-share'
+             and isinstance(payload['styles'], list) and len(payload['styles']) == len(STYLE_DEFINITIONS)
+             and {row.get('id') for row in payload['styles'] if isinstance(row, dict)}
+                 == {code for code, _ in STYLE_DEFINITIONS})
+    _validate_legacy_objects([payload['global'], payload['aShare'], *payload['styles']], config)
+    block = payload['sectorRotation']
+    block_required = {'sectorScoringVersion', 'sectorUniverseVersion', 'observedAt', 'marketDate',
+                      'session', 'officialClose', 'industries', 'concepts', 'componentEncoding',
+                      'componentFields', 'componentPartNames', 'componentNodes', 'missingReasons',
+                      'auditDefinitions', 'releaseEligible', 'safeCodes'}
+    _require(isinstance(block, dict) and set(block) == block_required
+             and block['sectorScoringVersion'] == config['sectorScoringVersion']
+             and block['sectorUniverseVersion'] == config['sectorUniverseVersion']
+             and _timestamp(block['observedAt']) == observed
+             and block['marketDate'] == payload['marketDate'] and block['session'] == payload['session']
+             and block['officialClose'] is (payload['session'] == 'close')
+             and isinstance(block['releaseEligible'], bool) and _strings(block['safeCodes']))
+    _require(block['auditDefinitions'] == {'weights': config['sectorScoring']['weights'],
+        'componentWeights': config['sectorScoring']['componentWeights'],
+        'gates': config['sectorScoring']['gates'], 'heat': config['sectorScoring']['heat']})
+    _validate_component_nodes(block)
+    expected = {
+        'industry': {code for code, _ in INDUSTRY_DEFINITIONS},
+        'concept': {code for code, _ in concept_definitions(load_concept_config())},
+    }
+    row_required = {'id', 'name', 'universe', 'observedAt', 'strength', 'opportunity', 'risk',
+                    'heatState', 'axisCompleteness', 'completeness', 'coldStart', 'validCloses',
+                    'improvementEvidence', 'ranks', 'leaderboard', 'officialClose', 'components', 'missing'}
+    for universe, key in (('industry', 'industries'), ('concept', 'concepts')):
+        rows = block[key]
+        _require(isinstance(rows, list) and len(rows) == len(expected[universe])
+                 and {row.get('id') for row in rows if isinstance(row, dict)} == expected[universe])
+        for row in rows:
+            _require(set(row) == row_required and row['universe'] == universe
+                     and isinstance(row['name'], str) and len(row['name']) <= 100
+                     and row['officialClose'] is block['officialClose']
+                     and _timestamp(row['observedAt']) <= observed
+                     and isinstance(row['completeness'], int) and _numeric(row['completeness'])
+                     and isinstance(row['coldStart'], bool)
+                     and _integer(row['validCloses']) and _integer(row['improvementEvidence'], 0, 5)
+                     and isinstance(row['axisCompleteness'], dict)
+                     and set(row['axisCompleteness']) == {'strength', 'opportunity', 'risk'}
+                     and all(_numeric(value) for value in row['axisCompleteness'].values())
+                     and isinstance(row['ranks'], dict) and set(row['ranks']) == {'strength', 'opportunity', 'risk'}
+                     and all(value is None or _integer(value, 1, len(expected[universe]))
+                             for value in row['ranks'].values())
+                     and row['heatState'] in (None, 'cold', 'neutral', 'warming', 'active', 'crowded'))
+            _require(all(value is None or _integer(value, 0, 100)
+                         for value in (row['strength'], row['opportunity'], row['risk'])))
+            _require(isinstance(row['components'], dict)
+                     and set(row['components']) == (set(config['sectorScoring']['componentWeights']) |
+                         {'breadth', 'concentration', 'activityMean5d', 'divergence'})
+                     and all(_integer(index, 0, len(block['componentNodes']) - 1)
+                             for index in row['components'].values())
+                     and isinstance(row['missing'], list)
+                     and all(_integer(index, 0, len(block['missingReasons']) - 1) for index in row['missing']))
+            _require(isinstance(row['leaderboard'], dict) and set(row['leaderboard']) == {'strength', 'opportunity'})
+            for axis, board in row['leaderboard'].items():
+                _require(isinstance(board, dict) and set(board) == {'axis', 'topTenStreak', 'topTenCount15d', 'rankChange'}
+                         and board['axis'] == axis and _integer(board['topTenStreak'])
+                         and _integer(board['topTenCount15d'], 0, 15)
+                         and (board['rankChange'] is None or _integer(board['rankChange'], -74, 74)))
+    full_rows = {row['id']: row for row in block['industries'] + block['concepts']}
+    projection_fields = {'id', 'name', 'universe', 'observedAt', 'strength', 'opportunity', 'risk',
+        'heatState', 'axisCompleteness', 'completeness', 'coldStart', 'validCloses',
+        'improvementEvidence', 'ranks', 'leaderboard', 'officialClose'}
+    _require(isinstance(payload['industries'], list)
+             and {row.get('id') for row in payload['industries'] if isinstance(row, dict)} == expected['industry'])
+    for row in payload['industries']:
+        _require(set(row) == projection_fields and row == _rotation_projection(full_rows[row['id']], audit=False))
+    concepts = payload['concepts']
+    _require(isinstance(concepts, dict) and set(concepts) == {'selectionVersion', 'scoringVersion',
+        'selectedAt', 'core', 'dynamic', 'selectionScoringVersion'}
+        and concepts['selectionVersion'] == config['conceptSelection']['version']
+        and concepts['scoringVersion'] == config['sectorScoringVersion']
+        and concepts['selectionScoringVersion'] == config['conceptSelection']['scoringVersion']
+        and _timestamp(concepts['selectedAt']) <= observed
+        and isinstance(concepts['core'], list) and len(concepts['core']) == 25
+        and isinstance(concepts['dynamic'], list) and len(concepts['dynamic']) == 10)
+    all_concepts = [code for code, _ in concept_definitions(load_concept_config())]
+    _require([row.get('id') for row in concepts['core'] if isinstance(row, dict)] == all_concepts[:25])
+    dynamic_ids = [row.get('id') for row in concepts['dynamic'] if isinstance(row, dict)]
+    _require(len(set(dynamic_ids)) == 10 and set(dynamic_ids) <= expected['concept']
+             and not set(dynamic_ids) & set(all_concepts[:25]))
+    for row in concepts['core']:
+        _require(set(row) == projection_fields and row == _rotation_projection(full_rows[row['id']], audit=False))
+    for row in concepts['dynamic']:
+        _require(set(row) == projection_fields | {'selectionScore', 'selectedOn', 'retainedTradingDays'})
+        projection = {key: row[key] for key in projection_fields}
+        _require(projection == _rotation_projection(full_rows[row['id']], audit=False)
+                 and _numeric(row['selectionScore']) and isinstance(row['selectedOn'], str)
+                 and _integer(row['retainedTradingDays'], 1))
+        try:
+            date.fromisoformat(row['selectedOn'])
+        except ValueError:
+            raise ValidationError('INVALID_PAYLOAD') from None
+    objects = [payload['global'], payload['aShare'], *payload['styles'], *block['industries'], *block['concepts']]
+    status = payload['dataStatus']
+    _require(isinstance(status, dict) and set(status) == {'completeness', 'stale', 'missing'}
+             and _integer(status['completeness'], 1, 100) and isinstance(status['stale'], bool)
+             and _strings(status['missing'])
+             and status['completeness'] == math.floor(sum(row['completeness'] for row in objects) / len(objects) + .5))
+    if 'sourceMode' in payload:
+        _validate_source_mode(payload['sourceMode'])
+    try:
+        _require(len(json.dumps(payload, ensure_ascii=False, allow_nan=False,
+                                separators=(',', ':')).encode()) <= 256 * 1024)
+    except (TypeError, ValueError):
+        raise ValidationError('INVALID_PAYLOAD') from None
+    return payload
+
+
+def validate_publish_payload(payload, config=None):
+    schema = payload.get('schemaVersion') if isinstance(payload, dict) else None
+    _require(schema in ('market-dashboard-v2', 'market-dashboard-v3'))
+    if schema == 'market-dashboard-v3':
+        return validate_rotation_publish_payload(payload, config)
+    return validate_payload(payload, config)
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -276,7 +468,7 @@ urlopen = build_opener(_NoRedirect()).open
 def publish_payload(payload, url, token, timeout=20, *, config=None):
     """Three bounded attempts only for network errors/5xx; never logs secrets."""
     try:
-        validate_payload(payload, config)
+        validate_publish_payload(payload, config)
     except (ValidationError, TypeError, KeyError):
         return PublishResult(False, error_code='INVALID_PAYLOAD')
     try:

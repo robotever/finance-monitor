@@ -203,6 +203,18 @@ class PublishTests(unittest.TestCase):
                 self.assertFalse(job.publish_payload(valid_payload(), url, token, 8).success)
                 network.assert_not_called()
 
+    def test_unknown_schema_fails_closed_even_when_config_is_mutated_to_match(self):
+        payload = valid_payload()
+        payload['schemaVersion'] = 'market-dashboard-v4'
+        config = load_config()
+        config['schemaVersion'] = 'market-dashboard-v4'
+        with patch.object(job, 'urlopen') as network:
+            result = job.publish_payload(payload, 'https://example.test/publish', 'private-token', 8,
+                                         config=config)
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
+        network.assert_not_called()
+
 
 class JobTests(unittest.TestCase):
     def args(self, **overrides):
@@ -846,10 +858,28 @@ class RotationShadowTests(unittest.TestCase):
         check_keys(payload)
         self.assertFalse(block['releaseEligible'])
         self.assertIn('LIVE_HISTORY_UNVERIFIED', block['safeCodes'])
-        with patch.object(job, 'urlopen') as network:
+        with patch.object(job, 'urlopen', return_value=Response(201)) as network:
             result = job.publish_payload(payload, 'https://example.test/publish', 'synthetic')
-            self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
-            network.assert_not_called()
+            self.assertTrue(result.success, result.error_code)
+            self.assertEqual(result.status_code, 201)
+            request = network.call_args.args[0]
+            self.assertEqual(json.loads(request.data)['schemaVersion'], 'market-dashboard-v3')
+        mutations = {
+            'legacy secret': lambda p: p['global'].update(token='secret'),
+            'compact raw response': lambda p: p['sectorRotation']['componentNodes'][0].append({'rawResponse': 'secret'}),
+            'visible raw rows': lambda p: p['industries'][0].update(rawRows=[]),
+            'invalid data status': lambda p: p.update(dataStatus={'token': 'secret'}),
+            'invalid source mode': lambda p: p.update(sourceMode={'token': 'secret'}),
+            'boolean integer': lambda p: p['sectorRotation']['industries'][0].update(validCloses=True),
+        }
+        for name, mutate in mutations.items():
+            candidate = deepcopy(payload)
+            mutate(candidate)
+            with self.subTest(name=name), patch.object(job, 'urlopen') as network:
+                result = job.publish_payload(candidate, 'https://example.test/publish', 'synthetic')
+                self.assertFalse(result.success)
+                self.assertEqual(result.error_code, 'INVALID_PAYLOAD')
+                network.assert_not_called()
 
     def test_rotation_rejects_missing_duplicate_unknown_future_or_nonwind_sector_rows(self):
         builder = getattr(job, 'build_rotation_block', None)
