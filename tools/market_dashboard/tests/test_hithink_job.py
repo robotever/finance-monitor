@@ -49,6 +49,20 @@ class HithinkJobTests(unittest.TestCase):
         b=job.CycleBudget(4,10,clock=lambda:now[0]); now[0]=10
         with self.assertRaises(TimeoutError): b.before_call()
 
+    def test_unavailable_quote_does_not_abort_shared_snapshot_or_count_as_decline(self):
+        from tools.market_dashboard.hithink_cli import UnavailableStockSnapshot, Membership
+        class Client:
+            def stock_snapshots(self,codes):
+                return [SimpleNamespace(code='000001.SZ', timestamp_ms=1000,last_price=11,prev_price=10,volume=10,turnover=100),
+                    UnavailableStockSnapshot('000002.SZ',1000,('last_price',))]
+        shared=job.collect_stock_snapshot(Client(),['000001.SZ','000002.SZ'])
+        self.assertEqual(set(shared),{'000001.SZ'})
+        members=[Membership('881001.TI',c,1000) for c in ('000001.SZ','000002.SZ')]
+        breadth=job._live_breadth(members,shared,'2026-11-17','2026-11-17',1000)
+        self.assertEqual(breadth['total_count'],2)
+        self.assertEqual(breadth['valid_count'],1)
+        self.assertEqual(breadth['declining_count'],0)
+
     def test_one_success_per_bucket_and_failed_cycle_does_not_advance(self):
         with tempfile.TemporaryDirectory() as directory:
             args=SimpleNamespace(state_root=Path(directory).resolve(),now=self.stamp('10:00'))
@@ -159,6 +173,7 @@ class HithinkJobTests(unittest.TestCase):
             store=open_store(root/'sector-history.sqlite3')
             self.assertEqual(store.execute('select count(*) from sector_features_intraday').fetchone()[0],2)
             self.assertEqual(store.execute('select count(*) from stock_market_snapshot').fetchone()[0],1)
+            self.assertEqual(store.execute('select count(*) from sector_index_intraday').fetchone()[0],2)
             store.close()
             for stale_time in ('14:00','15:05'):
                 args.now=self.stamp(stale_time)

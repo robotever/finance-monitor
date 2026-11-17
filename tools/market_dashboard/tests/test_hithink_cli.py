@@ -115,11 +115,23 @@ class HithinkClientTests(unittest.TestCase):
             for field, original in self.fixtures[kind]['data']['item'][0].items():
                 if not isinstance(original, (int, float)):
                     continue
-                for invalid in (math.nan, math.inf, -math.inf, True, '11', None):
+                for invalid in (math.nan, math.inf, -math.inf, True, '11') + (() if kind == 'stock' else (None,)):
                     response = deepcopy(self.fixtures[kind])
                     response['data']['item'][0][field] = invalid
                     with self.subTest(kind=kind, field=field, value=invalid), self.assertRaises(api.HithinkError):
                         self.invoke(kind, response)
+
+    def test_null_stock_quote_is_explicitly_unavailable_not_zero(self):
+        response = deepcopy(self.fixtures['stock'])
+        for key in ('last_price', 'price_change', 'price_change_ratio_pct', 'open_price', 'high_price', 'low_price'):
+            response['data']['item'][0][key] = None
+        rows, _ = self.invoke('stock', response)
+        self.assertIsInstance(rows[0], api.UnavailableStockSnapshot)
+        self.assertEqual(rows[0].code, '000001.SZ')
+        self.assertIn('last_price', rows[0].missing_fields)
+        response['data']['item'][0]['volume'] = 'bad'
+        with self.assertRaises(api.HithinkError):
+            self.invoke('stock', response)
 
     def test_metadata_and_incomplete_snapshots_fail_closed(self):
         for mutation in (

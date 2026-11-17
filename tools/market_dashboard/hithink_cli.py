@@ -110,6 +110,14 @@ class StockSnapshot(IndexSnapshot):
     pass
 
 
+@dataclass(frozen=True)
+class UnavailableStockSnapshot:
+    """Returned identity with explicitly missing quote fields; never imputed."""
+    code: str
+    timestamp_ms: int
+    missing_fields: tuple[str, ...]
+
+
 def _fields(value, required, optional=()):
     if (not isinstance(value, dict) or not set(required) <= set(value)
             or set(value) - set(required) - set(optional)):
@@ -312,7 +320,11 @@ class HithinkClient:
             code = _code(raw['thscode'], _STOCK if stock else _INDEX)
             if code not in codes or raw['ticker'] != code.split('.')[0]:
                 raise HithinkError()
-            values = [finite_number(raw[key], nonnegative=key not in ('price_change', 'price_change_ratio_pct')) for key in prices]
+            missing = tuple(key for key in prices if raw[key] is None)
+            values = [None if stock and raw[key] is None else finite_number(raw[key], nonnegative=key not in ('price_change', 'price_change_ratio_pct')) for key in prices]
+            if stock and missing:
+                rows.append(UnavailableStockSnapshot(code, data['timestamp'], missing))
+                continue
             rows.append((StockSnapshot if stock else IndexSnapshot)(code, data['timestamp'], *values))
         _unique([row.code for row in rows])
         return tuple(rows)

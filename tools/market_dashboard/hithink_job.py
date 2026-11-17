@@ -17,7 +17,7 @@ import statistics
 import subprocess
 import time
 
-from .hithink_cli import HithinkClient, HithinkError, Membership, SHANGHAI, canonical_date
+from .hithink_cli import HithinkClient, HithinkError, Membership, UnavailableStockSnapshot, SHANGHAI, canonical_date
 from .hithink_store import (_private_directory, _private_file, store_write_lock,
     open_store, migrate_store, replace_catalog, read_index_daily, read_breadth_daily,
     upsert_index_daily, upsert_breadth_daily, upsert_sector_features)
@@ -121,7 +121,9 @@ def collect_stock_snapshot(client,codes,page_size=80):
         batch=codes[offset:offset+page_size]; rows=tuple(client.stock_snapshots(batch))
         if len(rows)!=len(batch) or {r.code for r in rows}!=set(batch):
             raise HithinkError('SNAPSHOT_INCOMPLETE')
-        for row in rows: result[row.code]=row; times.append(row.timestamp_ms)
+        for row in rows:
+            times.append(row.timestamp_ms)
+            if not isinstance(row,UnavailableStockSnapshot): result[row.code]=row
     if times and max(times)-min(times)>120000: raise HithinkError('SNAPSHOT_INCOHERENT')
     return result
 
@@ -292,6 +294,19 @@ def produce_payload(args,bucket,budget,client,root):
                                  r.open_price,r.high_price,r.low_price,r.prev_price,r.volume,r.turnover))
                         store.commit()
                     except BaseException: store.rollback(); raise
+            for offset in range(0,len(snapshots),250):
+                budget.check()
+                with store_write_lock(root):
+                    store.execute('BEGIN IMMEDIATE')
+                    try:
+                        for r in snapshots[offset:offset+250]:
+                            store.execute('INSERT OR REPLACE INTO sector_index_intraday '
+                                '(sector_id,observed_at,catalog_version,market_date,last_price,price_change,price_change_ratio_pct,open_price,high_price,low_price,prev_price,volume,turnover) '
+                                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                (r.code,r.timestamp_ms,'sector-universe-ths-v1',day,r.last_price,r.price_change,r.price_change_ratio_pct,
+                                 r.open_price,r.high_price,r.low_price,r.prev_price,r.volume,r.turnover))
+                        store.commit()
+                    except BaseException: store.rollback(); raise
             all_times=[r.timestamp_ms for r in snapshots]+[r.timestamp_ms for r in shared.values()]
             if not all_times or max(all_times)-min(all_times)>120000: raise HithinkError('SNAPSHOT_INCOHERENT')
             if any(datetime.fromtimestamp(t/1000,SHANGHAI).date().isoformat()!=day or t>observed+120000 for t in all_times): raise HithinkError('SNAPSHOT_DATE_MISMATCH')
@@ -351,6 +366,7 @@ def produce_payload(args,bucket,budget,client,root):
             marketTurnoverStatus='missing_full_market_aggregate',benchmark='000300.SH',
             latestOfficialCompletedDate=getattr(args,'_latest_official_date',day),
             historyLagSessions=sum(day<d<=getattr(args,'_latest_official_date',day) for d in args._calendar),
+            unavailableStockCount=0 if latest_close else len({m.stock_code for _,members,_ in memberships.values() for m in members if re.fullmatch(r'[0-9]{6}\.(SH|SZ|BJ)',m.stock_code)})-len(shared),
             unsupportedStockCount=len({m.stock_code for _,members,_ in memberships.values() for m in members if not re.fullmatch(r'[0-9]{6}\.(SH|SZ|BJ)',m.stock_code)}))
     finally: store.close()
 
