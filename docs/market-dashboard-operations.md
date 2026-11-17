@@ -421,6 +421,10 @@ The correct stock database is explicitly pinned under the parent project's
 coverage, performs one incremental source sync if needed, and fails closed if
 coverage remains insufficient. CLI export processes are killed as a group on
 timeout; panel files are validated and atomically merged, retaining history.
+After15:30, a successful timely close also receives a separate once-per-day
+constituent daily archive. This keeps tomorrow's historical member view complete
+without recomputing or relabeling the timely score. Failed archival retries on a
+later wake and does not prevent the already successful dataset remaining online.
 
 The Mac must remain powered on, connected and awake; a cloud read endpoint does
 not move source collection to the cloud. The five-minute wake renews an11-minute
