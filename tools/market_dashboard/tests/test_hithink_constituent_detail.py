@@ -41,6 +41,18 @@ class ConstituentDetailTests(unittest.TestCase):
         self.assertAlmostEqual(historical['rows'][0]['return1d'],-10)
         self.assertEqual(historical['priceBasis'],'forward_adjusted')
 
+    def test_late_close_reconstruction_uses_daily_panel_not_stale_intraday_quotes(self):
+        c=sqlite3.connect(':memory:')
+        c.executescript('''CREATE TABLE sector_membership_snapshot(sector_id,stock_id,membership_date,membership_version);
+          INSERT INTO sector_membership_snapshot VALUES ('885001.TI','000001.SZ','2026-11-17','sector-membership-ths-v1');''')
+        with tempfile.TemporaryDirectory() as tmp:
+            panel=Path(tmp)/'panel.csv'
+            panel.write_text('thscode,date,close,prev_close,volume,turnover,prev_date\n000001.SZ,2026-11-17,11,10,50,550,2026-11-16\n')
+            data=constituent_history(c,'885001.TI',{'2026-11-17':999999},None,panel,{})['2026-11-17']
+        self.assertEqual(data['validCount'],1)
+        self.assertAlmostEqual(data['rows'][0]['return1d'],10)
+        self.assertEqual(data['priceBasis'],'forward_adjusted')
+
 
 if __name__ == '__main__':
     unittest.main()

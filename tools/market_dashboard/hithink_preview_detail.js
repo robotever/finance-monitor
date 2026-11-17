@@ -13,10 +13,11 @@ const tone=v=>finite(v)?v>0?'preview-gain':v<0?'preview-loss':'':''
 const time=v=>v?new Date(v).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 北京时间':'可得时间未确认'
 function missingLabels(codes){return [...new Set(codes.map(code=>partLabels[code.split('.').reverse().find(k=>partLabels[k])]??labels[code.split('.')[0]]??'其他评分输入'))]}
 function grid(items){return h('dl',{class:'preview-detail-metrics'},items.map(([label,value])=>h('div',[h('dt',label),h('dd',value)])))}
-function constituents(data,expanded,toggle){
+function constituents(data,expanded,toggle,loading){
  const rows=data?.rows??[]
  return h('section',{class:'preview-constituents'},[
-  h('div',{class:'preview-section-heading'},[h('h3','成分股涨幅榜'),rows.length>10?h('button',{type:'button',class:'market-button','aria-expanded':expanded,onClick:toggle},expanded?'收起为前10名':'展开全部 '+rows.length+' 只'):null]),
+  h('div',{class:'preview-section-heading'},[h('h3','成分股涨幅榜'),data?.total>10?h('button',{type:'button',class:'market-button','aria-expanded':expanded,onClick:toggle},expanded?'收起为前10名':'展开全部 '+data.total+' 只'):null]),
+  loading?h('p',{class:'preview-meta',role:'status'},'正在读取所选日期的完整成分股…'):null,
   !rows.length?h('p',{class:'preview-meta'},'该日期暂无成分股行情。'):h('div',[
    h('p',{class:'preview-meta'},'按当日涨幅降序 · 有效行情 '+data.validCount+' / '+data.total+' · 成分日期 '+data.membershipDate+(data.approximateMembership?'（当前成分回填）':'')+(data.priceBasis==='forward_adjusted'?' · 历史收益按前复权价格计算，价格列为前复权收盘价':' · 最新价')+(data.observedAt?' · 行情 '+time(data.observedAt):'')),
    h('div',{class:'preview-table-scroll'},h('table',{class:'preview-table'},[
@@ -35,10 +36,10 @@ function breakdown(point,weights){return axes.map(([axis,label])=>h('section',[
  h('details',{class:'preview-notes'},[h('summary','查看子项'),...Object.keys(weights?.[axis]??{}).map(key=>{const c=point.components?.[key];return h('div',[h('strong',labels[key]??key),h('ul',Object.entries(c?.parts??{}).map(([name,part])=>h('li',(partLabels[name]??'其他子项')+'：'+number(part?.value,1)+'分 · 覆盖 '+share(part?.coverage))))])})])
 ]))}
 export default {
- props:['detail','selectedDate'],emits:['close','selectDate'],
+ props:['detail','selectedDate','constituentsLoading'],emits:['close','selectDate','loadConstituents'],
  setup(props,{emit}){
   const expanded=ref(false)
-  watch([()=>props.selectedDate,()=>props.detail.id],()=>expanded.value=false)
+  watch([()=>props.selectedDate,()=>props.detail.id,()=>props.detail.batchId],()=>expanded.value=false)
   return()=>{
   const history=props.detail.history,point=history.find(r=>r.marketDate===props.selectedDate)??history.at(-1)
   if(!point)return null
@@ -51,7 +52,11 @@ export default {
    h('header',{class:'preview-section-heading'},[h('div',[h('h2',point.name),h('p',{class:'preview-meta'},point.id+' · '+universe+' · 来源：同花顺 Hithink')]),h('button',{type:'button',class:'market-button',onClick:()=>emit('close')},'关闭')]),
    h('label',{class:'preview-date-selector'},['观察日期 ',h('select',{'aria-label':'观察日期',value:point.marketDate,onChange:e=>emit('selectDate',e.target.value)},[...history].reverse().map(r=>h('option',{value:r.marketDate},r.marketDate+(r.historicalReconstruction?' · 重建':r.officialClose?' · 收盘':' · 盘中'))))]),
    h('p',{class:'preview-meta'},'采集：'+time(point.observedAt)+' · '+(point.historicalReconstruction?'历史重建，非当时已知信息':point.officialClose?'正式收盘快照':'真实盘中快照')),
-   constituents(props.detail.constituentsByDate?.[point.marketDate],expanded.value,()=>expanded.value=!expanded.value),
+   constituents(props.detail.constituentsByDate?.[point.marketDate],expanded.value,()=>{
+    const data=props.detail.constituentsByDate?.[point.marketDate]
+    if(!expanded.value&&data&&data.rows.length<data.total)emit('loadConstituents',point.marketDate)
+    expanded.value=!expanded.value
+   },props.constituentsLoading),
    h('div',{class:'preview-detail-scores'},axes.map(([key,label])=>h('section',[h('h3',label),h('strong',point[key]??'—'),h('p','排名 '+(point.ranks?.[key]??'—')+' / '+(point.universeSize??'—')),h('p','较前日 '+change(point.change1d?.[key])+' · 完整度 '+number(point.axisCompleteness?.[key],1)+'%')]))),
    h('section',[h('h3','价格与趋势'),grid([['当日涨幅',percent(m.return1d)],['近5日涨幅',percent(m.return5d)],['近20日涨幅',percent(m.return20d)],['当日涨幅排名',(point.returnRank??'—')+' / '+(point.universeSize??'—')],['5日相对沪深300',finite(m.relativeStrength5d)?change(Number(m.relativeStrength5d.toFixed(2)))+'个百分点':'暂缺'],['20日相对沪深300',finite(m.relativeStrength20d)?change(Number(m.relativeStrength20d.toFixed(2)))+'个百分点':'暂缺'],['60日价格位置',position(m.position60d)],['250日价格位置',position(m.position250d)],['此前连续前10%',finite(m.topDecileStreak)?m.topDecileStreak+'个交易日':'暂缺']]),h('p',{class:'preview-meta'},'价格位置是历史价格分位，不等于估值高低；相对收益为板块收益减基准收益。')]),
    h('section',[h('h3','成分表现与参与度'),grid([['上涨股票占比',share(m.advancingShare)],['下跌股票占比',share(m.decliningShare)],['成分涨幅中位数',finite(m.medianReturn)?percent(m.medianReturn*100):'暂缺'],['强势股占比',share(m.strongStockShare)],['当前累计成交额',finite(m.turnover)?(m.turnover/1e8).toFixed(2)+'亿元':'暂缺'],['成交额历史分位',position(m.turnoverPercentile)],['前5大成交占比',share(m.top5TurnoverShare)],['单股收益集中度',share(m.top1ContributionShare)],['此前15日前10%次数',finite(m.topDecileCount15d)?m.topDecileCount15d+'次':'暂缺']]),h('p',{class:'preview-meta'},'单股收益集中度采用等权绝对收益占比代理。盘中成交额是当前累计值，未预测全天成交额。')]),

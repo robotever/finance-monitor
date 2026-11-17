@@ -70,7 +70,21 @@ class CycleBudget:
     def runner(self,argv):
         self.before_call()
         remaining=self.seconds-(self.clock()-self.start)
-        result=subprocess.run(argv,capture_output=True,text=True,check=False,timeout=min(60,remaining),umask=0o077)
+        process=subprocess.Popen(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+            start_new_session=True,umask=0o077)
+        try:
+            stdout,stderr=process.communicate(timeout=min(60,remaining))
+        except BaseException:
+            import signal
+            try: os.killpg(process.pid,signal.SIGTERM)
+            except ProcessLookupError: pass
+            try: process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try: os.killpg(process.pid,signal.SIGKILL)
+                except ProcessLookupError: pass
+                process.communicate()
+            raise
+        result=subprocess.CompletedProcess(argv,process.returncode,stdout,stderr)
         self.check(); return result
 
 
@@ -211,6 +225,56 @@ def score_cycle_features(features,prior_closes,bucket,config,*,historical=False)
     return [{**row,'historicalReconstruction':historical} for row in scored]
 
 
+def completed_market_dates(days,now):
+    now=now.astimezone(SHANGHAI);today=now.date().isoformat()
+    return [day for day in calendar_dates(days) if day<today or day==today and now.hour>=15]
+
+
+def official_close_bars(client,codes,day):
+    start=int(datetime.combine(canonical_date(day),datetime.min.time(),SHANGHAI).timestamp()*1000)
+    result=[]
+    for offset in range(0,len(codes),10):
+        batch=codes[offset:offset+10]
+        bars=client.index_history_batch(batch,start,start+86400000-1)
+        if len(bars)!=len(batch) or {b.code for b in bars}!=set(batch) or any(b.date!=day for b in bars):
+            raise HithinkError('OFFICIAL_CLOSE_UNVERIFIED')
+        result.extend(bars)
+    return result
+
+
+def load_complete_close_panel(budget,client,database,symbols,start,day,path):
+    from .hithink_breadth import load_stock_panel
+    candidate=path.with_suffix('.next.csv')
+    def load(): return list(load_stock_panel(budget.runner,client.cli_path,database,symbols,start,day,candidate))
+    def sufficient(rows):
+        valid={r.stock_id for r in rows if r.market_date==day and r.close is not None and r.close>0
+            and r.previous_close is not None and r.previous_close>0}
+        return len(valid)>=len(symbols)*.9
+    rows=load()
+    if not sufficient(rows):
+        result=budget.runner([client.cli_path,'--db',str(database),'data','sync','--format','json'])
+        try: success=result.returncode==0 and json.loads(result.stdout).get('ok') is True
+        except (ValueError,AttributeError): success=False
+        if not success: raise ValueError('STOCK_DAILY_SYNC_FAILED')
+        rows=load()
+    if not sufficient(rows): raise ValueError('STOCK_DAILY_INCOMPLETE')
+    # Do not expose a truncated or partially exported CSV to concurrent readers.
+    if candidate.exists():
+        import csv
+        merged={}
+        for source in (path.parent/'panel.csv',path,candidate):
+            if source.exists():
+                with source.open() as stream:
+                    reader=csv.DictReader(stream)
+                    fields=reader.fieldnames
+                    for row in reader: merged[row['thscode'],row['date']]=row
+        with candidate.open('w',newline='') as stream:
+            writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader()
+            writer.writerows(merged[key] for key in sorted(merged,key=lambda k:(k[1],k[0])))
+        os.replace(candidate,path)
+    return rows
+
+
 def produce_payload(args,bucket,budget,client,root):
     store=open_store(Path(getattr(args,'store',None) or root/'sector-history.sqlite3'))
     try:
@@ -251,12 +315,14 @@ def produce_payload(args,bucket,budget,client,root):
         if latest_close:
             from .hithink_backfill import _stock_database
             from .hithink_breadth import load_stock_panel, derive_daily_breadth, persist_breadth
-            start=(canonical_date(day)-timedelta(days=100)).isoformat()
+            # Existing SQLite breadth supplies prior sessions. Rebuild only this
+            # close; the exporter still warms lag/volume windows internally.
+            start=day
             days=[d for d in args._calendar if d<=day]
             previous_days={d:days[i-1] for i,d in enumerate(days) if i and d>=start}
             symbols={m.stock_code for _,members,_ in memberships.values() for m in members
                 if re.fullmatch(r'[0-9]{6}\.(SH|SZ|BJ)',m.stock_code)}
-            panel=load_stock_panel(budget.runner,client.cli_path,
+            panel=load_complete_close_panel(budget,client,
                 _stock_database(client.cli_path,getattr(args,'stock_db',None)),symbols,start,day,
                 root/'hithink-breadth'/'live-panel.csv')
             by_day={}
@@ -313,11 +379,8 @@ def produce_payload(args,bucket,budget,client,root):
             current=[]
             if bucket.official_close:
                 # Response assembly time alone cannot establish an official close.
-                start=int(datetime.combine(canonical_date(day),datetime.min.time(),SHANGHAI).timestamp()*1000)
-                for sector in sectors:
-                    bars=client.index_history(sector.code,start,start+86400000-1)
-                    if len(bars)!=1 or bars[0].date!=day: raise HithinkError('OFFICIAL_CLOSE_UNVERIFIED')
-                    bar=bars[0]; current.append(dict(sector_id=bar.code,market_date=bar.date,open=bar.open,high=bar.high,low=bar.low,close=bar.close,volume=bar.volume,turnover=bar.turnover,observed_at_ms=observed))
+                for bar in official_close_bars(client,[sector.code for sector in sectors],day):
+                    current.append(dict(sector_id=bar.code,market_date=bar.date,open=bar.open,high=bar.high,low=bar.low,close=bar.close,volume=bar.volume,turnover=bar.turnover,observed_at_ms=observed))
             else:
                 current=[dict(sector_id=r.code,market_date=day,close=r.last_price,turnover=r.turnover,volume=r.volume,observed_at_ms=observed) for r in snapshots]
             for row in current: indexes[row['sector_id']]=[r for r in indexes[row['sector_id']] if r['market_date']<day]+[row]
@@ -383,7 +446,7 @@ def run_hithink_cycle(args,deps=None):
             days=deps.get('calendar')
             if days is None: days=json.loads(args.calendar.read_text()) if getattr(args,'calendar',None) else _official_calendar(client)
             if getattr(args,'latest_close',False):
-                eligible=[d for d in calendar_dates(days) if d<now.astimezone(SHANGHAI).date().isoformat()]
+                eligible=completed_market_dates(days,now)
                 if not eligible: raise ValueError('CALENDAR_UNVERIFIED')
                 args._latest_official_date=eligible[-1]
                 with store_write_lock(root):
@@ -401,7 +464,9 @@ def run_hithink_cycle(args,deps=None):
             budget.seconds=min(budget.seconds,(bucket.deadline-now.astimezone(SHANGHAI)).total_seconds())
             with store_write_lock(root): committed=_ensure_committed_snapshot(local)
             state=committed['state']
-            if bucket.key in state['completed']: return HithinkJobResult('already_complete',bucket.key)
+            rebuild=getattr(args,'rebuild_latest_close',False)
+            if rebuild and not getattr(args,'latest_close',False): raise ValueError('INVALID_REBUILD')
+            if bucket.key in state['completed'] and not rebuild: return HithinkJobResult('already_complete',bucket.key)
             # Fail fast before remote work if a writer already owns the store.
             with store_write_lock(root): pass
             payload=(deps.get('produce') or produce_payload)(args,bucket,budget,client,root)
@@ -418,11 +483,17 @@ def run_hithink_cycle(args,deps=None):
                     history=sorted([p for p in history if p['marketDate']!=payload['marketDate']]+[payload],key=lambda p:p['marketDate'])[-15:]
                 payload={**payload,'bucket':bucket.key}
                 health=dict(mode='shadow',status='success',bucket=bucket.key,rowCount=len(rows),published=False,safeErrorCode=None)
-                _commit_snapshot(local,payload,chunks,{'completed':(state['completed']+[bucket.key])[-2000:]},history,health,budget=budget)
+                _commit_snapshot(local,payload,chunks,{'completed':([key for key in state['completed'] if key!=bucket.key]+[bucket.key])[-2000:]},history,health,budget=budget)
             return HithinkJobResult('success',bucket.key,row_count=len(rows))
     except Exception as error:
         code='CYCLE_EXPIRED' if isinstance(error,(TimeoutError,subprocess.TimeoutExpired)) else 'COLLECTION_FAILED'
-        if str(error) in ('STORE_BUSY','LIVE_BUSY','CALENDAR_UNVERIFIED'): code=str(error)
+        # CLI deliberately hides subprocess exceptions. Recover only the cycle's
+        # own independently measured limit, never provider stderr/message text.
+        if budget.clock()-budget.start >= budget.seconds: code='CYCLE_EXPIRED'
+        elif budget.calls>=budget.max_calls: code='CYCLE_BUDGET_STOP'
+        if str(error) in ('STORE_BUSY','LIVE_BUSY','CALENDAR_UNVERIFIED','SNAPSHOT_STALE','SNAPSHOT_INCOHERENT',
+            'SNAPSHOT_DATE_MISMATCH','SNAPSHOT_INCOMPLETE','OFFICIAL_CLOSE_UNVERIFIED','INDEX_HISTORY_INCOMPLETE',
+            'HITHINK_COMMAND_FAILED','INVALID_HITHINK_RESPONSE','STOCK_DAILY_SYNC_FAILED','STOCK_DAILY_INCOMPLETE') and code not in ('CYCLE_EXPIRED','CYCLE_BUDGET_STOP'): code=str(error)
         _atomic(local/'health.json',dict(mode='shadow',status='failed',published=False,safeErrorCode=code))
         return HithinkJobResult('failed',bucket.key if bucket else None,code)
 
@@ -611,6 +682,7 @@ def main(argv=None):
     parser.add_argument('--calendar',type=Path,help='explicit verified JSON trading-date array; no weekday fallback')
     parser.add_argument('--refresh-local-projection',action='store_true',help='offline reviewed role metadata/chunk refresh; preserve score/timing evidence')
     parser.add_argument('--latest-close',action='store_true',help='private historical reconstruction, never a timely close success')
+    parser.add_argument('--rebuild-latest-close',action='store_true',help='recompute an existing latest-close reconstruction after verified source repair')
     parser.add_argument('--max-calls',type=int,default=1200)
     parser.add_argument('--max-seconds',type=float,default=840)
     args=parser.parse_args(argv)

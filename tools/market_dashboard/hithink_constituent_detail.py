@@ -90,7 +90,9 @@ def enrich_export(root, directory):
         for path,detail in details:
             cutoffs={p['marketDate']:int(datetime.fromisoformat(p['observedAt'].replace('Z','+00:00')).timestamp()*1000)
                      for p in detail['history'] if p.get('observedAt')}
-            detail['constituentsByDate']=constituent_history(connection,detail['id'],cutoffs,day,panel,names,
+            latest=next((p for p in detail['history'] if p['marketDate']==day),{})
+            live_day=None if latest.get('historicalReconstruction') else day
+            detail['constituentsByDate']=constituent_history(connection,detail['id'],cutoffs,live_day,panel,names,
                 panel_rows=panel_rows,live_quotes=live_quotes)
             path.write_text(json.dumps(detail,ensure_ascii=False,allow_nan=False,separators=(',',':')))
     print(json.dumps({'details':len(details),'historyDates':len(dates),'names':len(names)}))
@@ -109,7 +111,9 @@ def main():
     symbols = root/'hithink-live/stock-symbols.json'
     names = {r['thscode']:r['name'] for r in json.loads(symbols.read_text())['data']['item']} if symbols.exists() else {}
     with sqlite3.connect((root/'sector-history.sqlite3').resolve().as_uri()+'?mode=ro',uri=True) as connection:
-        print(json.dumps(constituent_history(connection,sector,cutoffs,request['marketDate'],
+        latest=next((p for p in request['history'] if p['marketDate']==request['marketDate']),{})
+        live_day=None if latest.get('historicalReconstruction') else request['marketDate']
+        print(json.dumps(constituent_history(connection,sector,cutoffs,live_day,
             root/'hithink-breadth/live-panel.csv',names),allow_nan=False))
 
 

@@ -1,0 +1,16 @@
+# Sector live operation implementation plan
+
+Goal: keep the accepted online `/sectors/research` board current on each successful fifteen-minute collection, with explicit freshness and failure retention. User approved complete autonomous implementation and online activation on 2026-11-17.
+
+Architecture: preserve the existing market/radar/news service. Fix the Hithink collector independently. Add a dedicated compressed-view document store in the existing D1 database, authenticated publication using the existing publisher secret, staging and atomic activation. Browser pins one generation and polls the manifest; partial uploads are never visible. Current static snapshot is only a startup fallback before live data exists. Published JSON remains the accepted sanitized view, never local stores or provider credentials.
+
+1. Diagnose collection failures and verify latest available real close. Owner: collection agent, existing Python collector and focused tests.
+2. Add additive D1 live-view tables and authenticated begin/documents/activate/health API; validate identities, digests, complete key set, chronological activation, safe reads and bounded retention. Owner: backend agent.
+3. Add frontend generation-pinned live reader, 30-second polling, stale/failure notices and last-success retention; preserve local UI. Owner: frontend agent.
+4. Add offline exporter destination options, gzip upload publisher with bounded retries and checkpointing; orchestrate collection then publication with independent publication retry, a single process lock, and structured health. Owner: controller.
+5. Enable on the existing 5-minute launch agent using the internal 15-minute gate, awake protection while executing, bounded close recovery after delayed history. Preserve the original v2/v3 service and avoid a second collector.
+6. Run targeted/full tests and build, migrate additive tables, deploy once, publish real complete data and verify remote generations, constituents, freshness and update failure retention. Record operator commands and recovery paths. Review final integrated change.
+
+Rulings: the user has now authorized automatic publication of the same view data already online. This does not change the recorded unknown supplier evidence status or fabricate supplier permission. Existing older v4 gate stays untouched; this dedicated accepted-view live endpoint is separately user-authorized. Mac remains the collection host; no cloud promise can remove the machine-awake/network requirement. Do not wait ten trading days for operational activation; keep scientific scoring evaluation ongoing separately. No new Wind/MX calls or data source upgrade.
+
+Completion evidence: all six steps implemented and operationally activated. The new LaunchAgent has completed an actual successful publication,537pieces/491documents; public manifest reports live/automaticUpdates=true and success. Real coverage480/480, constituent80/80; largest concept3,894members available through per-date lazy loading. Protocol6tests, Python68tests and existing ops38tests pass, frontend focused suites/build pass. Natural next-session collection will still require tomorrow's market to occur; no future sample is fabricated. Full evidence: `docs/verification/2026-11-17-sector-live-operation.md`.

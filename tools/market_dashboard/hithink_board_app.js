@@ -2,14 +2,34 @@ import {h,ref,onMounted,onUnmounted} from 'vue'
 import PreviewDetail from './hithink_preview_detail.js'
 import './hithink_preview_compact.css'
 import {buildHistoryMatrix,formatHistoryValue} from '../../src/features/sector-rotation-v4/model.mjs'
+import {createLiveReader} from './hithink_live_reader.mjs'
 import {createSnapshotReader} from './hithink_snapshot_reader.mjs'
 
-export function createSectorBoard({snapshot=false}={}){return {setup(){
+export function createSectorBoard({snapshot=false,live=false}={}){return {setup(){
  const latest=ref(null),catalog=ref(null),detail=ref(null),error=ref(''),search=ref(''),page=ref(1),universe=ref('concept'),tab=ref('core'),history=ref(null),axis=ref('return1d'),selectedDate=ref(null)
  const views=[['potential','潜在轮动'],['main','主线确认'],['risk','风险升温']]
- const request=snapshot?createSnapshotReader():async(url)=>{const r=await fetch('/__local-reconstruction/'+url);const p=await r.json();if(!r.ok)throw Error(p.error);return p}
- async function load(){try{error.value='';catalog.value=await request('catalog?'+new URLSearchParams({universe:universe.value,page:String(page.value),pageSize:'50',q:search.value}));history.value=await request('history?'+new URLSearchParams({universe:universe.value,axis:axis.value,days:'15'}))}catch(e){error.value=String(e)}}
- async function select(row,date=null){selectedDate.value=date;try{detail.value=await request('detail?'+new URLSearchParams({universe:row.universe,id:row.id,days:'60'}))}catch(e){error.value=String(e)}}
+ const liveStatus=ref({mode:'loading'}),detailLoading=ref(false),constituentsLoading=ref(false)
+ const request=live?createLiveReader():snapshot?createSnapshotReader():async(url)=>{const r=await fetch('/__local-reconstruction/'+url);const p=await r.json();if(!r.ok)throw Error(p.error);return p}
+ const catalogUrl=()=> 'catalog?'+new URLSearchParams({universe:universe.value,page:String(page.value),pageSize:'50',q:search.value})
+ const historyUrl=()=> 'history?'+new URLSearchParams({universe:universe.value,axis:axis.value,days:'15'})
+ const detailUrl=row=> 'detail?'+new URLSearchParams({universe:row.universe,id:row.id,days:'60'})
+ let viewVersion=0
+ async function load(){const version=++viewVersion;try{
+  const [c,hist]=await Promise.all([request(catalogUrl()),request(historyUrl())])
+  if(version===viewVersion){catalog.value=c;history.value=hist;error.value=''}
+ }catch{error.value='更新暂未完成，请稍后重试；已显示的数据仍保留。'}}
+ let selectionVersion=0
+ async function select(row,date=null){const version=++selectionVersion;selectedDate.value=date;detailLoading.value=true;try{
+  const updated=await request(detailUrl(row));if(version===selectionVersion)detail.value=updated
+ }catch{error.value='板块详情暂时无法更新，请稍后重试。'}finally{if(version===selectionVersion)detailLoading.value=false}}
+ async function loadConstituents(date){
+  if(!live||!detail.value)return
+  const opened=detail.value,selection=selectionVersion;constituentsLoading.value=true
+  try{
+   const result=await request.constituents(opened.id,date)
+   if(selection===selectionVersion&&detail.value===opened&&result.generation===opened.batchId){detail.value={...opened,constituentsByDate:{...opened.constituentsByDate,[date]:result.data}};error.value=''}
+ }catch{error.value='完整成分股暂时无法读取，请稍后重试。'}finally{if(selection===selectionVersion)constituentsLoading.value=false}
+ }
  const button=(label,fn,props={})=>h('button',{type:'button',class:'market-button',onClick:fn,...props},label)
  const percent=r=>formatHistoryValue(r.metrics?.return1d??null,'return1d')
  const tone=v=>Number.isFinite(v)?v>0?'preview-gain':v<0?'preview-loss':'':''
@@ -18,26 +38,30 @@ export function createSectorBoard({snapshot=false}={}){return {setup(){
    h('th',{scope:'row'},h('button',{type:'button',class:'preview-name',onClick:()=>select(r),title:r.id+' · 完整度'+r.completeness+'%'},r.name)),
    h('td',{class:tone(r.metrics?.return1d)},percent(r)),...['strength','opportunity','risk'].map(a=>h('td',r[a]??'—'))
   ])))])])}
- let timer
- async function refresh(){try{
-  latest.value=await request('latest');await load()
-  const opened=detail.value
-  if(opened&&opened.batchId!==latest.value.batchId){
-   const updated=await request('detail?'+new URLSearchParams({universe:opened.universe,id:opened.id,days:'60'}))
-   if(detail.value===opened)detail.value=updated
-  }
- }catch(e){error.value=String(e)}}
- onMounted(()=>{refresh();if(!snapshot)timer=setInterval(refresh,30000);window.addEventListener('focus',refresh)})
+ let timer,refreshing=false
+ async function refresh(){if(refreshing)return;refreshing=true
+ const version=++viewVersion,selection=selectionVersion,opened=detail.value
+ const urls=['latest',catalogUrl(),historyUrl()]
+ if(opened)urls.push(detailUrl(opened))
+ try{
+  if(live){try{await request.refresh(urls)}finally{liveStatus.value=request.getStatus()}}
+  const values=await Promise.all(urls.map(request))
+  if(version!==viewVersion)return
+  latest.value=values[0];catalog.value=values[1];history.value=values[2];error.value=''
+  if(opened&&selection===selectionVersion&&detail.value?.id===opened.id&&opened.batchId!==values[0].batchId)detail.value=values[3]
+ }catch{error.value='更新暂未完成，请稍后重试；已显示的数据仍保留。'}finally{refreshing=false}}
+ onMounted(()=>{refresh();if(live||!snapshot)timer=setInterval(refresh,30000);window.addEventListener('focus',refresh)})
  onUnmounted(()=>{clearInterval(timer);window.removeEventListener('focus',refresh)})
  return()=>h('main',{class:'market-dashboard fv-card sector-rotation preview-compact'},[
   h('header',{class:'preview-header'},[
-   h('div',[h('h1',snapshot?'板块研究 · 在线验收版':'板块研究 · 本地实时看板'),h('p',{class:'preview-meta'},latest.value?'市场日期 '+latest.value.marketDate+' · 采集 '+new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 北京时间 · '+(latest.value.historicalReconstruction?'历史重建':latest.value.officialClose?'收盘快照':'盘中快照'):'读取中…')]),
+   h('div',[h('h1',live?'板块研究 · 在线实时看板':snapshot?'板块研究 · 在线验收版':'板块研究 · 本地实时看板'),h('p',{class:'preview-meta'},latest.value?'市场日期 '+latest.value.marketDate+' · 采集 '+new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 北京时间 · '+(latest.value.historicalReconstruction?'历史重建':latest.value.officialClose?'收盘快照':'盘中快照'):'读取中…')]),
    button('刷新',refresh)
   ]),
   h('nav',{class:'preview-links','aria-label':'页面快速导航'},[snapshot?h('a',{href:'/'},'← 市场雷达与新闻'):null,h('a',{href:'#preview-overview'},'行业三榜'),h('a',{href:'#preview-concepts'},'概念观察'),h('a',{href:'#reconstruction-history'},'历史轮动'),h('a',{href:'#preview-catalog'},'全部目录')]),
-  snapshot?h('p',{class:'market-notice'},'当前为发布时的数据快照，尚未接通线上自动更新，请以显示的采集时间为准。'):null,
-  h('details',{class:'preview-notes'},[h('summary',snapshot?'数据说明 · 发布快照 / 历史含重建':'数据说明 · 15分钟采集 / 历史含重建 / 仅本机'),h('p',(snapshot?'本版数据固定在发布时点。':'盘中每15分钟采集，页面每30秒检查本地更新。')+'历史含事后重建及当前成分回填，存在幸存者偏差。缺失不补零，评分未完成预测有效性验证。'+(snapshot?'':'仅本机，未公开发布。')),latest.value?h('p',latest.value.sectorScoringVersion+' / '+latest.value.sectorUniverseVersion):null]),
+  live?h('p',{class:'market-notice',role:'status'},liveStatus.value.mode==='fallback'?'线上首批数据尚未发布，当前显示静态归档快照。':liveStatus.value.mode==='live'?(liveStatus.value.publishHealth?.state==='failed'?'最近一次数据'+(liveStatus.value.publishHealth?.phase==='collection'?'采集':'发布')+'未完成，当前保留上次成功数据。':latest.value&&!latest.value.officialClose&&!latest.value.historicalReconstruction&&Date.now()-Date.parse(latest.value.observedAt)>1800000?'采集时间距今已超过30分钟，请结合市场日期与盘中／收盘状态阅读。':'交易时段每15分钟采集，页面每30秒检查更新；休市时保留最近数据。'):'正在检查线上数据…'):snapshot?h('p',{class:'market-notice'},'当前为发布时的数据快照，尚未接通线上自动更新，请以显示的采集时间为准。'):null,
+  h('details',{class:'preview-notes'},[h('summary',live?'数据说明 · 交易时段15分钟采集 / 历史含重建':snapshot?'数据说明 · 发布快照 / 历史含重建':'数据说明 · 15分钟采集 / 历史含重建 / 仅本机'),h('p',(live?'交易时段每15分钟采集，页面每30秒检查更新；非交易时段保留最近有效数据。':snapshot?'本版数据固定在发布时点。':'盘中每15分钟采集，页面每30秒检查本地更新。')+'历史含事后重建及当前成分回填，存在幸存者偏差。缺失不补零，评分未完成预测有效性验证。'+(snapshot||live?'':'仅本机，未公开发布。')),latest.value?h('p',latest.value.sectorScoringVersion+' / '+latest.value.sectorUniverseVersion):null]),
   error.value?h('p',{class:'market-notice',role:'status'},error.value):null,
+  detailLoading.value?h('p',{class:'market-notice',role:'status'},'正在读取板块详情，成分股较多的板块可能需要稍等…'):null,
   h('section',{id:'preview-overview'},[h('h2','行业三榜'),h('div',{class:'preview-leaderboards'},views.map(([key,label])=>h('section',{class:'preview-panel'},[
    h('h3',label+' · '+(latest.value?.industry[key].length??0)+'项'),
    latest.value?.industry[key].length?table(latest.value.industry[key],label):h('p',{class:'preview-empty'},'暂无符合条件行业')
@@ -57,7 +81,7 @@ export function createSectorBoard({snapshot=false}={}){return {setup(){
     h('thead',h('tr',[h('th',{scope:'col'},'排名'),...history.value.dates.map(d=>h('th',{scope:'col','data-history-date':d},d+(d===history.value.liveDate?' · 盘中':'')))])),
     h('tbody',buildHistoryMatrix(history.value).map(rank=>h('tr',[h('th',{scope:'row'},rank.rank),...rank.cells.map(cell=>h('td',cell?h('button',{type:'button','aria-label':cell.name+' '+cell.marketDate+' 第'+rank.rank+'名，打开详情',onClick:()=>select({...cell,universe:universe.value},cell.marketDate)},[h('span',cell.name),h('strong',{class:history.value.axis==='return1d'?tone(cell.score):''},formatHistoryValue(cell.score,history.value.axis))]):'—'))])))
    ])]):h('p',{class:'preview-empty'},'历史加载中…'),
-   h('p',{class:'preview-meta'},(snapshot?'当日列为发布时点快照；':'当日列随有效采集更新；')+'前日变化相对前一交易日，历史重建不代表当时已知信息。')
+   h('p',{class:'preview-meta'},(snapshot&&!live?'当日列为发布时点快照；':'当日列随有效采集更新；')+'前日变化相对前一交易日，历史重建不代表当时已知信息。')
   ]),
   h('details',{id:'preview-catalog',class:'preview-fold'},[
    h('summary','全部行业与概念 · 480项 · 搜索、分页与详细评分'),
@@ -69,6 +93,6 @@ export function createSectorBoard({snapshot=false}={}){return {setup(){
    table(catalog.value?.sectors??[],'完整目录'),
    h('nav',{class:'sector-rotation__tabs','aria-label':'板块分页'},[button('上一页',()=>{page.value--;load()},{disabled:page.value<=1}),button('下一页',()=>{page.value++;load()},{disabled:page.value*50>=(catalog.value?.total??0)})])
   ]),
-  detail.value?h(PreviewDetail,{detail:detail.value,selectedDate:selectedDate.value,onClose:()=>detail.value=null,onSelectDate:date=>selectedDate.value=date}):null
+  detail.value?h(PreviewDetail,{detail:detail.value,selectedDate:selectedDate.value,constituentsLoading:constituentsLoading.value,onLoadConstituents:loadConstituents,onClose:()=>{selectionVersion++;detail.value=null;detailLoading.value=false;constituentsLoading.value=false},onSelectDate:date=>selectedDate.value=date}):null
  ])
 }}}

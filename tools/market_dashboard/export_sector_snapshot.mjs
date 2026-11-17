@@ -5,10 +5,13 @@ import {fileURLToPath} from 'node:url'
 import {execFileSync} from 'node:child_process'
 import {localSnapshot,localCatalog,localHistory,localDetail} from './hithink_preview_data.mjs'
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..')
-const bundle=JSON.parse(readFileSync(join(root,'data/market-dashboard/hithink-live/current-snapshot.json'),'utf8'))
+const options=process.argv.slice(2),provided={}
+for(let i=0;i<options.length;i+=2){if(!['--state-root','--output-root'].includes(options[i])||!options[i+1])throw Error('INVALID_EXPORT_OPTIONS');provided[options[i]]=resolve(options[i+1])}
+const stateRoot=provided['--state-root']??join(root,'data/market-dashboard')
+const bundle=JSON.parse(readFileSync(join(stateRoot,'hithink-live/current-snapshot.json'),'utf8'))
 const generation=bundle.generation
 if(!/^[a-zA-Z0-9_-]{1,100}$/.test(generation))throw Error('INVALID_GENERATION')
-const base=join(root,'dist/data/sector-research'),output=join(base,generation)
+const base=provided['--output-root']??join(root,'dist/data/sector-research'),output=join(base,generation)
 mkdirSync(output,{recursive:true})
 const save=(name,data)=>writeFileSync(join(output,name+'.json'),JSON.stringify(data))
 const latest=localSnapshot(bundle),weights=JSON.parse(readFileSync(join(root,'config/hithink-sector-dashboard.json'),'utf8')).scoring.weights
@@ -22,7 +25,7 @@ for(const universe of ['industry','concept']){
  for(const axis of ['return1d','strength','opportunity','risk'])save(`history-${universe}-${axis}`,localHistory(bundle,universe,axis))
 }
 for(const sector of sectors)save('detail-'+sector.id,localDetail(bundle,new URLSearchParams({universe:sector.universe,id:sector.id}),weights))
-const result=execFileSync('python3',['-m','tools.market_dashboard.hithink_constituent_detail','--enrich-export',join(root,'data/market-dashboard'),output],{cwd:root,timeout:300000,encoding:'utf8'})
+const result=execFileSync('python3',['-m','tools.market_dashboard.hithink_constituent_detail','--enrich-export',stateRoot,output],{cwd:root,timeout:300000,encoding:'utf8'})
 let bytes=0
 for(const name of readdirSync(output)){
  const path=join(output,name),size=statSync(path).size

@@ -2,7 +2,7 @@
   <div>
   <nav class="home-primary-nav" aria-label="看板导航">
     <a class="sector-entry-card" href="/sectors/research">
-      <span class="sector-entry-card__copy"><strong>板块研究看板</strong><span>行业与概念 · 历史轮动 · 强度 / 机会 / 风险 · 成分股涨幅榜</span><small>发布快照 · 数据时间以板块页面为准</small></span>
+      <span class="sector-entry-card__copy"><strong>板块研究看板</strong><span>行业与概念 · 历史轮动 · 强度 / 机会 / 风险 · 成分股涨幅榜</span><small>交易时段每15分钟更新 · 采集时间以板块页面为准</small></span>
       <span class="sector-entry-card__action">进入板块看板 →</span>
     </a>
   </nav>

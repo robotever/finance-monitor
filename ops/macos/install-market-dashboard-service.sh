@@ -19,10 +19,11 @@ import tempfile
 repo_value, root_value, *arguments = sys.argv[1:]
 allow_worktree = '--allow-worktree' in arguments
 hithink_shadow = '--hithink-shadow' in arguments
-actions = [argument for argument in arguments if argument not in ('--allow-worktree', '--hithink-shadow')]
+hithink_live = '--hithink-live' in arguments
+actions = [argument for argument in arguments if argument not in ('--allow-worktree', '--hithink-shadow', '--hithink-live')]
 action = actions[0] if actions else '--prepare'
 repo, root = Path(repo_value).resolve(), Path(root_value).resolve()
-label = 'com.robot-ever.newsmonitor.market-dashboard' + ('.hithink-shadow' if hithink_shadow else '')
+label = 'com.robot-ever.newsmonitor.market-dashboard' + ('.hithink-live' if hithink_live else '.hithink-shadow' if hithink_shadow else '')
 domain = f'gui/{os.getuid()}'
 job = f'{domain}/{label}'
 agents = Path.home() / 'Library/LaunchAgents'
@@ -51,8 +52,10 @@ def validate_checkout():
     required = [repo / 'tools/market_dashboard/job.py', repo / 'config/market-dashboard.json',
                 repo / 'ops/macos/run-market-dashboard.sh',
                 repo / 'ops/macos/com.robot-ever.newsmonitor.market-dashboard.plist', root / 'scripts/rotate_service_logs.py']
-    if hithink_shadow:
+    if hithink_shadow or hithink_live:
         required.append(repo / 'tools/market_dashboard/hithink_job.py')
+    if hithink_live:
+        required.append(repo / 'tools/market_dashboard/sector_live_service.py')
     for path in required:
         if not path.is_file() or not os.access(path, os.R_OK):
             raise ValueError('required CLI, config, wrapper or rotation policy is unreadable')
@@ -82,7 +85,8 @@ def disable():
 
 try:
     if (len(actions) > 1 or arguments.count('--allow-worktree') > 1
-            or arguments.count('--hithink-shadow') > 1
+            or arguments.count('--hithink-shadow') > 1 or arguments.count('--hithink-live') > 1
+            or hithink_shadow and hithink_live
             or action not in ('--prepare', '--enable', '--disable', '--uninstall', '--restore')):
         raise ValueError('unknown action')
     validate_checkout()
@@ -100,7 +104,7 @@ try:
         print('Job disabled. Snapshot state and logs retained; no job started.')
     else:
         agents.mkdir(parents=True, exist_ok=True, mode=0o700)
-        logs = root / ('logs/market-dashboard-hithink-shadow' if hithink_shadow else 'logs/market-dashboard')
+        logs = root / ('logs/market-dashboard-hithink-live' if hithink_live else 'logs/market-dashboard-hithink-shadow' if hithink_shadow else 'logs/market-dashboard')
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         logs.chmod(0o700)
         for name in ('job.log', 'launchd.log'):
@@ -111,8 +115,8 @@ try:
         data = plistlib.loads(template.read_bytes())
         data['Label'] = label
         data['ProgramArguments'][1] = str(repo / 'ops/macos/run-market-dashboard.sh')
-        if hithink_shadow:
-            data['ProgramArguments'] = data['ProgramArguments'][:2] + ['--hithink-shadow']
+        if hithink_shadow or hithink_live:
+            data['ProgramArguments'] = data['ProgramArguments'][:2] + ['--hithink-live' if hithink_live else '--hithink-shadow']
             data['EnvironmentVariables'].pop('MARKET_DASHBOARD_ROTATION_SHADOW', None)
             data['EnvironmentVariables'].pop('MARKET_DASHBOARD_ROTATION_PUBLISH', None)
         data['WorkingDirectory'] = str(repo)

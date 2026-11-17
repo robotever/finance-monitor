@@ -397,3 +397,34 @@ disagreeing cannot expose mixed rows to bundle readers or prevent the next retry
 The supported offline projection refresh migrates reviewed legacy files into this
 bundle without provider requests or score/timing changes. The local preview reads
 all fifteen historical dates from the same bundle's `historyChunks`.
+
+### Online sector operation (2026-11-17)
+
+The accepted `/sectors/research` board now reads the independently activated
+`/api/sector-live/manifest` and `document` endpoints. It polls every30seconds;
+the producer retains its official-calendar fifteen-minute trading-session gate.
+An incomplete upload cannot replace the active dataset. The original static
+snapshot is a bootstrap fallback only, never a replacement for established live
+data after a failure. Original radar/news and v2/v3 schedules remain separate.
+
+The active label is `com.robot-ever.newsmonitor.market-dashboard.hithink-live`.
+The former `.hithink-shadow` label is disabled. Installer control uses
+`--allow-worktree --hithink-live --enable` or `--disable` with the same reviewed
+`MARKET_DASHBOARD_PROJECT_ROOT`. The wrapper loads literal credentials from that
+project's existing `.env`; do not put credentials in flags, logs or exported data.
+Run `--hithink-live --publish-only` to resume a pending publication without
+requesting another market snapshot. The publisher uses bounded retries, a540second
+deadline and a private part checkpoint; remote health has a separate short budget.
+
+The correct stock database is explicitly pinned under the parent project's
+`data/hithink/market.duckdb`. Late-close reconstruction checks same-day constituent
+coverage, performs one incremental source sync if needed, and fails closed if
+coverage remains insufficient. CLI export processes are killed as a group on
+timeout; panel files are validated and atomically merged, retaining history.
+
+The Mac must remain powered on, connected and awake; a cloud read endpoint does
+not move source collection to the cloud. An AC sleep guard bridges initial
+verification through 2026-11-18 15:40Shanghai. Do not delete the executing worktree;
+migrate and reinstall the service before removing it. See the complete data,
+runtime, failure and verification evidence in
+[the operation record](verification/2026-11-17-sector-live-operation.md).

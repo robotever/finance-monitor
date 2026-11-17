@@ -1,0 +1,125 @@
+"""One collector and one resumable publication loop, dispatched by launchd."""
+import argparse
+from dataclasses import asdict
+from datetime import datetime, timezone
+from copy import copy
+import fcntl
+import importlib.util
+import json
+import os
+import re
+from pathlib import Path
+import shutil
+import subprocess
+import time
+
+from .hithink_job import run_hithink_cycle, read_committed_snapshot, CLI
+from .hithink_cli import SHANGHAI
+from .sector_live_publish import LiveTransport, publish_export, _atomic
+
+BASE=Path(__file__).resolve().parents[2]
+
+
+def publication_health(transport,phase,state,code=None):
+    previous=getattr(transport,'deadline',None)
+    try:
+        if isinstance(transport,LiveTransport):transport.deadline=time.monotonic()+12
+        transport(dict(action='health',status=dict(phase=phase,state=state,safeErrorCode=code,
+            attemptedAt=datetime.now(timezone.utc).isoformat())))
+    except Exception:
+        pass  # Failed health transport must not corrupt the last successful dataset.
+    finally:
+        if isinstance(transport,LiveTransport):transport.deadline=previous
+
+
+def ensure_awake():
+    project=Path(os.environ.get('MARKET_DASHBOARD_PROJECT_ROOT',BASE.parent))
+    spec=importlib.util.spec_from_file_location('sector_live_awake',BASE/'ops/macos/market_dashboard_awake.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    module.ensure_guard(project/'state')
+
+
+def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None):
+    root=Path(args.state_root).resolve();root.mkdir(parents=True,exist_ok=True)
+    lock=os.open(root/'sector-live-service.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    os.fchmod(lock,0o600)
+    try:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return dict(status='already_running',published=False)
+        transport=transport or LiveTransport(os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN',''))
+        collection=None
+        if not args.publish_only:
+            collection=collector(args)
+        snapshot=read_committed_snapshot(root/'hithink-live')
+        now=datetime.now(SHANGHAI)
+        payload=snapshot.get('payload') if snapshot else None
+        # Daily bars may arrive after the strict timely-close window. Recover
+        # truthfully as a late reconstruction, never forge a timely close.
+        if (not args.publish_only and collection and collection.status=='outside_session'
+                and now.hour*60+now.minute>=930 and payload
+                and payload.get('marketDate')==now.date().isoformat()
+                and not payload.get('officialClose') and not payload.get('historicalReconstruction')):
+            recovery=copy(args);recovery.latest_close=True
+            collection=collector(recovery)
+            snapshot=read_committed_snapshot(root/'hithink-live')
+        if not snapshot or not snapshot.get('payload'):
+            publication_health(transport,'collection','failed','NO_SNAPSHOT')
+            return dict(status='no_snapshot',published=False)
+        directory=root/'hithink-online-export';checkpoint=root/'hithink-live/live-publication-checkpoint.json'
+        state=json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
+        generation=snapshot['generation']
+        if state.get('generation')==generation and state.get('activated'):
+            if collection and collection.status=='failed':publication_health(transport,'collection','failed','COLLECTION_FAILED')
+            return dict(status=collection.status if collection else 'already_published',generation=generation,published=True)
+        manifest=directory/'manifest.json'
+        exported=json.loads(manifest.read_text()) if manifest.exists() else {}
+        if exported.get('generation')!=generation:
+            if exporter:exporter(root,directory)
+            else:
+                node=shutil.which('node')
+                if not node:raise ValueError('NODE_UNAVAILABLE')
+                subprocess.run([node,str(BASE/'tools/market_dashboard/export_sector_snapshot.mjs'),
+                    '--state-root',str(root),'--output-root',str(directory)],cwd=BASE,check=True,
+                    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=360)
+        if isinstance(transport,LiveTransport):transport.deadline=time.monotonic()+540
+        result=publish_export(directory,transport,checkpoint=checkpoint)
+        # Pointer activation is idempotent; publisher checkpoint advances only afterwards.
+        publication_health(transport,'publication','success')
+        if collection and collection.status=='failed':publication_health(transport,'collection','failed','COLLECTION_FAILED')
+        health=dict(status='success',generation=result['generation'],published=True,
+            publishedAt=datetime.now(timezone.utc).isoformat(),collection=asdict(collection) if collection else None)
+        _atomic(root/'hithink-live/live-service-health.json',health)
+        # Keep exporter disk bounded independently of retained cloud generations.
+        for child in directory.iterdir():
+            if child.is_dir() and child.name!=result['generation'] and len(child.name)==64 and all(c in '0123456789abcdef' for c in child.name):
+                shutil.rmtree(child)
+        return health
+    except Exception as error:
+        code=str(error) if isinstance(error,ValueError) and re.fullmatch('[A-Z0-9_]{1,120}',str(error)) else 'PUBLICATION_FAILED'
+        if transport:publication_health(transport,'publication','failed','PUBLICATION_FAILED')
+        _atomic(root/'hithink-live/live-service-health.json',dict(status='failed',published=False,safeErrorCode=code,attemptedAt=datetime.now(timezone.utc).isoformat()))
+        return dict(status='failed',published=False,safeErrorCode=code)
+    finally:os.close(lock)
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--state-root',type=Path,default=BASE/'data/market-dashboard')
+    parser.add_argument('--store',type=Path)
+    parser.add_argument('--cli',default=CLI)
+    project=Path(os.environ.get('MARKET_DASHBOARD_PROJECT_ROOT',BASE.parent))
+    parser.add_argument('--stock-db',type=Path,default=Path(os.environ.get('HITHINK_STOCK_DB',str(project/'data/hithink/market.duckdb'))))
+    parser.add_argument('--calendar',type=Path)
+    parser.add_argument('--latest-close',action='store_true')
+    parser.add_argument('--max-calls',type=int,default=1200)
+    parser.add_argument('--max-seconds',type=float,default=840)
+    parser.add_argument('--publish-only',action='store_true')
+    args=parser.parse_args(argv)
+    try:ensure_awake()
+    except Exception:pass  # Report source failures separately; a sleep assertion is not a data source.
+    result=run_service(args)
+    print(json.dumps(result,separators=(',',':')))
+    return int(result['status']=='failed')
+
+
+if __name__=='__main__':raise SystemExit(main())

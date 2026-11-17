@@ -8,6 +8,37 @@ from tools.market_dashboard import hithink_job as job
 from tools.market_dashboard.hithink_cli import SHANGHAI, HithinkError
 
 class HithinkJobTests(unittest.TestCase):
+    def test_reconstruction_syncs_missing_daily_panel_and_rejects_persistent_gap(self):
+        from unittest.mock import patch
+        row=SimpleNamespace(stock_id='000001.SZ',market_date='2026-11-16',close=10,previous_close=9)
+        budget=SimpleNamespace(runner=lambda argv:SimpleNamespace(returncode=0,stdout='{"ok":true}'))
+        client=SimpleNamespace(cli_path='/provider/cli')
+        with patch('tools.market_dashboard.hithink_breadth.load_stock_panel',side_effect=[[],[row]]) as load:
+            self.assertEqual(job.load_complete_close_panel(budget,client,Path('/db'),{'000001.SZ'},'2026-11-01','2026-11-16',Path('/panel')),[row])
+            self.assertEqual(load.call_count,2)
+        with patch('tools.market_dashboard.hithink_breadth.load_stock_panel',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'STOCK_DAILY_INCOMPLETE'):
+                job.load_complete_close_panel(budget,client,Path('/db'),{'000001.SZ'},'2026-11-01','2026-11-16',Path('/panel'))
+
+    def test_completed_dates_include_today_only_after_market_close(self):
+        dates=['2026-11-13','2026-11-16']
+        self.assertEqual(job.completed_market_dates(dates,self.stamp('14:59')),['2026-11-13'])
+        self.assertEqual(job.completed_market_dates(dates,self.stamp('16:00')),dates)
+
+    def test_official_close_batches_preserve_exact_coverage(self):
+        from tools.market_dashboard.hithink_cli import IndexDailyBar
+        codes=[f'881{i:03}.TI' for i in range(23)]
+        class Client:
+            calls=[]
+            def index_history_batch(self,batch,start,end):
+                self.calls.append(list(batch))
+                return [IndexDailyBar(code,'2026-11-16',1,1,1,1,1,1) for code in batch]
+        client=Client();rows=job.official_close_bars(client,codes,'2026-11-16')
+        self.assertEqual(len(rows),23);self.assertEqual([len(x) for x in client.calls],[10,10,3])
+        client.index_history_batch=lambda *a: []
+        with self.assertRaisesRegex(HithinkError,'OFFICIAL_CLOSE_UNVERIFIED'):
+            job.official_close_bars(client,codes,'2026-11-16')
+
     def public_row(self,market_date='2026-11-16'):
         return dict(id='881001.TI',name='fixture',universe='industry',strength=55,opportunity=44,risk=33,
             completeness=80,ranks={'strength':1,'opportunity':1,'risk':1},heatState=None,coldStart=False,

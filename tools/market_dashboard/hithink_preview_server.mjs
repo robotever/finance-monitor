@@ -35,7 +35,7 @@ const server=await createServer({root,server:{host:'127.0.0.1',port:5184,strictP
        if(error)return reject(error)
        try{resolve(JSON.parse(stdout))}catch(error){reject(error)}
       })
-      child.stdin.end(JSON.stringify({marketDate:value.marketDate,history:value.history.map(p=>({marketDate:p.marketDate,observedAt:p.observedAt}))}))
+      child.stdin.end(JSON.stringify({marketDate:value.marketDate,history:value.history.map(p=>({marketDate:p.marketDate,observedAt:p.observedAt,historicalReconstruction:p.historicalReconstruction}))}))
      })
     }catch{value.constituentsUnavailable=true}
    }

@@ -1,0 +1,44 @@
+# 板块看板自动更新实施与验收
+
+用户授权：2026-11-17 要求接通完整线上自动运行，保持 `/sectors/research` 地址，次日可直接使用。本次不更换数据源，不调用 Wind 或妙想。
+
+## 运行结构
+
+单一 Mac LaunchAgent 每 300 秒唤起 `ops/macos/run-market-dashboard.sh --hithink-live`。运行器复用官方日历与 15 分钟交易时段分桶；一次成功采集后导出同一权威 generation 的 491 个页面文档，包括 480 个板块详情、涨幅/强度/机会/风险历史视图、目录和首页榜单。
+
+文档 gzip 后切为 256 KiB 分片，通过既有发布 Secret 认证上传至现有 `MARKET_DB` 的独立 `sector_live_*` 表。每片、每文档及总目录均核验摘要。491 个文档齐全才原子激活；网页仅读已激活批次。保留最近四个激活版本，不改变原 v2/v3 雷达/新闻表及旧 v4 激活门禁。
+
+网页每 30 秒查询 manifest；一轮读取固定 generation，完整读取相关页面后才替换显示。常规请求含读取响应正文共 12 秒超时；用户主动打开的大型详情和完整成分股请求最长 90 秒。故障保留最后成功显示并允许下一轮恢复，浏览器最多缓存两个 generation。详情在新批次到来时同步更新，保留所选历史日期。休市展示最近有效数据。
+
+详情首次只读取各观察日期涨幅前十名与完整覆盖计数；展开全部时按所选日期读取全部成分股，不截断功能或跨日期混用。实际最大板块“融资融券”首次摘要压缩后 17,947 字节，实测 7.29 秒；当日完整 3,894 只压缩后 138,239 字节，实测 5.55 秒（其中 3,891 只有效行情）。避免一次下载约 8 MB 的全部日期成分明细。预压缩数据使用 `encodeBody: manual`，防止双重 gzip；依据 [Cloudflare Response 官方说明](https://developers.cloudflare.com/workers/runtime-apis/response/)。
+
+## 可靠性修复
+
+- 收盘后 `--latest-close` 可包含当日；历史重建仍如实标注，不能当作准点收盘证据。
+- 当日股票日线面板覆盖不足时先增量同步，仍不足则拒绝提交；只更新当天广度，保留既有历史。面板完整校验后原子替换。
+- 超时/中断清理整个 CLI 子进程组，避免孤立导出进程继续持锁。
+- 服务显式固定正确股票库：`/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb`，避免自动发现命中其他路径。
+- 发布失败不消耗采集成功标记，下一次唤醒可独立重试；已上传分片有私有 checkpoint。发布阶段 540 秒总截止、每次请求最长 35 秒、有限重试，失败通知另有 12 秒预算。
+- Python TLS 使用系统受信任证书，保持主机名和证书验证；明确客户端标识，避免默认 Python 客户端被上游阻挡。凭据不进入参数、文件导出或日志。
+
+## 实证
+
+今日恢复已核实：17 日个股面板 5,573 行，保留 61 个历史日期；480/480 板块上涨广度有效；光刻胶成分股 80/80 有效。generation `1f01a8fe46ade0c724157089436a8d71c92332bb9fe6c73f8453909f5b168001`。
+
+68 项采集/广度/CLI/发布/服务/成分详情 Python 检查通过；38 项既有运维检查通过；17 项相关页面检查、读取超时/恢复/分代缓存及按日期加载成分股检查通过。D1 SQLite 协议检查覆盖分段暂存、激活、鉴权、摘要、隐私、保留、压缩读取和按日期展开。生产构建通过。真实最大 9 MB 详情（gzip 九片）已通过云端分段上传，只暂存不激活，证明不完整批次不对外可见。
+
+首次全量上传实际遇到 Cloudflare 1102 CPU 限制，未误归类为成功。修复为单次单片、两路有界并发、单片 JSON 只校验一次，重复字段/字符串的隐私检查有本次文档内缓存。随后自动任务从断点补齐 537 片并成功激活全部 491 个文档，`live-publication-checkpoint.json` 标记 activated=true。正式 manifest 为 `mode=live`、`automaticUpdates=true`、`publishHealth.state=success`；观察时间 2026-11-17 16:34:29 上海，首次成功发布时间 16:53:46 上海。
+
+正式浏览器核对三榜分别为潜在轮动 1 项、主线确认 3 项、风险升温 10 项；光刻胶前十/全部 80 切换成功，手机无横向溢出。在仅该验收浏览器内模拟 manifest 503 后，数据保留且恢复成功，未向生产写入模拟故障。已验证 `.hithink-live` 任务 runs=3、last exit code=0、间隔300秒，旧 `.hithink-shadow` disabled。
+
+## 运行条件与恢复
+
+采集仍在 Mac 执行，需开机、接电、联网；防休眠不能克服关机、合盖或断网。本次临时 AC 防休眠覆盖至 2026-11-18 15:40 上海时间；日常运行器复用交易时段防休眠保护。云端已有数据不依赖 Mac 在线即可读取。
+
+旧 `.hithink-shadow` 任务已停用，以免与新 `.hithink-live` 重复采集。新服务使用同一 worktree 代码路径；不要删除该 worktree，迁移稳定目录后必须重装运行器配置。
+
+私有状态：`data/market-dashboard/hithink-live/live-service-health.json`、`live-publication-checkpoint.json`。导出缓存位于忽略目录 `data/market-dashboard/hithink-online-export/`。排查只报告时间、generation、覆盖计数和安全错误码，不输出凭据。
+
+重试发布（复用已有采集，不请求新行情）：设置既有项目根目录后执行 `ops/macos/run-market-dashboard.sh --hithink-live --publish-only`。停用自动任务使用安装器 `--allow-worktree --hithink-live --disable`；不删除数据。旧静态快照仅在云端尚无激活数据时作回退；已激活 live 之后故障不退回旧静态数据。
+
+供应商授权证据记录仍为 unknown；用户本轮授权是自动发布既有公开视图的操作授权，不伪造成供应商条款验证。评分预测有效性仍需持续评价，不以自动运行成功替代。
