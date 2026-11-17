@@ -423,7 +423,9 @@ coverage remains insufficient. CLI export processes are killed as a group on
 timeout; panel files are validated and atomically merged, retaining history.
 
 The Mac must remain powered on, connected and awake; a cloud read endpoint does
-not move source collection to the cloud. An AC sleep guard bridges initial
+not move source collection to the cloud. The five-minute wake renews an11-minute
+AC idle-sleep lease across overnight idle periods; disabling the job lets it expire
+without permanent power-setting changes. An additional AC guard bridges initial
 verification through 2026-11-18 15:40Shanghai. Do not delete the executing worktree;
 migrate and reinstall the service before removing it. See the complete data,
 runtime, failure and verification evidence in

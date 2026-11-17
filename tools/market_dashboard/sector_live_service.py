@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 from .hithink_job import run_hithink_cycle, read_committed_snapshot, CLI
@@ -37,6 +38,12 @@ def ensure_awake():
     spec=importlib.util.spec_from_file_location('sector_live_awake',BASE/'ops/macos/market_dashboard_awake.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     module.ensure_guard(project/'state')
+    if sys.platform=='darwin':
+        # Renewable AC-only lease bridges overnight idle periods to the next
+        # five-minute launchd wake. It expires within eleven minutes after
+        # disabling the job, without changing permanent power preferences.
+        subprocess.Popen(['/usr/bin/caffeinate','-s','-t','660'],stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True)
 
 
 def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None):
