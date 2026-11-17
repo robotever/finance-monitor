@@ -1,5 +1,6 @@
 import {createApp,h,ref,onMounted,onUnmounted} from 'vue'
 import '/src/style.css'
+import PreviewDetail from '/tools/market_dashboard/hithink_preview_detail.js'
 import '/tools/market_dashboard/hithink_preview_compact.css'
 import {buildHistoryMatrix,formatHistoryValue} from '/src/features/sector-rotation-v4/model.mjs'
 
@@ -26,13 +27,18 @@ const app={setup(){
    h('div',[h('h1','板块研究 · 本地实时看板'),h('p',{class:'preview-meta'},latest.value?'市场日期 '+latest.value.marketDate+' · 采集 '+new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 北京时间 · '+(latest.value.historicalReconstruction?'历史重建':'盘中快照'):'读取中…')]),
    button('刷新',refresh)
   ]),
-  h('nav',{class:'preview-links','aria-label':'页面快速导航'},[h('a',{href:'#preview-overview'},'行业三榜'),h('a',{href:'#reconstruction-history'},'历史轮动'),h('a',{href:'#preview-concepts'},'概念观察'),h('a',{href:'#preview-catalog'},'全部目录')]),
+  h('nav',{class:'preview-links','aria-label':'页面快速导航'},[h('a',{href:'#preview-overview'},'行业三榜'),h('a',{href:'#preview-concepts'},'概念观察'),h('a',{href:'#reconstruction-history'},'历史轮动'),h('a',{href:'#preview-catalog'},'全部目录')]),
   h('details',{class:'preview-notes'},[h('summary','数据说明 · 15分钟采集 / 历史含重建 / 仅本机'),h('p','盘中每15分钟采集，页面每30秒检查本地更新。历史含事后重建及当前成分回填，存在幸存者偏差。缺失不补零，评分未完成预测有效性验证。仅本机，未公开发布。'),latest.value?h('p',latest.value.sectorScoringVersion+' / '+latest.value.sectorUniverseVersion):null]),
   error.value?h('p',{class:'market-notice',role:'status'},error.value):null,
   h('section',{id:'preview-overview'},[h('h2','行业三榜'),h('div',{class:'preview-leaderboards'},views.map(([key,label])=>h('section',{class:'preview-panel'},[
    h('h3',label+' · '+(latest.value?.industry[key].length??0)+'项'),
    latest.value?.industry[key].length?table(latest.value.industry[key],label):h('p',{class:'preview-empty'},'暂无符合条件行业')
   ])))]),
+  h('details',{id:'preview-concepts',class:'preview-fold'},[
+   h('summary','概念观察 · 核心 '+(latest.value?.concept.core.length??0)+' / 动态 '+(latest.value?.concept.dynamic.length??0)+' · 点击展开'),
+   h('div',{class:'sector-rotation__tabs'},[button('核心25',()=>tab.value='core',{'aria-pressed':tab.value==='core'}),button('动态10',()=>tab.value='dynamic',{'aria-pressed':tab.value==='dynamic'})]),
+   table(latest.value?.concept[tab.value]??[],'概念观察')
+  ]),
   h('section',{id:'reconstruction-history'},[
    h('div',{class:'preview-section-heading'},[h('h2','历史轮动'),h('span','最近日期在左 · 点击板块看详情')]),
    h('div',{class:'preview-history-controls'},[
@@ -45,11 +51,6 @@ const app={setup(){
    ])]):h('p',{class:'preview-empty'},'历史加载中…'),
    h('p',{class:'preview-meta'},'当日列随有效采集更新；前日变化相对前一交易日，历史重建不代表当时已知信息。')
   ]),
-  h('details',{id:'preview-concepts',class:'preview-fold'},[
-   h('summary','概念观察 · 核心 '+(latest.value?.concept.core.length??0)+' / 动态 '+(latest.value?.concept.dynamic.length??0)+' · 点击展开'),
-   h('div',{class:'sector-rotation__tabs'},[button('核心25',()=>tab.value='core',{'aria-pressed':tab.value==='core'}),button('动态10',()=>tab.value='dynamic',{'aria-pressed':tab.value==='dynamic'})]),
-   table(latest.value?.concept[tab.value]??[],'概念观察')
-  ]),
   h('details',{id:'preview-catalog',class:'preview-fold'},[
    h('summary','全部行业与概念 · 480项 · 搜索、分页与详细评分'),
    h('form',{onSubmit:e=>{e.preventDefault();page.value=1;load()},class:'preview-catalog-controls'},[
@@ -60,15 +61,7 @@ const app={setup(){
    table(catalog.value?.sectors??[],'完整目录'),
    h('nav',{class:'sector-rotation__tabs','aria-label':'板块分页'},[button('上一页',()=>{page.value--;load()},{disabled:page.value<=1}),button('下一页',()=>{page.value++;load()},{disabled:page.value*50>=(catalog.value?.total??0)})])
   ]),
-  detail.value?h('div',{class:'preview-backdrop',onClick:e=>{if(e.target===e.currentTarget)detail.value=null}},[h('section',{class:'preview-detail',role:'dialog','aria-modal':'true','aria-label':'板块详情'},[
-   h('header',{class:'preview-section-heading'},[h('h2',detail.value.history.at(-1)?.name??'板块详情'),button('关闭',()=>detail.value=null)]),
-   h('p',{class:'preview-meta'},'前期历史含重建 · — 表示缺失 · 选中日期 '+(selectedDate.value??'最新')),
-   h('div',{class:'preview-table-scroll'},h('table',{class:'preview-table'},[
-    h('thead',h('tr',['日期','涨幅','强度','机会','风险'].map(t=>h('th',t)))),
-    h('tbody',[...detail.value.history].sort((a,b)=>b.marketDate.localeCompare(a.marketDate)).map(r=>h('tr',{class:r.marketDate===selectedDate.value?'preview-selected-date':''},[h('th',{scope:'row'},r.marketDate),h('td',{class:tone(r.metrics?.return1d)},percent(r)),...['strength','opportunity','risk'].map(a=>h('td',r[a]??'—'))])))
-   ])),
-   h('details',{class:'preview-notes'},[h('summary','评分依据与缺失 · 点击展开'),h('pre',JSON.stringify((detail.value.history.find(r=>r.marketDate===selectedDate.value)??detail.value.history.at(-1)),null,2))])
-  ])]):null
+  detail.value?h(PreviewDetail,{detail:detail.value,selectedDate:selectedDate.value,onClose:()=>detail.value=null,onSelectDate:date=>selectedDate.value=date}):null
  ])
 }}
 createApp(app).mount('#app')

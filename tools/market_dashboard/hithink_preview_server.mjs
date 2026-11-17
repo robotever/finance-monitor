@@ -25,7 +25,7 @@ const server=await createServer({root,server:{host:'127.0.0.1',port:5184,strictP
    let value
    if(match[1]==='latest')value=localSnapshot(bundle)
    if(match[1]==='catalog')value=localCatalog(bundle,params)
-   if(match[1]==='detail')value=localDetail(bundle,params)
+   if(match[1]==='detail')value=localDetail(bundle,params,JSON.parse(readFileSync(join(root,'config/hithink-sector-dashboard.json'),'utf8')).scoring.weights)
    if(match[1]==='history'){
     const universe=params.get('universe'),axis=params.get('axis')
     if(!['industry','concept'].includes(universe)||!['return1d','strength','opportunity','risk'].includes(axis))throw Error('INVALID_QUERY')

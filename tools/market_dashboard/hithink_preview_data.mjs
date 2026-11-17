@@ -43,7 +43,24 @@ export function localCatalog(bundle,params){
   const rows=rowsFor(bundle,bundle.payload).filter(r=>r.universe===universe&&(r.name.toLowerCase().includes(q.toLowerCase())||r.id.toLowerCase().includes(q.toLowerCase())))
   return {...metadata(bundle),universe,page,pageSize,q,total:rows.length,sectors:rows.slice((page-1)*pageSize,page*pageSize)}
 }
-export function localDetail(bundle,params){
+function componentEvidence(component){
+  if(!component||typeof component!=='object')return null
+  const result={value:Number.isFinite(component.value)?component.value:null,coverage:Number.isFinite(component.coverage)?component.coverage:null,
+    missing:Array.isArray(component.missing)?component.missing.filter(v=>typeof v==='string'):[]}
+  if(component.parts&&typeof component.parts==='object')result.parts=Object.fromEntries(Object.entries(component.parts).filter(([key])=>/^[a-zA-Z][a-zA-Z0-9]*$/.test(key)).map(([key,value])=>[key,componentEvidence(value)]))
+  return result
+}
+export function localDetail(bundle,params,scoringWeights={}){
   const universe=params.get('universe'),id=params.get('id')
-  return {...metadata(bundle),universe,id,history:days(bundle).flatMap(p=>rowsFor(bundle,p).filter(r=>r.universe===universe&&r.id===id))}
+  const allowedComponents=['priceTrend','breadth','participation','persistence','position','breadthImprovement','momentumImprovement','participationWarming','relativeTurn','downsideDiffusion','trendDeterioration','divergence','crowding','concentration']
+  return {...metadata(bundle),universe,id,scoringWeights,history:days(bundle).flatMap(p=>{
+    const original=p.rows.find(r=>r.universe===universe&&r.id===id)
+    if(!original)return []
+    const points=rowsFor(bundle,p).filter(r=>r.universe===universe),target=points.find(r=>r.id===id)
+    if(!target)return []
+    const ranked=points.filter(r=>Number.isFinite(r.metrics?.return1d)).sort((a,b)=>b.metrics.return1d-a.metrics.return1d||a.id.localeCompare(b.id))
+    const rank=ranked.findIndex(r=>r.id===id)
+    return [{...target,returnRank:rank<0?null:rank+1,universeSize:points.length,
+      components:Object.fromEntries(allowedComponents.filter(k=>original.components?.[k]).map(k=>[k,componentEvidence(original.components[k])]))}]
+  })}
 }
