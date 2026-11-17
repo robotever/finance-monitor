@@ -24,3 +24,9 @@
 构建之后运行 `node tools/market_dashboard/export_sector_snapshot.mjs`，再使用现有 Wrangler 手动发布到 `newsmonitor` 的 `main` 生产分支。不能只构建而遗漏导出。不要通过推送 main 同时触发另一套构建。
 
 发布前生产部署：`3a5e497a-6c7e-4e36-9b54-811d22b3004d`（源提交 `1b679fc`）。需要回退时恢复该部署，不删除既有数据或更改采集服务。
+
+## 发布结果
+
+2026-11-17 已完成生产部署，部署地址 `https://a34ab8de.newsmonitor.pages.dev`，正式入口 `https://newsmonitor.pages.dev/sectors/research`，关联源码提交 `537d5f6`。现有开发分支已同步至 GitHub，没有推 main 触发重复构建。
+
+正式域名返回相同 generation `c6a0ff13619889ce9cbde853e8a0a19b66a56426468d05d1a527b1cc5fe5a712`，明确 `automaticUpdates=false`。线上浏览器验证光刻胶前 10／全部 80 切换及 11-16 历史明细，手机宽度无横向溢出。既有 `/api/market-dashboard/latest` 返回成功 JSON。发布不依赖本机预览服务器，原私有采集服务未调整。
