@@ -16,7 +16,7 @@ async function load(endpoint,query,validate,o) {
 export const loadHithinkLatest=(o={})=>load('latest',new URLSearchParams(),validateLatest,o)
 export function loadHithinkCatalog(o={}) {try{return load('catalog',catalogQuery(o),validateCatalog,o)}catch{return Promise.resolve(failure('INVALID_QUERY'))}}
 export function loadHithinkHistory(o={}) {
- if(!['industry','concept'].includes(o.universe)||!['strength','opportunity','risk'].includes(o.axis)||!Number.isInteger(o.days??15)||(o.days??15)<1||(o.days??15)>15)return Promise.resolve(failure('INVALID_QUERY'))
+ if(!['industry','concept'].includes(o.universe)||!['return1d','strength','opportunity','risk'].includes(o.axis)||!Number.isInteger(o.days??15)||(o.days??15)<1||(o.days??15)>15)return Promise.resolve(failure('INVALID_QUERY'))
  return load('history',new URLSearchParams({universe:o.universe,axis:o.axis,days:String(o.days??15)}),validateHistory,o)
 }
 export function loadHithinkDetail(o={}) {

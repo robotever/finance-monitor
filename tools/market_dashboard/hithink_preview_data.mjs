@@ -29,6 +29,10 @@ export function localSnapshot(bundle){return {...metadata(bundle),...selectProje
 export function localHistory(bundle,universe,axis){
   const selected=days(bundle).slice(-15).reverse(),dates=selected.map(p=>p.marketDate)
   const byDay=new Map(selected.map(p=>[p.marketDate,new Map(rowsFor(bundle,p).filter(r=>r.universe===universe).map(r=>[r.id,r]))]))
+  if(axis==='return1d')for(const points of byDay.values()){
+    const ranked=[...points.values()].filter(r=>Number.isFinite(r.metrics?.return1d)).sort((a,b)=>b.metrics.return1d-a.metrics.return1d||a.id.localeCompare(b.id))
+    for(const [i,r] of ranked.entries())points.set(r.id,{...r,return1d:r.metrics.return1d,ranks:{...r.ranks,return1d:i+1}})
+  }
   const definitions=new Map(selected.flatMap(p=>p.rows.filter(r=>r.universe===universe).map(r=>[r.id,r])))
   return {...metadata(bundle),universe,axis,days:15,dates,liveDate:!bundle.payload.historicalReconstruction&&!bundle.payload.officialClose?bundle.payload.marketDate:null,
     rows:[...definitions.values()].map(r=>({id:r.id,name:r.name,values:dates.map(day=>{const point=byDay.get(day).get(r.id);return {marketDate:day,score:point?.[axis]??null,rank:point?.ranks?.[axis]??null}})}))}

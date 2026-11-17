@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'vite'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { validateLatest, selectSectorAdapter, deriveBoard, buildHistoryMatrix, catalogQuery } from '../src/features/sector-rotation-v4/model.mjs'
+import { validateLatest, selectSectorAdapter, deriveBoard, buildHistoryMatrix, catalogQuery, formatHistoryValue } from '../src/features/sector-rotation-v4/model.mjs'
 import { loadHithinkLatest, loadHithinkCatalog } from '../src/features/sector-rotation-v4/api.mjs'
 const versions = {schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
 const row = (n, universe='industry') => ({ id:`${universe==='industry'?'881':'885'}${String(n).padStart(3,'0')}.TI`,name:`测试板块${n}`,universe,strength:80,opportunity:70,risk:20,completeness:80,ranks:{strength:n+1,opportunity:n+1,risk:n+1},heatState:'active',coldStart:false,validCloses:60,improvementEvidence:2,membershipMode:'current_members_backfill',conceptRole:universe==='concept'?'core':null,missing:[],approximateHistory:true,change1d:{strength:null,opportunity:null,risk:null} })
@@ -32,6 +32,15 @@ test('API distinguishes NO_SNAPSHOT and rejects v3 data without fallback in the 
 })
 let server
 before(async()=>{server=await createServer({server:{middlewareMode:true,hmr:false,ws:false,watch:null},appType:'custom'})});after(async()=>server?.close())
+test('history defaults to daily return and formats percentages separately from scores',async()=>{
+ assert.equal(formatHistoryValue(2.55,'return1d'),'+2.55%');assert.equal(formatHistoryValue(-.5,'return1d'),'-0.50%');assert.equal(formatHistoryValue(null,'return1d'),'—');assert.equal(formatHistoryValue(56,'strength'),'56分')
+ const {default:History}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorHistory.vue')
+ const {createRenderer,ssrContextKey}=await import('vue');const previous=globalThis.fetch,requests=[];let state
+ globalThis.fetch=async url=>{requests.push(String(url));return Response.json({},{status:503})}
+ const renderer=createRenderer({createComment:()=>({}),insert(){},remove(){},parentNode(){},nextSibling(){}})
+ const app=renderer.createApp({setup(){state=History.setup({universe:'concept'},{expose(){},emit(){}});return()=>null}});app.provide(ssrContextKey,{})
+ try{app.mount({});assert.equal(state.axis.value,'return1d');assert.ok(requests[0].includes('axis=return1d'))}finally{app.unmount();globalThis.fetch=previous}
+})
 test('board renders all three industry lists, exact core/dynamic choices and provenance',async()=>{
  const {default:Board}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorBoard.vue');const html=await renderToString(createSSRApp({render:()=>h(Board,{latest:payload(),now:new Date('2026-11-16T09:00:00Z')})}));for(const text of ['行业90','潜在轮动','主线确认','风险升温','核心25','动态10','同花顺','sector-score-v0.3','当前成分','已过期','全部行业与概念'])assert.ok(html.includes(text),text);assert.equal((html.match(/data-industry-row=/g)||[]).length,30)
 })

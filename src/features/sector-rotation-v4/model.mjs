@@ -1,5 +1,10 @@
 export const VERSIONS = Object.freeze({schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'})
 export const AXES = ['strength','opportunity','risk']
+export const HISTORY_AXES = ['return1d',...AXES]
+export function formatHistoryValue(value,axis) {
+ if(value==null||!Number.isFinite(value))return '—'
+ return axis==='return1d'?`${value>0?'+':''}${value.toFixed(2)}%`:`${value}分`
+}
 export const VIEWS = [{key:'potential',label:'潜在轮动'},{key:'main',label:'主线确认'},{key:'risk',label:'风险升温'}]
 const modes = ['current_members_backfill','point_in_time_snapshot']
 const record = v => v !== null && typeof v==='object' && !Array.isArray(v)
@@ -57,7 +62,8 @@ export function validateHistory(p,o) {
  validateMetadata(p);check(p.universe===o.universe&&p.axis===o.axis&&p.days===(o.days??15)&&Array.isArray(p.dates)&&p.dates.length<=p.days&&p.dates.every((d,i)=>date(d)&&(!i||d<p.dates[i-1]))&&Array.isArray(p.rows))
  check(p.liveDate==null||p.liveDate===p.dates[0]&&p.liveDate===p.marketDate&&!p.officialClose)
  check(new Set(p.rows.map(r=>r.id)).size===p.rows.length)
- for(const r of p.rows) {check(identity(r.id,p.universe)&&text(r.name)&&r.values.length===p.dates.length);r.values.forEach((v,i)=>check(v.marketDate===p.dates[i]&&score(v.score)&&(v.rank===null||int(v.rank,1,p.universe==='industry'?90:10000))))}
+ check(HISTORY_AXES.includes(p.axis))
+ for(const r of p.rows) {check(identity(r.id,p.universe)&&text(r.name)&&r.values.length===p.dates.length);r.values.forEach((v,i)=>check(v.marketDate===p.dates[i]&&(p.axis==='return1d'?(v.score===null||typeof v.score==='number'&&Number.isFinite(v.score)):score(v.score))&&(v.rank===null||int(v.rank,1,p.universe==='industry'?90:10000))))}
  return p
 }
 export function validateDetail(p,o) {

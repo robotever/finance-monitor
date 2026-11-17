@@ -105,6 +105,12 @@ test('strict query validation rejects duplicate unknown invalid identities pagin
  const db=database(t)
  for(const [e,qs]of Object.entries({latest:['?version=v3'],catalog:['?universe=industry&page=0','?universe=concept&pageSize=101','?universe=concept&q=a&q=b','?universe=industry&role=core','?universe=concept&view=oops'],history:['?universe=concept&axis=strength&days=16','?universe=concept&axis=oops'],detail:['?universe=industry&id=884001.TI','?universe=concept&id=885001.TI&days=61']}))for(const q of qs)assert.equal((await get(e,db,q)).status,400)
 })
+test('daily-return history ranks actual percentages independently of score ranks',async t=>{
+ const db=database(t);await seed(db,{close:false,mutate:r=>{r.metrics={return1d:r.id.endsWith('000.TI')?2.55:r.id.endsWith('001.TI')?1.78:null}}})
+ const response=await get('history',db,'?universe=concept&axis=return1d');assert.equal(response.status,200)
+ const h=await response.json();assert.equal(h.rows[0].values[0].score,2.55);assert.equal(h.rows[0].values[0].rank,1);assert.equal(h.rows[1].values[0].rank,2);assert.equal(h.rows[2].values[0].rank,null)
+ const {validateHistory}=await import('../src/features/sector-rotation-v4/model.mjs');assert.equal(validateHistory(h,{universe:'concept',axis:'return1d'}),h)
+})
 test('exact five-version filters apply to every read and prior baseline',async t=>{
  for(const column of ['schema_version','scoring_version','universe_version','feature_version','membership_version']){
  const db=database(t);await seed(db)

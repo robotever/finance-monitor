@@ -1,4 +1,5 @@
-import type { Latest,History,HistoryPoint,View } from './types'
+import type { Latest,History,HistoryPoint,View,HistoryAxis } from './types'
+export function formatHistoryValue(value:number|null,axis:HistoryAxis):string
 export const VIEWS: {key:View;label:string}[]
 export function validateLatest(p:unknown):Latest
 export function selectSectorAdapter(enabled:boolean,p:unknown):'v3'|'v4'

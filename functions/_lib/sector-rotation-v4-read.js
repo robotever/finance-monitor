@@ -26,7 +26,7 @@ export function parseV4Query(request, kind) {
   }
   const days = number('days', kind === 'history' ? 15 : 60, kind === 'history' ? 15 : 60)
   if (!days) return null
-  if (kind === 'history') return axes.includes(p.get('axis')) ? { universe, axis: p.get('axis'), days } : null
+  if (kind === 'history') return [...axes,'return1d'].includes(p.get('axis')) ? { universe, axis: p.get('axis'), days } : null
   const id = p.get('id')
   return (universe === 'industry' ? /^881\d{3}\.TI$/ : /^88[56]\d{3}\.TI$/).test(id ?? '') ? { universe, id, days } : null
 }
@@ -120,10 +120,12 @@ async function readCatalog(db,m,q) {
   return { ...metadata(m,rows), ...q, total: filtered.length, sectors: filtered.slice((q.page-1)*q.pageSize,q.page*q.pageSize).map(r => r.public) }
 }
 async function readHistory(db,m,q) {
-  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND (m.official_close=1 OR m.market_date=?) AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.sector_id,s.sector_name,s.${q.axis},s.${q.axis}_rank,json_object('membershipMode',json_extract(s.row_json,'$.membershipMode')) AS row_json,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.market_date,m.observed_at,q.days,...versionValues,q.universe).all()
+  const value=q.axis==='return1d'?"CASE WHEN json_type(s.row_json,'$.metrics.return1d') IN ('integer','real') THEN json_extract(s.row_json,'$.metrics.return1d') END":`s.${q.axis}`
+  const rank=q.axis==='return1d'?`CASE WHEN (${value}) IS NOT NULL THEN ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY (${value}) DESC,s.sector_id) END`:`s.${q.axis}_rank`
+  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND (m.official_close=1 OR m.market_date=?) AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.sector_id,s.sector_name,${value} AS axis_value,${rank} AS axis_rank,json_object('membershipMode',json_extract(s.row_json,'$.membershipMode')) AS row_json,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.market_date,m.observed_at,q.days,...versionValues,q.universe).all()
   if (!result.results.length) return null
   const dates = [...new Set(result.results.map(r => r.market_date))].sort().reverse(), grouped = new Map()
-  for (const r of result.results) { if (!grouped.has(r.sector_id)) grouped.set(r.sector_id,{id:r.sector_id,name:r.sector_name,values:new Map()}); grouped.get(r.sector_id).values.set(r.market_date,{marketDate:r.market_date,score:r[q.axis],rank:r[q.axis+'_rank']}) }
+  for (const r of result.results) { if (!grouped.has(r.sector_id)) grouped.set(r.sector_id,{id:r.sector_id,name:r.sector_name,values:new Map()}); grouped.get(r.sector_id).values.set(r.market_date,{marketDate:r.market_date,score:r.axis_value,rank:r.axis_rank}) }
   return { ...metadata(m,result.results), ...q, dates, liveDate:m.official_close?null:m.market_date, rows: [...grouped.values()].map(r => ({id:r.id,name:safeText(r.name)?r.name:r.id,values:dates.map(d => r.values.get(d) ?? {marketDate:d,score:null,rank:null})})) }
 }
 async function readDetail(db,m,q) {

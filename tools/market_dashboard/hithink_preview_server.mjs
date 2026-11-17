@@ -28,7 +28,7 @@ const server=await createServer({root,server:{host:'127.0.0.1',port:5184,strictP
    if(match[1]==='detail')value=localDetail(bundle,params)
    if(match[1]==='history'){
     const universe=params.get('universe'),axis=params.get('axis')
-    if(!['industry','concept'].includes(universe)||!['strength','opportunity','risk'].includes(axis))throw Error('INVALID_QUERY')
+    if(!['industry','concept'].includes(universe)||!['return1d','strength','opportunity','risk'].includes(axis))throw Error('INVALID_QUERY')
     value=localHistory(bundle,universe,axis)
    }
    res.setHeader('cache-control','no-store');res.setHeader('content-type','application/json');res.end(JSON.stringify(value))
