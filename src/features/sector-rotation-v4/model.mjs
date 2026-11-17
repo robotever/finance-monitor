@@ -54,7 +54,8 @@ export function validateCatalog(p,o) {
  validateMetadata(p);check(p.universe===o.universe&&p.page===(o.page??1)&&p.pageSize===(o.pageSize??50)&&p.q===(o.q??'')&&p.view===(o.view??'all')&&p.role===(o.role??'all')&&int(p.total,0,10000));validateRows(p.sectors,p.universe,p.pageSize);return p
 }
 export function validateHistory(p,o) {
- validateMetadata(p);check(p.universe===o.universe&&p.axis===o.axis&&p.days===(o.days??15)&&Array.isArray(p.dates)&&p.dates.length<=p.days&&p.dates.every((d,i)=>date(d)&&(!i||d>p.dates[i-1]))&&Array.isArray(p.rows))
+ validateMetadata(p);check(p.universe===o.universe&&p.axis===o.axis&&p.days===(o.days??15)&&Array.isArray(p.dates)&&p.dates.length<=p.days&&p.dates.every((d,i)=>date(d)&&(!i||d<p.dates[i-1]))&&Array.isArray(p.rows))
+ check(p.liveDate==null||p.liveDate===p.dates[0]&&p.liveDate===p.marketDate&&!p.officialClose)
  check(new Set(p.rows.map(r=>r.id)).size===p.rows.length)
  for(const r of p.rows) {check(identity(r.id,p.universe)&&text(r.name)&&r.values.length===p.dates.length);r.values.forEach((v,i)=>check(v.marketDate===p.dates[i]&&score(v.score)&&(v.rank===null||int(v.rank,1,p.universe==='industry'?90:10000))))}
  return p

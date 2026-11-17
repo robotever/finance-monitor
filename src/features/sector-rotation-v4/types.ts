@@ -7,7 +7,7 @@ export interface Metadata { schemaVersion: 'market-dashboard-v4'; sectorScoringV
 export interface Latest extends Metadata { industry: Record<View,SectorRow[]>; concept: Record<View,SectorRow[]> & {core: SectorRow[];dynamic: SectorRow[]} }
 export interface Catalog extends Metadata { universe: Universe; page: number; pageSize: number; q: string; view: View|'all'; role: string; total: number; sectors: SectorRow[] }
 export interface HistoryPoint { marketDate: string; score: number|null; rank: number|null }
-export interface History extends Metadata { universe: Universe; axis: Axis; days: number; dates: string[]; rows: {id:string;name:string;values:HistoryPoint[]}[] }
+export interface History extends Metadata { universe: Universe; axis: Axis; days: number; dates: string[]; liveDate?: string|null; rows: {id:string;name:string;values:HistoryPoint[]}[] }
 export interface Detail extends Metadata { universe: Universe; id: string; days: number; history: (SectorRow & Pick<Metadata,'observedAt'|'marketDate'|'session'|'officialClose'>)[] }
 export interface LoadError { code: string; message: string }
 export interface Result<T> { data: T|null; error: LoadError|null }

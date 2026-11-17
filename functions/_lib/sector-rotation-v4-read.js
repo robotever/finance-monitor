@@ -89,6 +89,15 @@ function compare(view) {
 const entries = (rows, prior) => rows.map(r => ({ public: project(r,prior.get(r.universe+':'+r.sector_id)), raw: JSON.parse(r.row_json) }))
 const lists = rows => Object.fromEntries(['potential','main','risk'].map(view => [view, rows.filter(r => applies(r.public,view)).sort(compare(view)).slice(0,10).map(r => r.public)]))
 
+// Local inspection uses the identical rules after adding reconstructed deltas.
+export function selectProjectedV4Lists(rows) {
+  const items=applyConceptRoles(rows.map(r=>({public:{...r},raw:r})))
+  return {industry:lists(items.filter(r=>r.public.universe==='industry')),
+    concept:{...lists(items.filter(r=>r.public.universe==='concept')),
+      core:items.filter(r=>r.public.conceptRole==='core').map(r=>r.public),
+      dynamic:items.filter(r=>r.public.conceptRole==='dynamic').sort(compare('potential')).map(r=>r.public)}}
+}
+
 function applyConceptRoles(items) {
   const concepts = items.filter(r => r.public.universe === 'concept')
   const selected = new Set(concepts.filter(({public:r}) => r.conceptRole !== 'core' && r.completeness >= 70 && axes.every(a => finite(r[a])) && r.risk < 70 && r.heatState !== 'crowded').sort(compare('potential')).slice(0,10).map(r => r.public.id))
@@ -111,11 +120,11 @@ async function readCatalog(db,m,q) {
   return { ...metadata(m,rows), ...q, total: filtered.length, sectors: filtered.slice((q.page-1)*q.pageSize,q.page*q.pageSize).map(r => r.public) }
 }
 async function readHistory(db,m,q) {
-  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND m.official_close=1 AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.*,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.observed_at,q.days,...versionValues,q.universe).all()
+  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND (m.official_close=1 OR m.market_date=?) AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.sector_id,s.sector_name,s.${q.axis},s.${q.axis}_rank,json_object('membershipMode',json_extract(s.row_json,'$.membershipMode')) AS row_json,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.market_date,m.observed_at,q.days,...versionValues,q.universe).all()
   if (!result.results.length) return null
-  const dates = [...new Set(result.results.map(r => r.market_date))].sort(), grouped = new Map()
+  const dates = [...new Set(result.results.map(r => r.market_date))].sort().reverse(), grouped = new Map()
   for (const r of result.results) { if (!grouped.has(r.sector_id)) grouped.set(r.sector_id,{id:r.sector_id,name:r.sector_name,values:new Map()}); grouped.get(r.sector_id).values.set(r.market_date,{marketDate:r.market_date,score:r[q.axis],rank:r[q.axis+'_rank']}) }
-  return { ...metadata(m,result.results), ...q, dates, rows: [...grouped.values()].map(r => ({id:r.id,name:safeText(r.name)?r.name:r.id,values:dates.map(d => r.values.get(d) ?? {marketDate:d,score:null,rank:null})})) }
+  return { ...metadata(m,result.results), ...q, dates, liveDate:m.official_close?null:m.market_date, rows: [...grouped.values()].map(r => ({id:r.id,name:safeText(r.name)?r.name:r.id,values:dates.map(d => r.values.get(d) ?? {marketDate:d,score:null,rank:null})})) }
 }
 async function readDetail(db,m,q) {
   // A corrected publication may reuse an observation timestamp. Choose the same

@@ -92,9 +92,12 @@ test('catalog paginates all industries and concepts and searches names or litera
  p=await(await get('catalog',db,'?universe=industry&view=potential')).json();assert.equal(p.total,30)
  p=await(await get('catalog',db,'?universe=concept&q=%25')).json();assert.equal(p.total,0)
 })
-test('history selects one canonical official close per day; detail includes intraday without mixing versions',async t=>{
+test('history leads with current live trading date then prior closes in descending order',async t=>{
  const db=database(t);await seed(db,{id:'old',date:'2026-11-12',offset:5});await seed(db,{id:'early',time:'06:59',offset:3});await seed(db);await seed(db,{id:'intraday',date:'2026-11-16',close:false});await seed(db,{id:'staging',date:'2026-11-17',active:false})
- const h=await(await get('history',db,'?universe=concept&axis=strength')).json();assert.deepEqual(h.dates,['2026-11-12','2026-11-13']);assert.equal(h.rows.length,390);assert.equal(h.rows[0].values[1].score,50)
+ const h=await(await get('history',db,'?universe=concept&axis=strength')).json();assert.deepEqual(h.dates,['2026-11-16','2026-11-13','2026-11-12']);assert.equal(h.liveDate,'2026-11-16');assert.equal(h.rows.length,390);assert.equal(h.rows[0].values[1].score,50)
+ const one=await(await get('history',db,'?universe=concept&axis=strength&days=1')).json();assert.deepEqual(one.dates,['2026-11-16'])
+ const {validateHistory}=await import('../src/features/sector-rotation-v4/model.mjs');assert.equal(validateHistory(h,{universe:'concept',axis:'strength'}),h)
+ assert.throws(()=>validateHistory({...h,dates:[...h.dates].reverse()},{universe:'concept',axis:'strength'}),/INVALID_SCHEMA/)
  const d=await(await get('detail',db,'?universe=concept&id=885389.TI')).json();assert.equal(d.history.length,4);assert.equal(d.history.at(-1).session,'intraday');assert.equal(d.history.at(-1).ranks.strength,390)
  assert.ok(!JSON.stringify(d).includes('/Users'))
 })
