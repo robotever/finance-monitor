@@ -27,6 +27,12 @@
 
 ## 发布结果
 
+### 首页去重与主入口调整
+
+根据用户后续要求，首页只保留全局环境、A 股市场、风格观察、风险和新闻，移除重复的板块轮动、行业热力图、概念雷达及旧详情入口。`MarketResearchDashboard` 的 `showSectors=false` 同时停止板块专用读取，继续保留市场研究的全局数据读取。旧组件保留给已有测试和隔离环境，不在首页渲染。
+
+新版入口位于首页内容上方，全宽高对比卡片带“进入板块看板”按钮，手机端按钮换行为整行。`/sectors/hithink` 统一跳转 `/sectors/research`。19 项相关组件和读取测试通过，生产构建通过。本轮沿用已发布的同一份数据快照，不改变行情时点或自动更新状态。
+
 2026-11-17 已完成生产部署，部署地址 `https://a34ab8de.newsmonitor.pages.dev`，正式入口 `https://newsmonitor.pages.dev/sectors/research`，关联源码提交 `537d5f6`。现有开发分支已同步至 GitHub，没有推 main 触发重复构建。
 
 正式域名返回相同 generation `c6a0ff13619889ce9cbde853e8a0a19b66a56426468d05d1a527b1cc5fe5a712`，明确 `automaticUpdates=false`。线上浏览器验证光刻胶前 10／全部 80 切换及 11-16 历史明细，手机宽度无横向溢出。既有 `/api/market-dashboard/latest` 返回成功 JSON。发布不依赖本机预览服务器，原私有采集服务未调整。

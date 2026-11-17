@@ -3,7 +3,7 @@
     <div v-if="acceptanceEnabled" class="sector-acceptance-banner" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
     <div v-if="productionObservationEnabled" class="sector-acceptance-banner" role="note">真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号</div>
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ acceptanceEnabled ? '临时验收 · 测试数据' : productionObservationEnabled ? '真实数据观察 · 板块强度 · 机会 · 风险' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
+      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ props.showSectors === false ? '全局环境 · A股市场 · 风格观察' : acceptanceEnabled ? '临时验收 · 测试数据' : productionObservationEnabled ? '真实数据观察 · 板块强度 · 机会 · 风险' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -31,6 +31,7 @@
           <p v-else-if="!historyError">{{ loading ? '历史加载中…' : '暂无历史轨迹' }}</p>
         </div>
         <MarketStyleGrid :items="dashboard.styles" :observed-at="dashboard.observedAt" />
+        <template v-if="props.showSectors !== false">
         <HithinkSectorBoard v-if="v4Active && v4Latest" :latest="v4Latest" :now="now" :error="v4Error" />
         <p v-else-if="hithinkEnabled && v4Error" class="market-notice" role="status">{{ v4Error }} · 保留现有板块视图</p>
         <SectorRotationBoard v-if="v3Active && !v4Active" :latest="rotationLatest" :history="rotationHistory" :loading="rotationLoading" :error="rotationError" @change="changeRotation" @select-sector="openSector" />
@@ -38,10 +39,11 @@
         <ConceptRadar v-if="v3Active && !v4Active" :rotation-items="v3Concepts" :rotation-core="v3CoreConcepts" :rotation-dynamic="v3DynamicConcepts" @select-sector="openSector" :observed-at="v3Latest!.observedAt" />
         <IndustryHeatmap v-if="!v3Active && !v4Active" :items="dashboard.industries" :rankings="dashboard.rankings" :observed-at="dashboard.observedAt" />
         <ConceptRadar v-if="!v3Active && !v4Active" :core="dashboard.coreConcepts" :dynamic="dashboard.dynamicConcepts" :rankings="dashboard.conceptRankings" :selected-at="dashboard.concepts.selectedAt" :observed-at="dashboard.observedAt" />
+        </template>
       </template>
-      <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股、六类风格与 35 个行业将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
+      <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股与风格观察将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
-    <SectorRotationDetail v-if="v3Active && !v4Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
+    <SectorRotationDetail v-if="props.showSectors !== false && v3Active && !v4Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
     <footer class="market-dashboard__footer"><span>统一评分 0–100 · 高强度不等于低风险</span><span>缺失项以 — 表示 · 研究参考，非买卖建议</span></footer>
   </section>
 </template>
@@ -62,13 +64,14 @@ import { selectSectorAdapter } from '@/features/sector-rotation-v4/model.mjs'
 import type { Latest as HithinkLatest } from '@/features/sector-rotation-v4/types'
 import SectorRotationDetail from './SectorRotationDetail.vue'
 import type { MarketDashboardV3Payload, SectorRotationLatest, SectorRotationHistory, SectorRotationDetail as DetailPayload, SectorUniverse, SectorView, SectorLeaderboardAxis, SectorMatrixCell } from '@/features/market-dashboard/types'
+const props=defineProps<{showSectors?:boolean}>()
 const acceptanceEnabled = import.meta.env.MODE === 'sector-acceptance' && isSectorAcceptanceMode()
 const hithinkEnabled = import.meta.env.VITE_HITHINK_SECTOR_V4 === 'true' && !acceptanceEnabled
 const v4Latest = shallowRef<HithinkLatest | null>(null)
 const v4Error = ref('')
 const v4Active = computed(() => selectSectorAdapter(hithinkEnabled, v4Latest.value) === 'v4')
 async function refreshHithink(signal: AbortSignal) {
-  if (!hithinkEnabled) return
+  if (props.showSectors === false || !hithinkEnabled) return
   const result = await loadHithinkLatest({ signal })
   if (disposed || signal.aborted) return
   v4Error.value = result.error?.message ?? ''
@@ -146,7 +149,7 @@ async function refreshShadow(signal: AbortSignal) {
   if (disposed || signal.aborted) return
   v3Latest.value = result.data
   if (acceptanceEnabled) latestError.value = result.error
-  if (v3Active.value) await changeRotation()
+  if (v3Active.value && props.showSectors !== false) await changeRotation()
   else { closeDetail(); detailPayload.value = null; rotationController?.abort(); rotationLatest.value = null; rotationHistory.value = null }
 }
 

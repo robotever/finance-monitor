@@ -64,3 +64,18 @@ test('dashboard uses complete v3 fallback with flag off and NO_SNAPSHOT, switche
 test('real provider precision and missing-code families are readable in sector cards',async()=>{
  const {default:Row}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorRow.vue');const r={...row(1),metrics:{return1d:1.9653787017455127},missing:['participation.turnoverMarketShare.missingInput','trendDeterioration.slope5d.missingInput']};const html=await renderToString(createSSRApp({render:()=>h(Row,{row:r})}));assert.match(html,/1.97%/);assert.match(html,/缺失2项/);assert.match(html,/全市场成交额占比/);assert.match(html,/短期趋势斜率/);assert.ok(!html.includes('1.9653787017455127'))
 })
+test('homepage radar can omit duplicate sector views and sector-only requests',async()=>{
+ const {createRenderer,ssrContextKey}=await import('vue');const {acceptanceFetch}=await import('../src/features/market-dashboard/acceptance.mjs')
+ const instance=await createServer({mode:'production-rotation',server:{middlewareMode:true,hmr:false,ws:false,watch:null},appType:'custom'})
+ const previous=globalThis.fetch,calls=[];let app
+ try{
+  globalThis.fetch=async(input,init)=>{calls.push(String(input));return acceptanceFetch(input,init)}
+  const {default:Dashboard}=await instance.ssrLoadModule('/src/components/MarketResearchDashboard.vue');let state
+  const renderer=createRenderer({createComment:()=>({}),insert(){},remove(){},parentNode(){},nextSibling(){}})
+  app=renderer.createApp({setup(){state=Dashboard.setup({showSectors:false},{expose(){},emit(){}});return()=>null}});app.provide(ssrContextKey,{});app.mount({})
+  for(let i=0;i<100&&state.loading.value;i++)await new Promise(r=>setTimeout(r,10))
+  assert.ok(state.dashboard.value.global);assert.ok(state.dashboard.value.aShare)
+  assert.equal(calls.filter(url=>url.includes('/sector-rotation/')).length,0)
+  assert.equal(state.rotationLatest.value,null)
+ }finally{app?.unmount();await instance.close();globalThis.fetch=previous}
+})

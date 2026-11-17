@@ -6,7 +6,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/sectors/research', name: 'sector-research-snapshot', component: () => import('@/views/SectorResearchSnapshotView.vue') },
-    { path: '/sectors/hithink', name: 'hithink-sectors', component: () => import('@/views/HithinkSectorExplorerView.vue') },
+    { path: '/sectors/hithink', name: 'hithink-sectors', redirect: '/sectors/research' },
   ],
 })
 
