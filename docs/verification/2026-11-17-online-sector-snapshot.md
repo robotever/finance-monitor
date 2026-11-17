@@ -33,6 +33,8 @@
 
 新版入口位于首页内容上方，全宽高对比卡片带“进入板块看板”按钮，手机端按钮换行为整行。`/sectors/hithink` 统一跳转 `/sectors/research`。19 项相关组件和读取测试通过，生产构建通过。本轮沿用已发布的同一份数据快照，不改变行情时点或自动更新状态。
 
+该调整已部署为 `https://d6498068.newsmonitor.pages.dev`，源提交 `9449ebe`。正式首页浏览器核实：新版入口 1 个、旧板块区域 0 个、市场雷达 1 个、风格网格 1 个、新闻卡片 11 个；点击入口可进入正式新版地址。手机入口宽 374px、位于页面顶部导航下方，旧地址跳转也已验证。
+
 2026-11-17 已完成生产部署，部署地址 `https://a34ab8de.newsmonitor.pages.dev`，正式入口 `https://newsmonitor.pages.dev/sectors/research`，关联源码提交 `537d5f6`。现有开发分支已同步至 GitHub，没有推 main 触发重复构建。
 
 正式域名返回相同 generation `c6a0ff13619889ce9cbde853e8a0a19b66a56426468d05d1a527b1cc5fe5a712`，明确 `automaticUpdates=false`。线上浏览器验证光刻胶前 10／全部 80 切换及 11-16 历史明细，手机宽度无横向溢出。既有 `/api/market-dashboard/latest` 返回成功 JSON。发布不依赖本机预览服务器，原私有采集服务未调整。
