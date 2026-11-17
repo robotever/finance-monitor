@@ -1,6 +1,7 @@
 <template>
   <main class="home-layout">
     <div class="home-content">
+      <a class="market-notice" href="/sectors/research">板块研究 · 新版在线验收 → 行业 / 概念 / 历史轮动 / 成分股涨幅榜（发布快照）</a>
       <MarketResearchDashboard />
       <DebtRiskDashboard />
       <div class="news-grid">
