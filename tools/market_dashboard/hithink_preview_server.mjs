@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import {resolve,join,dirname} from 'node:path'
 import {createServer} from 'vite'
+import {execFile} from 'node:child_process'
 import {localSnapshot,localHistory,localCatalog,localDetail} from './hithink_preview_data.mjs'
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..')
 const entry=join(root,'tools/market_dashboard/hithink_preview_entry.js')
@@ -25,7 +26,19 @@ const server=await createServer({root,server:{host:'127.0.0.1',port:5184,strictP
    let value
    if(match[1]==='latest')value=localSnapshot(bundle)
    if(match[1]==='catalog')value=localCatalog(bundle,params)
-   if(match[1]==='detail')value=localDetail(bundle,params,JSON.parse(readFileSync(join(root,'config/hithink-sector-dashboard.json'),'utf8')).scoring.weights)
+   if(match[1]==='detail'){
+    value=localDetail(bundle,params,JSON.parse(readFileSync(join(root,'config/hithink-sector-dashboard.json'),'utf8')).scoring.weights)
+    if(!value.history.length)throw Error('INVALID_QUERY')
+    try{
+     value.constituentsByDate=await new Promise((resolve,reject)=>{
+      const child=execFile('python3',['-m','tools.market_dashboard.hithink_constituent_detail',join(root,'data/market-dashboard'),value.id],{cwd:root,timeout:15000,maxBuffer:8*1024*1024},(error,stdout)=>{
+       if(error)return reject(error)
+       try{resolve(JSON.parse(stdout))}catch(error){reject(error)}
+      })
+      child.stdin.end(JSON.stringify({marketDate:value.marketDate,history:value.history.map(p=>({marketDate:p.marketDate,observedAt:p.observedAt}))}))
+     })
+    }catch{value.constituentsUnavailable=true}
+   }
    if(match[1]==='history'){
     const universe=params.get('universe'),axis=params.get('axis')
     if(!['industry','concept'].includes(universe)||!['return1d','strength','opportunity','risk'].includes(axis))throw Error('INVALID_QUERY')

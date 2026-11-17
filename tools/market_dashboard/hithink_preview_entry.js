@@ -19,7 +19,14 @@ const app={setup(){
    h('td',{class:tone(r.metrics?.return1d)},percent(r)),...['strength','opportunity','risk'].map(a=>h('td',r[a]??'—'))
   ])))])])}
  let timer
- async function refresh(){try{latest.value=await request('latest');await load()}catch(e){error.value=String(e)}}
+ async function refresh(){try{
+  latest.value=await request('latest');await load()
+  const opened=detail.value
+  if(opened&&opened.batchId!==latest.value.batchId){
+   const updated=await request('detail?'+new URLSearchParams({universe:opened.universe,id:opened.id,days:'60'}))
+   if(detail.value===opened)detail.value=updated
+  }
+ }catch(e){error.value=String(e)}}
  onMounted(()=>{refresh();timer=setInterval(refresh,30000);window.addEventListener('focus',refresh)})
  onUnmounted(()=>{clearInterval(timer);window.removeEventListener('focus',refresh)})
  return()=>h('main',{class:'market-dashboard fv-card sector-rotation preview-compact'},[

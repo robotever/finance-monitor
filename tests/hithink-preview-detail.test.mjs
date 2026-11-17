@@ -7,8 +7,12 @@ test('detail renders readable evidence with correct percentage units and distinc
  const point={id:'885001.TI',name:'测试概念',universe:'concept',marketDate:'2026-11-17',observedAt:'2026-11-17T03:00:00.000Z',availableAt:null,historicalReconstruction:false,officialClose:false,
   strength:55,opportunity:62,risk:22,ranks:{strength:18,opportunity:5,risk:380},change1d:{strength:2,opportunity:3,risk:-4},axisCompleteness:{strength:88,opportunity:96.4,risk:91},completeness:92,validCloses:250,coldStart:false,improvementEvidence:2,universeSize:390,returnRank:1,membershipMode:'point_in_time_snapshot',missing:['participation.turnoverMarketShare.missingInput'],
   metrics:{return1d:2.55,return5d:-3,return20d:null,advancingShare:.5,medianReturn:.01,position60d:12.5,turnover:250000000},components:{priceTrend:{value:70,coverage:.8,missing:[]}}}
- const detail={history:[point],scoringWeights:{strength:{priceTrend:30}}}
+ const detail={history:[point],scoringWeights:{strength:{priceTrend:30}},constituentsByDate:{'2026-11-17':{total:2,validCount:1,membershipDate:'2026-11-17',priceBasis:'raw',observedAt:1794884400000,rows:[{code:'000001.SZ',name:'平安银行',rank:1,return1d:2.5,lastPrice:12.3,turnover:250000000},{code:'000002.SZ',name:null,rank:null,return1d:null,lastPrice:null,turnover:null}]}}}
  const html=await renderToString(createSSRApp({render:()=>h(Detail,{detail,selectedDate:point.marketDate})}))
  for(const text of ['价格与趋势','成分表现与参与度','数据质量与缺失','评分拆解','历史对比','+2.55%','-3.00%','50.0%','+1.00%','12.5%分位','2.50亿元','88.0%','价格趋势','30%','70.0','80.0%','全市场成交额占比','技术字段'])assert.ok(html.includes(text),text)
  assert.ok(html.includes('暂缺'));assert.ok(!html.includes('undefined'));assert.ok(!html.includes('NaN'))
+ for(const text of ['成分股涨幅榜','平安银行','000001.SZ','+2.50%','12.30','有效行情 1 / 2','无有效行情'])assert.ok(html.includes(text),text)
+ const historical=await renderToString(createSSRApp({render:()=>h(Detail,{detail:{...detail,history:[{...point,marketDate:'2026-11-16'}]},selectedDate:'2026-11-16'})}))
+ assert.ok(!historical.includes('平安银行'),'do not substitute current quotes for a different date')
+ assert.ok(historical.includes('该日期暂无成分股行情'))
 })
