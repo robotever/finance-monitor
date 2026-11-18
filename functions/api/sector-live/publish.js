@@ -1,5 +1,5 @@
 import { authorized, jsonResponse, errorResponse, timestamp } from '../../_lib/market-dashboard.js'
-import { HEX, check, boundedJson, validateBegin, validKey, decode64, sha, completeDocument, validateKeys, inflate } from '../../_lib/sector-live.js'
+import { HEX, check, boundedJson, validateBegin, validKey, decode64, sha, completeDocument, validateKeys, inflate, obsoleteGenerations } from '../../_lib/sector-live.js'
 export async function onRequestPost({request,env}) {
  const token=env.MARKET_DASHBOARD_PUBLISH_TOKEN
  if(!token || !env.MARKET_DB)return errorResponse('SERVICE_UNAVAILABLE',503)
@@ -15,6 +15,11 @@ export async function onRequestPost({request,env}) {
   check(HEX.test(body.generation))
   if(body.action==='begin') {
    const m=validateBegin(body)
+   if(body.manifest.storageMode==='daily-v1') {
+    check(await sha(new TextEncoder().encode('daily-v1\n'+body.manifest.sourceGeneration))===body.generation)
+    const base=await db.prepare('SELECT manifest_json,observed_at FROM sector_live_generations WHERE generation=? AND activated_at IS NOT NULL').bind(body.manifest.historyBaseGeneration).first()
+    check(base && !JSON.parse(base.manifest_json).storageMode && base.observed_at<=m.observed)
+   }
    const inserted=await db.prepare('INSERT OR IGNORE INTO sector_live_generations(generation,manifest_json,observed_at,digest,document_count) VALUES(?,?,?,?,491)').bind(body.generation,m.manifest,m.observed,body.digest).run()
    const existing=await db.prepare('SELECT * FROM sector_live_generations WHERE generation=?').bind(body.generation).first()
    check(existing.manifest_json===m.manifest && existing.digest===body.digest,'GENERATION_CONFLICT')
@@ -45,8 +50,7 @@ export async function onRequestPost({request,env}) {
    db.prepare('UPDATE sector_live_generations SET activated_at=COALESCE(activated_at,?) WHERE generation=? AND EXISTS(SELECT 1 FROM sector_live_active WHERE generation=?)').bind(new Date().toISOString(),body.generation,body.generation),
   ])
   const active=await db.prepare('SELECT generation FROM sector_live_active WHERE id=1').first();check(active?.generation===body.generation,'STALE_GENERATION')
-  // Remove only activated generations older than the four newest, never the active pointer.
-  const obsolete="SELECT generation FROM sector_live_generations WHERE ((activated_at IS NOT NULL AND generation NOT IN (SELECT generation FROM sector_live_generations WHERE activated_at IS NOT NULL ORDER BY observed_at DESC,generation DESC LIMIT 4)) OR (activated_at IS NULL AND julianday(created_at)<julianday('now','-2 days'))) AND generation NOT IN (SELECT generation FROM sector_live_active)"
+  const obsolete=obsoleteGenerations
   await db.batch([
    db.prepare(`DELETE FROM sector_live_parts WHERE generation IN (${obsolete})`),
    db.prepare(`DELETE FROM sector_live_documents WHERE generation IN (${obsolete})`),

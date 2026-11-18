@@ -230,6 +230,12 @@ def completed_market_dates(days,now):
     return [day for day in calendar_dates(days) if day<today or day==today and now.hour>=15]
 
 
+def upsert_close_breadth(store,rows):
+    """Respect the private store's 250-row transaction bound for 480 sectors."""
+    for offset in range(0,len(rows),250):
+        upsert_breadth_daily(store,rows[offset:offset+250])
+
+
 def official_close_bars(client,codes,day):
     start=int(datetime.combine(canonical_date(day),datetime.min.time(),SHANGHAI).timestamp()*1000)
     result=[]
@@ -346,6 +352,10 @@ def produce_payload(args,bucket,budget,client,root):
             all_times=[r.timestamp_ms for r in snapshots]+[r.timestamp_ms for r in shared.values()]
             collection_now=getattr(args,'now',None) or datetime.now(SHANGHAI)
             validate_snapshot_freshness(all_times,bucket,collection_now)
+            # The observation cutoff must include the quotes assembled in this
+            # cycle. A pre-collection timestamp makes the detail reader reject
+            # this very cycle's stock quotes as future information.
+            observed=int(collection_now.timestamp()*1000)
             stock_records=list(shared.values())
             for offset in range(0,len(stock_records),250):
                 budget.check()
@@ -388,7 +398,7 @@ def produce_payload(args,bucket,budget,client,root):
             if bucket.official_close:
                 with store_write_lock(root):
                     upsert_index_daily(store,current,observed_at_ms=observed)
-                    upsert_breadth_daily(store,live_breadth)
+                    upsert_close_breadth(store,live_breadth)
         # Explicit official benchmark series, never implicit zero-relative return.
         start=(canonical_date(day)-timedelta(days=400)).isoformat()
         def ms(d): return int(datetime.combine(canonical_date(d),datetime.min.time(),SHANGHAI).timestamp()*1000)

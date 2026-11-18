@@ -86,7 +86,10 @@ def enrich_export(root, directory):
         connection.row_factory=sqlite3.Row
         # Snapshot file already pins dates and cutoff times; future database writes are excluded below.
         day=details[0][1]['marketDate']
-        live_quotes=list(connection.execute('SELECT * FROM stock_market_snapshot WHERE market_date=? ORDER BY observed_at',(day,)))
+        live_cutoffs=[int(datetime.fromisoformat(p['observedAt'].replace('Z','+00:00')).timestamp()*1000)
+            for _,detail in details for p in detail['history'] if p['marketDate']==day and p.get('observedAt')]
+        low,high=min(live_cutoffs)-20*60*1000,max(live_cutoffs)
+        live_quotes=list(connection.execute('SELECT * FROM stock_market_snapshot WHERE market_date=? AND observed_at BETWEEN ? AND ? ORDER BY observed_at',(day,low,high)))
         for path,detail in details:
             cutoffs={p['marketDate']:int(datetime.fromisoformat(p['observedAt'].replace('Z','+00:00')).timestamp()*1000)
                      for p in detail['history'] if p.get('observedAt')}

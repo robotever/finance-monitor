@@ -37,6 +37,7 @@ data/market-dashboard/hithink-live/
 data/market-dashboard/hithink-live.lock
 data/market-dashboard/hithink-online-export/
 data/market-dashboard/sector-live-service.lock
+data/market-dashboard/sector-live-collector.lock
 # Private browser verification artifacts
 .playwright-cli/
 output/playwright/

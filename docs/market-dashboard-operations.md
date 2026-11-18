@@ -1,5 +1,19 @@
 # 市场研究面板运行手册
 
+## 2026-11-18 当前同花顺线上链路
+
+本节为现行板块链路；下方早期 Wind/v2/v3 内容保留作历史说明。线上入口为 https://newsmonitor.pages.dev/sectors/research 。Mac 承担同花顺采集、评分和导出；Cloudflare 承担持久化及网页读取。Mac 停止或休眠时不能产生新数据。
+
+- `com.robot-ever.newsmonitor.market-dashboard.hithink-live`：每300秒唤醒，`--hithink-live --collect-only`，内部仍按交易时段15分钟桶采集。
+- `com.robot-ever.newsmonitor.market-dashboard.hithink-publisher`：每60秒检查，`--hithink-live --publish-only`，新批次导出、断点上传；未变化则跳过。与采集使用独立锁。
+- 运行源码目前在 `/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`，同花顺运行数据在该目录 `data/market-dashboard`；父项目负责 `.env`、LaunchAgent日志和股票DuckDB。不要误按下文早期v2路径定位当前板块状态。
+- 配置 `config/sector-live-operation.json` 指定 `daily-v1` 及已激活的完整历史基底。日增量发布号由源代号派生；不得混用或改写已发布清单。
+- 每轮上传当天成分股，云端合并最近15个日期；保留最近4个批次、最近15个日期归档、这些读者需要的前序日期依赖及历史基底。依赖存储不代表额外承诺可访问的归档日期。
+- 上传最多两路并行，每批最多6片且解压内容预算64KiB（较大单文档独立上传），避免Cloudflare CPU限额；失败保留最后成功数据。
+- 采集状态看 `hithink-live/collector-service-health.json`，发布看 `hithink-live/live-service-health.json` 与 `live-publication-checkpoint.json`。日志分别在父项目 `logs/market-dashboard-hithink-live`、`logs/market-dashboard-hithink-publisher`。
+
+现场验证：2026-11-18正式收盘观察时间15:24:00，北京时间15:41:21发布成功；491文档、241请求、约5.15MB请求内容、约280秒上传。网页和详情已验证；这是本轮实际结果，不能当作后续交易日持续运行的证明。15分钟是采集间隔，页面还包含采集、计算及上传耗时。
+
 状态：**v0.1 / 真实数据观察期**。本文最后核验于 2026-11-15。v2 继续作为稳定回退；v3 板块轮动已完成 D1 迁移和观察版页面部署，但首个自然交易时段的真实 v3 快照仍待 2026-11-16 自动任务产生。评分尚未完成历史有效性验证，不构成交易信号。
 
 ## 数据职责与解释边界

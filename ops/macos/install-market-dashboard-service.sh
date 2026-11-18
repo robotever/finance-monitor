@@ -20,10 +20,11 @@ repo_value, root_value, *arguments = sys.argv[1:]
 allow_worktree = '--allow-worktree' in arguments
 hithink_shadow = '--hithink-shadow' in arguments
 hithink_live = '--hithink-live' in arguments
-actions = [argument for argument in arguments if argument not in ('--allow-worktree', '--hithink-shadow', '--hithink-live')]
+hithink_publisher = '--hithink-publisher' in arguments
+actions = [argument for argument in arguments if argument not in ('--allow-worktree', '--hithink-shadow', '--hithink-live','--hithink-publisher')]
 action = actions[0] if actions else '--prepare'
 repo, root = Path(repo_value).resolve(), Path(root_value).resolve()
-label = 'com.robot-ever.newsmonitor.market-dashboard' + ('.hithink-live' if hithink_live else '.hithink-shadow' if hithink_shadow else '')
+label = 'com.robot-ever.newsmonitor.market-dashboard' + ('.hithink-publisher' if hithink_publisher else '.hithink-live' if hithink_live else '.hithink-shadow' if hithink_shadow else '')
 domain = f'gui/{os.getuid()}'
 job = f'{domain}/{label}'
 agents = Path.home() / 'Library/LaunchAgents'
@@ -52,9 +53,9 @@ def validate_checkout():
     required = [repo / 'tools/market_dashboard/job.py', repo / 'config/market-dashboard.json',
                 repo / 'ops/macos/run-market-dashboard.sh',
                 repo / 'ops/macos/com.robot-ever.newsmonitor.market-dashboard.plist', root / 'scripts/rotate_service_logs.py']
-    if hithink_shadow or hithink_live:
+    if hithink_shadow or hithink_live or hithink_publisher:
         required.append(repo / 'tools/market_dashboard/hithink_job.py')
-    if hithink_live:
+    if hithink_live or hithink_publisher:
         required.append(repo / 'tools/market_dashboard/sector_live_service.py')
     for path in required:
         if not path.is_file() or not os.access(path, os.R_OK):
@@ -86,7 +87,7 @@ def disable():
 try:
     if (len(actions) > 1 or arguments.count('--allow-worktree') > 1
             or arguments.count('--hithink-shadow') > 1 or arguments.count('--hithink-live') > 1
-            or hithink_shadow and hithink_live
+            or arguments.count('--hithink-publisher')>1 or sum([hithink_shadow,hithink_live,hithink_publisher])>1
             or action not in ('--prepare', '--enable', '--disable', '--uninstall', '--restore')):
         raise ValueError('unknown action')
     validate_checkout()
@@ -104,7 +105,7 @@ try:
         print('Job disabled. Snapshot state and logs retained; no job started.')
     else:
         agents.mkdir(parents=True, exist_ok=True, mode=0o700)
-        logs = root / ('logs/market-dashboard-hithink-live' if hithink_live else 'logs/market-dashboard-hithink-shadow' if hithink_shadow else 'logs/market-dashboard')
+        logs = root / ('logs/market-dashboard-hithink-publisher' if hithink_publisher else 'logs/market-dashboard-hithink-live' if hithink_live else 'logs/market-dashboard-hithink-shadow' if hithink_shadow else 'logs/market-dashboard')
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         logs.chmod(0o700)
         for name in ('job.log', 'launchd.log'):
@@ -115,8 +116,10 @@ try:
         data = plistlib.loads(template.read_bytes())
         data['Label'] = label
         data['ProgramArguments'][1] = str(repo / 'ops/macos/run-market-dashboard.sh')
-        if hithink_shadow or hithink_live:
-            data['ProgramArguments'] = data['ProgramArguments'][:2] + ['--hithink-live' if hithink_live else '--hithink-shadow']
+        if hithink_shadow or hithink_live or hithink_publisher:
+            flags=['--hithink-live','--publish-only'] if hithink_publisher else ['--hithink-live','--collect-only'] if hithink_live else ['--hithink-shadow']
+            data['ProgramArguments'] = data['ProgramArguments'][:2] + flags
+            if hithink_publisher:data['StartInterval']=60
             data['EnvironmentVariables'].pop('MARKET_DASHBOARD_ROTATION_SHADOW', None)
             data['EnvironmentVariables'].pop('MARKET_DASHBOARD_ROTATION_PUBLISH', None)
         data['WorkingDirectory'] = str(repo)
@@ -136,7 +139,7 @@ try:
             if launch('print', job).returncode:
                 if launch('bootstrap', domain, str(target)).returncode:
                     raise RuntimeError('could not bootstrap job')
-            print('Job enabled; five-minute timer uses the CLI 15-minute session gate.')
+            print('Job enabled; publication checks every minute.' if hithink_publisher else 'Job enabled; five-minute timer uses the CLI 15-minute session gate.')
             print('If a loaded job used an older plist: --disable, then --enable to apply it.')
         else:
             print('Plist prepared only; no service loaded or started. Use --enable to opt in.')

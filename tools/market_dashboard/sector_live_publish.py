@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 PART_BYTES=256*1024
 MAX_BODY_BYTES=950*1024
+MAX_BATCH_RAW_BYTES=64*1024
 PRIVATE=re.compile(r'Bearer\s|X-api-key|ak_[A-Za-z0-9]{15,}|/Users/|access_token|refresh_token',re.I)
 KEY=re.compile(r'latest|catalog-(?:industry|concept)|history-(?:industry|concept)-(?:return1d|strength|opportunity|risk)|detail-88[156]\d{3}\.TI')
 
@@ -50,34 +51,39 @@ def prepare_documents(directory):
         for index in range(count):
             part=compressed[index*PART_BYTES:(index+1)*PART_BYTES]
             documents.append(dict(key=key,gzipBase64=base64.b64encode(part).decode('ascii'),
-                digest=full_digest,partIndex=index,partCount=count,partDigest=digest(part)))
+                digest=full_digest,partIndex=index,partCount=count,partDigest=digest(part),_rawBytes=len(content)))
     if len(keys)!=491 or len([k for k in keys if k.startswith('detail-881')])!=90 or len([k for k in keys if k.startswith(('detail-885','detail-886'))])!=390:
         raise ValueError('INCOMPLETE_EXPORT')
     if current_members and not current_valid:raise ValueError('CURRENT_CONSTITUENT_DATA_UNAVAILABLE')
-    manifest={k:manifest[k] for k in ('generation','marketDate','observedAt','exportedAt')}
+    manifest={k:manifest[k] for k in ('generation','marketDate','observedAt','exportedAt','storageMode','historyBaseGeneration','sourceGeneration') if k in manifest}
+    if manifest.get('storageMode')=='daily-v1':
+        if not re.fullmatch('[0-9a-f]{64}',manifest.get('historyBaseGeneration','')) or generation!=digest(('daily-v1\n'+manifest.get('sourceGeneration','')).encode()):raise ValueError('INVALID_DAILY_GENERATION')
     manifest.update(mode='live',automaticUpdates=True)
     return dict(generation=generation,manifest=manifest,documentCount=len(keys),
         digest=digest('\n'.join(digests).encode()),documents=documents)
 
 
 def publish_export(directory,transport,*,checkpoint,max_workers=2):
+    started=time.monotonic()
     prepared=prepare_documents(directory);generation=prepared['generation']
     checkpoint=Path(checkpoint)
     prior=json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
     state=prior if prior.get('generation')==generation else dict(generation=generation,uploaded=[],activated=False)
+    state.update(sourceGeneration=prepared['manifest'].get('sourceGeneration',generation),storageMode=prepared['manifest'].get('storageMode','full'))
     transport({k:v for k,v in prepared.items() if k!='documents'}|{'action':'begin'})
     uploaded=set(state['uploaded']);batch=[];batches=[]
     for document in prepared['documents']:
         identity=f"{document['key']}:{document['partIndex']}:{document['partDigest']}"
         if identity in uploaded:continue
-        if len(batch)>=1 or len(json.dumps(dict(action='documents',generation=generation,documents=batch+[document])).encode())>MAX_BODY_BYTES:
+        raw_size=sum(d.get('_rawBytes',MAX_BATCH_RAW_BYTES+1) for d in batch)+document.get('_rawBytes',MAX_BATCH_RAW_BYTES+1)
+        if batch and (len(batch)>=6 or raw_size>MAX_BATCH_RAW_BYTES or len(json.dumps(dict(action='documents',generation=generation,documents=batch+[document])).encode())>MAX_BODY_BYTES):
             batches.append(batch);batch=[]
         batch.append(document)
     if batch:batches.append(batch)
     pool=ThreadPoolExecutor(max_workers=max_workers)
     futures={}
     try:
-        futures={pool.submit(transport,dict(action='documents',generation=generation,documents=items)):items for items in batches}
+        futures={pool.submit(transport,dict(action='documents',generation=generation,documents=[{k:v for k,v in d.items() if not k.startswith('_')} for d in items])):items for items in batches}
         for future in as_completed(futures):
             try:future.result()
             except Exception:
@@ -92,7 +98,9 @@ def publish_export(directory,transport,*,checkpoint,max_workers=2):
     finally:pool.shutdown(wait=True,cancel_futures=True)
     transport(dict(action='activate',generation=generation))
     state.pop('lastFailedParts',None);state['activated']=True;_atomic(checkpoint,state)
-    return dict(generation=generation,documents=prepared['documentCount'],parts=len(prepared['documents']))
+    return dict(generation=generation,sourceGeneration=prepared['manifest'].get('sourceGeneration',generation),documents=prepared['documentCount'],parts=len(prepared['documents']),
+        requests=len(batches)+2,elapsedSeconds=time.monotonic()-started,
+        plannedWireBytes=sum(len(json.dumps([{k:v for k,v in d.items() if not k.startswith('_')} for d in items],separators=(',',':')).encode()) for items in batches))
 
 
 class LiveTransport:

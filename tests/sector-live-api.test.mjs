@@ -9,7 +9,7 @@ import { gzipSync } from 'node:zlib'
 import { onRequestPost } from '../functions/api/sector-live/publish.js'
 import { onRequestGet as manifest } from '../functions/api/sector-live/manifest.js'
 import { onRequestGet as document } from '../functions/api/sector-live/document.js'
-const migrations = [new URL('../migrations/0004_sector_live_documents.sql', import.meta.url)]
+const migrations = ['0004_sector_live_documents.sql','0005_sector_live_daily_index.sql'].map(name=>new URL('../migrations/'+name,import.meta.url))
 test('active document preserves gzip on the wire and streams JSON for identity clients',async()=>{
  const value={history:[{id:'885001.TI',name:'测试板块'}]},bytes=gzipSync(JSON.stringify(value))
  const db={prepare(){return{bind(){return this},async first(){return{activated_at:'2026-11-17T08:00:00Z'}},async all(){return{results:[{gzip_base64:bytes.toString('base64')}]}}}}}
@@ -142,4 +142,79 @@ test('activation checks aggregate digest and all identities, retains four activa
  }
  assert.equal(db.execute('SELECT COUNT(*) n FROM sector_live_generations WHERE activated_at IS NOT NULL').results[0].n,4)
  assert.equal((await document(context(db,`https://example.test?generation=${f.begin.generation}&key=latest`))).status,404)
+})
+
+// Seed complete document identities with one SQLite transaction. Network transport,
+// gzip integrity and staging are exercised above; archive tests focus on time semantics.
+async function seed(db,observedAt,{base=null,day=observedAt.slice(0,10),label=day,days=[day],activated=true}={}) {
+ const f=fixture(observedAt)
+ if(base) {
+  const sourceGeneration=sha(observedAt)
+  f.begin.generation=sha('daily-v1\n'+sourceGeneration)
+  Object.assign(f.begin.manifest,{generation:f.begin.generation,storageMode:'daily-v1',sourceGeneration,historyBaseGeneration:base})
+ }
+ f.begin.manifest.marketDate=day
+ assert.equal((await post(db,f.begin)).status,201)
+ const value={batchId:f.begin.generation,history:days.map(marketDate=>({marketDate,label})),constituentsByDate:Object.fromEntries(days.map(date=>[date,{total:25,validCount:25,rows:Array.from({length:25},(_,i)=>({code:String(i),label}))}]))}
+ const bytes=gzipSync(JSON.stringify(value)),digest=sha(bytes)
+ const statements=f.documents.map(d=>db.prepare('INSERT INTO sector_live_documents(generation,document_key,digest) VALUES(?,?,?)').bind(f.begin.generation,d.key,d.digest))
+ statements.push(db.prepare('INSERT INTO sector_live_parts(generation,document_key,part_index,part_count,digest,part_digest,gzip_base64) VALUES(?,?,0,1,?,?,?)').bind(f.begin.generation,'detail-885001.TI',digest,digest,bytes.toString('base64')))
+ if(activated)statements.push(db.prepare('UPDATE sector_live_generations SET activated_at=? WHERE generation=?').bind(observedAt,f.begin.generation))
+ await db.batch(statements)
+ return f
+}
+const detailRead=(db,f,query='')=>document(context(db,`https://example.test?generation=${f.begin.generation}&key=detail-885001.TI${query}`))
+test('daily begin validates exact optional trio, immutable identity and activated legacy baseline',async t=>{
+ const db=database(t),base=await seed(db,'2026-11-15T00:00:00Z'),f=fixture('2026-11-16T00:00:00Z')
+ const sourceGeneration=sha('daily source'),generation=sha('daily-v1\n'+sourceGeneration)
+ Object.assign(f.begin,{generation});Object.assign(f.begin.manifest,{generation,storageMode:'daily-v1',sourceGeneration,historyBaseGeneration:base.begin.generation})
+ assert.equal((await post(db,f.begin)).status,201)
+ const invalid=structuredClone(f.begin);delete invalid.manifest.sourceGeneration
+ assert.equal((await post(db,invalid)).status,400)
+ assert.equal((await post(db,{...f.begin,generation:'f'.repeat(64),manifest:{...f.begin.manifest,generation:'f'.repeat(64)}})).status,400)
+ const missing=structuredClone(f.begin);missing.manifest.historyBaseGeneration='0'.repeat(64)
+ assert.equal((await post(db,missing)).status,400)
+ const daily=await seed(db,'2026-11-16T01:00:00Z',{base:base.begin.generation})
+ const chained=structuredClone(f.begin);chained.manifest.historyBaseGeneration=daily.begin.generation
+ assert.equal((await post(db,chained)).status,400)
+})
+test('daily details expand baseline and daily dates while pinned readers never see future revisions',async t=>{
+ const db=database(t),base=await seed(db,'2026-11-15T15:00:00Z',{days:['2026-11-14','2026-11-15'],label:'baseline'})
+ const early=await seed(db,'2026-11-16T01:00:00Z',{base:base.begin.generation,label:'early16'})
+ const late=await seed(db,'2026-11-16T02:00:00Z',{base:base.begin.generation,label:'close16'})
+ const next=await seed(db,'2026-11-17T01:00:00Z',{base:base.begin.generation,label:'current17'})
+ const full=await(await detailRead(db,next)).json()
+ assert.deepEqual(full.history.map(p=>p.marketDate),['2026-11-14','2026-11-15','2026-11-16','2026-11-17'])
+ assert.equal(full.history.find(p=>p.marketDate==='2026-11-16').label,'close16')
+ assert.equal(full.batchId,next.begin.generation)
+ const summary=await(await detailRead(db,next,'&view=summary')).json()
+ assert.equal(summary.constituentsByDate['2026-11-16'].rows.length,10)
+ assert.equal(summary.constituentsByDate['2026-11-16'].total,25)
+ const members=await(await detailRead(db,next,'&view=members&date=2026-11-16')).json()
+ assert.equal(members.rows.length,25);assert.equal(members.rows[0].label,'close16')
+ assert.equal((await(await detailRead(db,early)).json()).history.at(-1).label,'early16')
+ assert.equal((await detailRead(db,early,'&view=members&date=2026-11-17')).status,404)
+ assert.equal((await(await detailRead(db,next,'&view=members&date=2026-11-15')).json()).rows[0].label,'baseline')
+ assert.equal((await(await detailRead(db,late)).json()).history.at(-1).label,'close16')
+})
+test('daily retention keeps date closes and pinned legacy baseline through intraday rotations',async t=>{
+ const db=database(t),base=await seed(db,'2026-10-28T00:00:00Z'),daily=[]
+ // Dates remain in the past even when tests run on November 17.
+ for(let i=1;i<=17;i++)daily.push(await seed(db,`2026-11-${String(i).padStart(2,'0')}T00:00:00Z`,{base:base.begin.generation}))
+ const current=daily.at(-1)
+ const oldestBefore=await(await detailRead(db,daily[2])).json()
+ assert.equal((await activate(db,current)).status,200)
+ assert.ok(db.execute('SELECT generation FROM sector_live_generations WHERE generation=?',[base.begin.generation]).results.length)
+ assert.equal(db.execute("SELECT COUNT(*) n FROM sector_live_generations WHERE json_extract(manifest_json,'$.storageMode')='daily-v1'").results[0].n,17)
+ assert.deepEqual((await(await detailRead(db,daily[2])).json()).history,oldestBefore.history)
+ let next
+ for(let i=1;i<=6;i++) {
+  next=await seed(db,`2026-11-17T00:0${i}:00Z`,{base:base.begin.generation})
+  assert.equal((await activate(db,next)).status,200)
+ }
+ assert.equal(db.execute('SELECT generation FROM sector_live_generations WHERE generation=?',[current.begin.generation]).results.length,0)
+ assert.ok(db.execute('SELECT generation FROM sector_live_generations WHERE generation=?',[daily[2].begin.generation]).results.length)
+ const detail=await(await detailRead(db,next)).json()
+ assert.equal(detail.history.length,15);assert.equal(detail.history[0].marketDate,'2026-11-03')
+ assert.equal((await(await manifest(context(db))).json()).storageMode,'daily-v1')
 })

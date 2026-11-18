@@ -73,14 +73,14 @@ def archive_stock_close(args,root,day,*,loader=load_complete_close_panel):
         _atomic(marker,dict(marketDate=day,status='failed',safeErrorCode='STOCK_ARCHIVE_INCOMPLETE'))
 
 
-def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None):
+def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None,settings=None):
     root=Path(args.state_root).resolve();root.mkdir(parents=True,exist_ok=True)
-    lock=os.open(root/'sector-live-service.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    collect_only=getattr(args,'collect_only',False)
+    lock=os.open(root/('sector-live-collector.lock' if collect_only else 'sector-live-service.lock'),os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     os.fchmod(lock,0o600)
     try:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return dict(status='already_running',published=False)
-        transport=transport or LiveTransport(os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN',''))
         collection=None
         if not args.publish_only:
             collection=collector(args)
@@ -100,32 +100,46 @@ def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None)
         if (not args.publish_only and payload and payload.get('officialClose')
                 and payload.get('marketDate')==now.date().isoformat() and now.hour*60+now.minute>=930):
             archive_stock_close(args,root,payload['marketDate'])
+        if collect_only:
+            result=dict(status=collection.status,collected=collection.row_count,published=False,
+                safeErrorCode=collection.safe_error_code,sourceGeneration=snapshot.get('generation') if snapshot else None)
+            _atomic(root/'hithink-live/collector-service-health.json',result|{'checkedAt':datetime.now(timezone.utc).isoformat()})
+            return result
+        transport=transport or LiveTransport(os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN',''))
+        collector_health_path=root/'hithink-live/collector-service-health.json'
+        collector_health=json.loads(collector_health_path.read_text()) if collector_health_path.exists() else {}
+        collection_failed=bool(collection and collection.status=='failed') or collector_health.get('status')=='failed'
         if not snapshot or not snapshot.get('payload'):
             publication_health(transport,'collection','failed','NO_SNAPSHOT')
             return dict(status='no_snapshot',published=False)
         directory=root/'hithink-online-export';checkpoint=root/'hithink-live/live-publication-checkpoint.json'
+        settings=settings or json.loads((BASE/'config/sector-live-operation.json').read_text())
+        storage_mode=settings.get('storageMode','full')
         state=json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
         generation=snapshot['generation']
-        if state.get('generation')==generation and state.get('activated'):
-            if collection and collection.status=='failed':publication_health(transport,'collection','failed','COLLECTION_FAILED')
-            return dict(status=collection.status if collection else 'already_published',generation=generation,published=True)
+        if state.get('sourceGeneration',state.get('generation'))==generation and state.get('storageMode','full')==storage_mode and state.get('activated'):
+            if collection_failed:publication_health(transport,'collection','failed','COLLECTION_FAILED')
+            return dict(status=collection.status if collection else 'already_published',generation=state['generation'],sourceGeneration=generation,published=True)
         manifest=directory/'manifest.json'
         exported=json.loads(manifest.read_text()) if manifest.exists() else {}
-        if exported.get('generation')!=generation:
+        if exported.get('sourceGeneration',exported.get('generation'))!=generation or exported.get('storageMode','full')!=storage_mode:
             if exporter:exporter(root,directory)
             else:
                 node=shutil.which('node')
                 if not node:raise ValueError('NODE_UNAVAILABLE')
+                options=['--storage-mode',storage_mode]
+                if storage_mode=='daily-v1':options+=['--history-base-generation',settings['historyBaseGeneration']]
                 subprocess.run([node,str(BASE/'tools/market_dashboard/export_sector_snapshot.mjs'),
-                    '--state-root',str(root),'--output-root',str(directory)],cwd=BASE,check=True,
+                    '--state-root',str(root),'--output-root',str(directory),*options],cwd=BASE,check=True,
                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=360)
         if isinstance(transport,LiveTransport):transport.deadline=time.monotonic()+540
         result=publish_export(directory,transport,checkpoint=checkpoint)
         # Pointer activation is idempotent; publisher checkpoint advances only afterwards.
         publication_health(transport,'publication','success')
-        if collection and collection.status=='failed':publication_health(transport,'collection','failed','COLLECTION_FAILED')
-        health=dict(status='success',generation=result['generation'],published=True,
-            publishedAt=datetime.now(timezone.utc).isoformat(),collection=asdict(collection) if collection else None)
+        if collection_failed:publication_health(transport,'collection','failed','COLLECTION_FAILED')
+        health=dict(status='success',generation=result['generation'],sourceGeneration=result.get('sourceGeneration',generation),published=True,
+            publishedAt=datetime.now(timezone.utc).isoformat(),collection=asdict(collection) if collection else None,
+            publication={k:result[k] for k in ('documents','parts','requests','elapsedSeconds','plannedWireBytes') if k in result})
         _atomic(root/'hithink-live/live-service-health.json',health)
         # Keep exporter disk bounded independently of retained cloud generations.
         for child in directory.iterdir():
@@ -152,8 +166,11 @@ def main(argv=None):
     parser.add_argument('--max-calls',type=int,default=1200)
     parser.add_argument('--max-seconds',type=float,default=840)
     parser.add_argument('--publish-only',action='store_true')
+    parser.add_argument('--collect-only',action='store_true')
     args=parser.parse_args(argv)
-    try:ensure_awake()
+    if args.collect_only and args.publish_only:parser.error('choose one service role')
+    try:
+        if not args.publish_only:ensure_awake()
     except Exception:pass  # Report source failures separately; a sleep assertion is not a data source.
     result=run_service(args)
     print(json.dumps(result,separators=(',',':')))

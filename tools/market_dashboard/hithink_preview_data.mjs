@@ -53,7 +53,8 @@ function componentEvidence(component){
 export function localDetail(bundle,params,scoringWeights={}){
   const universe=params.get('universe'),id=params.get('id')
   const allowedComponents=['priceTrend','breadth','participation','persistence','position','breadthImprovement','momentumImprovement','participationWarming','relativeTurn','downsideDiffusion','trendDeterioration','divergence','crowding','concentration']
-  return {...metadata(bundle),universe,id,scoringWeights,history:days(bundle).flatMap(p=>{
+  const observations=params.get('currentOnly')==='true'?[bundle.payload]:days(bundle)
+  return {...metadata(bundle),universe,id,scoringWeights,history:observations.flatMap(p=>{
     const original=p.rows.find(r=>r.universe===universe&&r.id===id)
     if(!original)return []
     const points=rowsFor(bundle,p).filter(r=>r.universe===universe),target=points.find(r=>r.id===id)

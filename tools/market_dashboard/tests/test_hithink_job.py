@@ -8,6 +8,17 @@ from tools.market_dashboard import hithink_job as job
 from tools.market_dashboard.hithink_cli import SHANGHAI, HithinkError
 
 class HithinkJobTests(unittest.TestCase):
+    def test_official_close_persists_all_480_breadth_rows_with_store_bound(self):
+        from unittest.mock import patch
+        observed=[]
+        def bounded(store,rows):
+            if len(rows)>250:raise ValueError('BACKFILL_TRANSACTION_TOO_LARGE')
+            observed.extend(rows)
+        with patch.object(job,'upsert_breadth_daily',side_effect=bounded) as write:
+            job.upsert_close_breadth(object(),list(range(480)))
+            self.assertEqual([len(call.args[1]) for call in write.call_args_list],[250,230])
+        self.assertEqual(observed,list(range(480)))
+
     def test_reconstruction_syncs_missing_daily_panel_and_rejects_persistent_gap(self):
         from unittest.mock import patch
         row=SimpleNamespace(stock_id='000001.SZ',market_date='2026-11-16',close=10,previous_close=9)
@@ -190,7 +201,7 @@ class HithinkJobTests(unittest.TestCase):
                 for sector in (industry,concept): rows.append(IndexDailyBar(sector.code,day,100+i,100+i,100+i,100+i,100,1000))
             upsert_index_daily(store,rows,observed_at_ms=stamp);store.close()
             args=SimpleNamespace(state_root=root,now=self.stamp('10:00'));client=Client()
-            with patch.object(job,'build_universe',return_value=universe):
+            with patch.object(job,'build_universe',return_value=universe),patch.object(job.time,'time',return_value=(stamp-60000)/1000):
                 result=job.run_hithink_cycle(args,{'calendar':['2026-11-13','2026-11-16'],'client':client})
             self.assertEqual(result.status,'success')
             self.assertEqual(client.stock_calls,1)
@@ -200,6 +211,7 @@ class HithinkJobTests(unittest.TestCase):
             self.assertEqual(payload['unsupportedStockCount'],1)
             self.assertFalse(payload['officialClose'])
             self.assertEqual(payload['rows'][0]['session'],'intraday')
+            self.assertGreaterEqual(datetime.fromisoformat(payload['rows'][0]['observedAt']).timestamp()*1000,stamp)
             self.assertEqual(set(payload['rows'][0]['ranks']),{'strength','opportunity','risk'})
             store=open_store(root/'sector-history.sqlite3')
             self.assertEqual(store.execute('select count(*) from sector_features_intraday').fetchone()[0],2)

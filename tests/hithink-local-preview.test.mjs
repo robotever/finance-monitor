@@ -14,6 +14,10 @@ test('risk rise is computed before selecting lists and uses previous market date
  const b=bundle(),p=localSnapshot(b);assert.equal(p.industry.risk.length,1);assert.equal(p.industry.risk[0].change1d.risk,15);assert.equal(p.historicalReconstruction,false);assert.equal(p.marketDate,'2026-11-17');assert.equal(p.observedAt,'2026-11-17T01:45:00.000Z')
  b.payload.rows[0].risk=42;b.chunks=chunks(b.payload);assert.equal(localSnapshot(b).industry.risk[0].change1d.risk,17)
 })
+test('daily export keeps current detail only without changing prior-close comparisons',()=>{
+ const b=bundle(),p=localDetail(b,new URLSearchParams({universe:'industry',id:'881001.TI',currentOnly:'true'}))
+ assert.equal(p.history.length,1);assert.equal(p.history[0].marketDate,'2026-11-17');assert.equal(p.history[0].change1d.risk,15)
+})
 test('daily return ranks independently of strength, preserves percent units and missing values',()=>{
  const b=bundle(),a=b.payload.rows[0];a.metrics={return1d:2.55};a.strength=10
  b.payload.rows.push({...a,id:'881002.TI',strength:99,metrics:{return1d:1.78}},{...a,id:'881003.TI',metrics:{return1d:null}});b.chunks=chunks(b.payload)
