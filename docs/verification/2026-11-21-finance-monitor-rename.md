@@ -10,7 +10,7 @@
 - 数据库保留原名称newsmonitor-market-dashboard与UUID dabc291a-86b3-46ea-89dd-1060120f5da1，MARKET_DB绑定及已有数据不重建、不迁移、不清空。
 - 页面标题Finance Monitor · 全市场研究终端，页头FINANCE MONITOR、标志F、页脚同名，favicon更换为F。
 - 自动任务标签改为com.robot-ever.finance-monitor.market-dashboard及原有后缀，保留间隔、参数、状态目录与启用状态。影子任务不因改名启动。
-- 稳定目录和活动工作树改为finance-monitor，旧路径作为兼容符号链接保留，Git worktree元数据修复，不复制私有数据库。
+- 稳定实体目录改为finance-monitor，旧路径作为兼容符号链接保留，Git worktree元数据修复，不复制私有数据库。活动Codex工作树通过finance-monitor别名访问；当前会话的旧实体目录作为受管写入根保留（工具不支持符号链接作为写入根），不更改全局安全策略。
 
 ## 迁移原则
 
@@ -25,3 +25,7 @@ Cloudflare Git关联按repo_id 1215707453识别同一仓库；其repo_name返回
 - 预览d17bbdb6实际浏览器：标题、页头、aria标签均为Finance Monitor；390px无横向溢出。
 - 初次Python组合检查发现父项目健康检查仍使用旧标签，已修改父项目两处引用并保留备份；对应健康测试重跑通过。
 - 初次全量Node检查在无本轮修改的SQL用例长时间未返回，已停止并保留/tmp/finance-monitor-full-tests.log，不宣称全量通过；改名相关检查另外执行。
+
+## 本机与回归结果
+
+三个原已加载服务已用新标签重新加载，间隔原样保留（300/300/60秒），影子任务仍未加载，旧标签已卸载并禁用，原plist安全备份保留。父项目两处健康检查同步新标签。完整运维测试38/38通过，另28项改名相关检查通过；GitHub默认分支和稳定checkout同步到已上线功能及改名版本。
