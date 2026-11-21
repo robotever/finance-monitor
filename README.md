@@ -1,11 +1,11 @@
-# NewsMonitor
+# Finance Monitor
 
-NewsMonitor 是一个面向个人研究流程的金融市场首页，整合实时财经新闻、全球债务风险、A 股市场状态、行业／概念雷达和板块轮动研究。
+Finance Monitor 是一个面向个人研究流程的金融市场首页，整合实时财经新闻、全球债务风险、A 股市场状态、行业／概念雷达和板块轮动研究。
 
-- 生产页面：[newsmonitor.pages.dev](https://newsmonitor.pages.dev/)
-- 代码仓库：[robotever/newsmonitor](https://github.com/robotever/newsmonitor)
-- 当前生产数据契约：`market-dashboard-v2`
-- 板块轮动契约：`market-dashboard-v3`，仍处于验收与影子验证阶段
+- 生产页面：[Finance Monitor](https://newsmonitor.pages.dev/)
+- 代码仓库：[robotever/finance-monitor](https://github.com/robotever/finance-monitor)
+- 首页：全球联动图表、财经快讯与市场研究雷达
+- 板块研究：同花顺行业/概念评分、历史轮动与成分股；Mac采集计算，Cloudflare D1发布派生结果
 
 > 本项目提供研究辅助信息，不构成投资建议。评分、阈值和权重仍是待回测的研究假设。
 
@@ -20,7 +20,7 @@ NewsMonitor 是一个面向个人研究流程的金融市场首页，整合实�
 
 ## 当前状态
 
-截至 2026-11-15：
+以下为2026-11-15的早期记录；当前上线信息以[改名迁移记录](docs/verification/2026-11-21-finance-monitor-rename.md)和[首页运维](docs/home-terminal-operations.md)为准：
 
 - 生产页面继续使用 v2；概念雷达已进入生产。
 - v3 界面已在独立验收页面通过桌面端和移动端技术检查，但页面使用合成测试数据。

@@ -56,7 +56,7 @@
 - 每种视口打开行业、概念当前榜单和历史单元格详情，各 `3/3`；历史选择为2026-10-26机会榜第1名，均显示15日轨迹。按钮关闭、Enter打开、Tab/Shift+Tab焦点约束、Escape及焦点返回通过；详情横幅在滚动首尾保持可见。刷新研究数据、视口切换、整页刷新和锚点直链也通过，状态语义与本地记录一致。
 - 两种视口的标题均为“板块轮动临时验收 · 测试数据”，robots meta 为 `noindex,nofollow`，页面及详情保留测试横幅，实际下载 `acceptance-fixtures-*` chunk，卡片名称为“测试行业/测试概念”。branch alias 另行导航也确认同样标题、robots、横幅与 fixture chunk。
 - 固定 deployment 主检查记录 **180次请求尝试：36次真实静态资源，144次无关请求被发送前阻断；`/api/market-dashboard` 为0，`/api/sector-rotation` 为0；未捕获 JS 异常为0**。这些零值包括切换、刷新和详情全过程，证明本次验收操作未触发上述市场/轮动 Functions 的 D1 读取路径；没有直接探测 preview API 或数据库。此结论不覆盖普通用户页面中的其他模块、catchall 的静态转交或独立服务端活动。
-- 独立打开 [production](https://newsmonitor.pages.dev/)：首页和主 JS/CSS 返回200，标题为“NewsMonitor · 实时热榜聚合”，没有 robots meta、测试横幅、板块轮动验收区或 fixture chunk。检查实际收到的 HTML/JS/CSS，未出现验收 adapter origin/error code、fixture chunk 名或测试横幅文字。仅放行页面自然发出的 `GET /api/market-dashboard/latest` 及 `history?window=5d`；二者返回200，latest 的实际 JSON 为 `schemaVersion=market-dashboard-v2`，可见页面也标明 v2。没有主动构造额外市场请求，没有 `/api/sector-rotation` 或 v3 请求。其他 proxy/font 请求继续阻断，避免访问 provider。
+- 独立打开 [production](https://newsmonitor.pages.dev/)：首页和主 JS/CSS 返回200，标题为“Finance Monitor · 实时热榜聚合”，没有 robots meta、测试横幅、板块轮动验收区或 fixture chunk。检查实际收到的 HTML/JS/CSS，未出现验收 adapter origin/error code、fixture chunk 名或测试横幅文字。仅放行页面自然发出的 `GET /api/market-dashboard/latest` 及 `history?window=5d`；二者返回200，latest 的实际 JSON 为 `schemaVersion=market-dashboard-v2`，可见页面也标明 v2。没有主动构造额外市场请求，没有 `/api/sector-rotation` 或 v3 请求。其他 proxy/font 请求继续阻断，避免访问 provider。
 
 线上原始脚本、JSON、日志与12张截图保留在已忽略目录，不提交二进制：
 

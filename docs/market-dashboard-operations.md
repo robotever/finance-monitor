@@ -4,9 +4,9 @@
 
 本节为现行板块链路；下方早期 Wind/v2/v3 内容保留作历史说明。线上入口为 https://newsmonitor.pages.dev/sectors/research 。Mac 承担同花顺采集、评分和导出；Cloudflare 承担持久化及网页读取。Mac 停止或休眠时不能产生新数据。
 
-- `com.robot-ever.newsmonitor.market-dashboard.hithink-live`：每300秒唤醒，`--hithink-live --collect-only`，内部仍按交易时段15分钟桶采集。
-- `com.robot-ever.newsmonitor.market-dashboard.hithink-publisher`：每60秒检查，`--hithink-live --publish-only`，新批次导出、断点上传；未变化则跳过。与采集使用独立锁。
-- 运行源码目前在 `/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`，同花顺运行数据在该目录 `data/market-dashboard`；父项目负责 `.env`、LaunchAgent日志和股票DuckDB。不要误按下文早期v2路径定位当前板块状态。
+- `com.robot-ever.finance-monitor.market-dashboard.hithink-live`：每300秒唤醒，`--hithink-live --collect-only`，内部仍按交易时段15分钟桶采集。
+- `com.robot-ever.finance-monitor.market-dashboard.hithink-publisher`：每60秒检查，`--hithink-live --publish-only`，新批次导出、断点上传；未变化则跳过。与采集使用独立锁。
+- 运行源码目前在 `/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`，同花顺运行数据在该目录 `data/market-dashboard`；父项目负责 `.env`、LaunchAgent日志和股票DuckDB。不要误按下文早期v2路径定位当前板块状态。
 - 配置 `config/sector-live-operation.json` 指定 `daily-v1` 及已激活的完整历史基底。日增量发布号由源代号派生；不得混用或改写已发布清单。
 - 每轮上传当天成分股，云端合并最近15个日期；保留最近4个批次、最近15个日期归档、这些读者需要的前序日期依赖及历史基底。依赖存储不代表额外承诺可访问的归档日期。
 - 上传最多两路并行，每批最多6片且解压内容预算64KiB（较大单文档独立上传），避免Cloudflare CPU限额；失败保留最后成功数据。
@@ -33,10 +33,10 @@
 
 ## 运行路径与持久环境
 
-真实父项目：`/Users/robot_ever/Codex/Financial Knowledge Repository`。长期 checkout 预期为其 `newsmonitor/` 子目录。以下命令必须在已整合且核验干净的稳定 checkout 中运行；临时 `.codex/worktrees` 默认被安装器拒绝，不用于长期调度。
+真实父项目：`/Users/robot_ever/Codex/Financial Knowledge Repository`。长期 checkout 预期为其 `finance-monitor/` 子目录。以下命令必须在已整合且核验干净的稳定 checkout 中运行；临时 `.codex/worktrees` 默认被安装器拒绝，不用于长期调度。
 
 ```bash
-cd '/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor'
+cd '/Users/robot_ever/Codex/Financial Knowledge Repository/finance-monitor'
 export MARKET_DASHBOARD_PROJECT_ROOT='/Users/robot_ever/Codex/Financial Knowledge Repository'
 export MARKET_DASHBOARD_PYTHON='/Library/Frameworks/Python.framework/Versions/3.13/bin/python3'
 ```
@@ -68,7 +68,7 @@ wrapper 按单行字面量解析 `.env`，不执行 `source` / `eval` / `$()`；
 收盘且供应商增量可用后，用 `DATA_SOURCES.md` 中的 `data sync` 和 `data validate` 更新并校验。只读抽样审计从稳定 checkout 运行：
 
 ```bash
-cd '/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor'
+cd '/Users/robot_ever/Codex/Financial Knowledge Repository/finance-monitor'
 PYTHONDONTWRITEBYTECODE=1 python3 -m tools.market_dashboard.hithink_history \
   --cli '/Users/robot_ever/Codex/Financial Knowledge Repository/tools/npm-global/node_modules/.bin/hithink-finance' \
   --db '/Users/robot_ever/Codex/Financial Knowledge Repository/data/hithink/market.duckdb' \
@@ -90,10 +90,10 @@ wrapper 在上海工作日 09:25–15:35 启动单实例 `caffeinate -s` 守护�
 
 ```bash
 ./ops/macos/install-market-dashboard-service.sh --prepare
-plutil -lint "$HOME/Library/LaunchAgents/com.robot-ever.newsmonitor.market-dashboard.plist"
+plutil -lint "$HOME/Library/LaunchAgents/com.robot-ever.finance-monitor.market-dashboard.plist"
 # 在最终整合和部署验收后才显式启用：
 ./ops/macos/install-market-dashboard-service.sh --enable
-launchctl print "gui/$(id -u)/com.robot-ever.newsmonitor.market-dashboard"
+launchctl print "gui/$(id -u)/com.robot-ever.finance-monitor.market-dashboard"
 ```
 
 无 RunAtLoad/KeepAlive，无 kickstart。已加载的旧 plist 不自动重启；路径变化先 `--disable` 再 `--enable`。生产服务已经加载，仍保持原 label、稳定 checkout 路径和 300 秒 `StartInterval`。功能开关更新后等待下一个自然唤醒；部署成功不能替代首个真实 v3 快照证据。
@@ -130,27 +130,27 @@ wrapper 将摘要写入私有 `job.log`。live dry-run 仍获取锁，可能创�
 curl --fail --silent --show-error https://newsmonitor.pages.dev/api/market-dashboard/latest
 curl --fail --silent --show-error 'https://newsmonitor.pages.dev/api/market-dashboard/history?window=5d'
 PYTHONDONTWRITEBYTECODE=1 python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/regression_service_reliability.py'
-PYTHONPYCACHEPREFIX=/private/tmp/newsmonitor-python-cache python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/intake_health_check.py'
+PYTHONPYCACHEPREFIX=/private/tmp/finance-monitor-python-cache python3 '/Users/robot_ever/Codex/Financial Knowledge Repository/scripts/intake_health_check.py'
 ```
 
 公开接口仅允许 `1d` / `5d` / `20d` / `90d` 历史窗口。初始仅一条真实快照时历史长度 1、变化缺失正常；不是可用于验证日间斜率的历史。
 
 ## Cloudflare、迁移与凭证轮换
 
-项目为 `newsmonitor`，生产域名 `newsmonitor.pages.dev`；`wrangler.toml` 的 `MARKET_DB` 绑定到 `newsmonitor-market-dashboard`，真实 UUID 只按配置使用。不要操作既有其他数据库。
+项目为 `finance-monitor`，生产域名 `finance-monitor.pages.dev`；`wrangler.toml` 的 `MARKET_DB` 绑定到 `finance-monitor-market-dashboard`，真实 UUID 只按配置使用。不要操作既有其他数据库。
 
 初次部署前（day 0 已完成，日常无需反复建库）：
 
 ```bash
-npx wrangler d1 migrations list newsmonitor-market-dashboard --local
-npx wrangler d1 migrations apply newsmonitor-market-dashboard --local
-npx wrangler d1 migrations list newsmonitor-market-dashboard --remote
-npx wrangler d1 migrations apply newsmonitor-market-dashboard --remote
+npx wrangler d1 migrations list finance-monitor-market-dashboard --local
+npx wrangler d1 migrations apply finance-monitor-market-dashboard --local
+npx wrangler d1 migrations list finance-monitor-market-dashboard --remote
+npx wrangler d1 migrations apply finance-monitor-market-dashboard --remote
 ```
 
 `0001_market_dashboard.sql` 是增量建表/索引，唯一键为 `(observed_at, scoring_version)`，服务端将 `observed_at` 规范化为 UTC；`payload_json` 保留严格校验的43对象二级分数、缺失/贡献/来源时间摘要。本地派生历史按90天裁剪；D1 当前不自动清理，保留至少90天，后续如需保留策略应单独审查，不能声称已存在远端清理任务。公开 latest/history 不返回原始供应商行、本机路径或凭证。
 
-生产和 preview 都需同名 `MARKET_DASHBOARD_PUBLISH_TOKEN` Secret 与 `MARKET_DB` 绑定。轮换是单独运维动作，本轮未轮换：先停止本地服务，安全生成新随机 token，仅在内存中处理；用 Wrangler Secret 输入/安全 stdin 设置 preview 与 production，核验 Secret **名称和类型**，再原子更新父 `.env` 的对应赋值并保留0600、其余内容。使用 `npx wrangler pages secret put MARKET_DASHBOARD_PUBLISH_TOKEN --project-name newsmonitor --env preview` 和 `npx wrangler pages secret put MARKET_DASHBOARD_PUBLISH_TOKEN --project-name newsmonitor --env production`，分别经隐藏输入或安全 stdin 传入值。Wrangler 4.160.1 本地实现已核验只接受 production/preview（该参数在帮助中隐藏）。值不得进入参数、shell history、临时凭证文件或报告。
+生产和 preview 都需同名 `MARKET_DASHBOARD_PUBLISH_TOKEN` Secret 与 `MARKET_DB` 绑定。轮换是单独运维动作，本轮未轮换：先停止本地服务，安全生成新随机 token，仅在内存中处理；用 Wrangler Secret 输入/安全 stdin 设置 preview 与 production，核验 Secret **名称和类型**，再原子更新父 `.env` 的对应赋值并保留0600、其余内容。使用 `npx wrangler pages secret put MARKET_DASHBOARD_PUBLISH_TOKEN --project-name finance-monitor --env preview` 和 `npx wrangler pages secret put MARKET_DASHBOARD_PUBLISH_TOKEN --project-name finance-monitor --env production`，分别经隐藏输入或安全 stdin 传入值。Wrangler 4.160.1 本地实现已核验只接受 production/preview（该参数在帮助中隐藏）。值不得进入参数、shell history、临时凭证文件或报告。
 
 Secret 更新后核验目标环境已使用新绑定，先在 preview 检查新 token 可用、旧 token 拒绝；如需要部署以生效，走同一经审查发布路径，再更新/恢复本地。避免轮换中途继续定时发布。不要为证明 token 有效往生产注入合成快照；下一个真实新 bucket 的发布才是生产业务验证。
 
@@ -350,7 +350,7 @@ The installer supports an isolated `--hithink-shadow --prepare` label;
 preparation never starts a job. Operational update, 2026-11-17 Shanghai: the
 controller explicitly enabled the private shadow service using the reviewed
 `--hithink-shadow --allow-worktree --enable` installer. The loaded label is
-`com.robot-ever.newsmonitor.market-dashboard.hithink-shadow`, with a300-second
+`com.robot-ever.finance-monitor.market-dashboard.hithink-shadow`, with a300-second
 wake-up interval and the internal fifteen-minute trading-session gate. launchctl
 confirmed the loaded job; the first kickstart had runs=1, exit=0 and safe health
 `outside_session`, `published=false`. This proves safe outside-session handling,
@@ -359,9 +359,9 @@ homepage v4 flag remain off; no v4 remote migration, deployment or upload occurr
 Existing Wind v3 service behavior is unchanged.
 
 The loaded job currently executes code from
-`/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`, with
+`/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`, with
 `MARKET_DASHBOARD_PROJECT_ROOT` pointing to
-`/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor` for private
+`/Users/robot_ever/Codex/Financial Knowledge Repository/finance-monitor` for private
 state/data. Keep that worktree until the reviewed implementation is transferred
 to the stable checkout and the service is regenerated/reloaded with its new path.
 A Git commit alone does not migrate the loaded service. The Mac must be powered
@@ -421,7 +421,7 @@ An incomplete upload cannot replace the active dataset. The original static
 snapshot is a bootstrap fallback only, never a replacement for established live
 data after a failure. Original radar/news and v2/v3 schedules remain separate.
 
-The active label is `com.robot-ever.newsmonitor.market-dashboard.hithink-live`.
+The active label is `com.robot-ever.finance-monitor.market-dashboard.hithink-live`.
 The former `.hithink-shadow` label is disabled. Installer control uses
 `--allow-worktree --hithink-live --enable` or `--disable` with the same reviewed
 `MARKET_DASHBOARD_PROJECT_ROOT`. The wrapper loads literal credentials from that

@@ -42,10 +42,10 @@
 
 ## 工作目录
 
-- 当前实现工作树：`/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`。
-- 稳定 checkout：`/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor`。
+- 当前实现工作树：`/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`。
+- 稳定 checkout：`/Users/robot_ever/Codex/Financial Knowledge Repository/finance-monitor`。
 
-私有影子 LaunchAgent `com.robot-ever.newsmonitor.market-dashboard.hithink-shadow` 已通过审核后的 `--hithink-shadow --allow-worktree --enable` 安装器启用：每 300 秒唤醒，内部按上海交易时段和 15 分钟 bucket 运行。控制者已核对 launchctl 已加载；一次 kickstart 记录 runs=1、exit=0、`outside_session`、`published=false`，只证明非交易时段安全退出，不证明盘中采集成功。
+私有影子 LaunchAgent `com.robot-ever.finance-monitor.market-dashboard.hithink-shadow` 已通过审核后的 `--hithink-shadow --allow-worktree --enable` 安装器启用：每 300 秒唤醒，内部按上海交易时段和 15 分钟 bucket 运行。控制者已核对 launchctl 已加载；一次 kickstart 记录 runs=1、exit=0、`outside_session`、`published=false`，只证明非交易时段安全退出，不证明盘中采集成功。
 
 服务当前调用上述实现工作树，项目数据根指向稳定 checkout。机器必须保持开机、登录、联网且在交易时段保持唤醒；定时器本身不会保证睡眠中的机器执行。迁至稳定 checkout 前必须保留当前工作树；迁移需先同步已审阅实现，再重新生成／加载服务并核对路径。启用私有服务不等于稳定 checkout 的源码已更新。Wind v3 原服务及配置、状态和表继续保留；公开 v4 发布和首页切换仍关闭，不在浏览器拼接两版历史。
 

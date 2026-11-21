@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[3]
 OPS = REPO / 'ops/macos'
-LABEL = 'com.robot-ever.newsmonitor.market-dashboard'
+LABEL = 'com.robot-ever.finance-monitor.market-dashboard'
 
 
 def health_module():
@@ -43,7 +43,7 @@ class OperationsTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix='dashboard ops ')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve() / 'Financial Project'
-        self.repo = self.root / 'newsmonitor'
+        self.repo = self.root / 'finance-monitor'
         (self.repo / 'ops/macos').mkdir(parents=True)
         (self.root / 'scripts').mkdir()
         (self.root / 'scripts/rotate_service_logs.py').touch()

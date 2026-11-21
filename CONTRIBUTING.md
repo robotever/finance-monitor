@@ -1,6 +1,6 @@
 # 贡献说明
 
-NewsMonitor 是金融研究工具。修改前请先阅读：
+Finance Monitor 是金融研究工具。修改前请先阅读：
 
 1. [项目状态](docs/STATUS.md)
 2. [系统架构](docs/ARCHITECTURE.md)

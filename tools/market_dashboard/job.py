@@ -487,7 +487,7 @@ def publish_payload(payload, url, token, timeout=20, *, config=None):
             return PublishResult(False, error_code='INVALID_PUBLISH_CONFIG')
         request = Request(url, data=json.dumps(payload, allow_nan=False, separators=(',', ':')).encode(),
                           headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
-                                   'User-Agent': 'NewsmonitorMarketDashboard/1.0'}, method='POST')
+                                   'User-Agent': 'FinanceMonitorMarketDashboard/1.0'}, method='POST')
     except (TypeError, ValueError):
         return PublishResult(False, error_code='INVALID_PUBLISH_CONFIG')
     for attempt in range(1, 4):

@@ -123,7 +123,7 @@ class LiveTransport:
             remaining=self.deadline-time.monotonic() if self.deadline is not None else 35
             if remaining<=0:raise ValueError('PUBLICATION_DEADLINE_EXCEEDED')
             request=Request(self.base+'/api/sector-live/publish',data=encoded,method='POST',
-                headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json','User-Agent':'NewsmonitorMarketDashboard/1.0'})
+                headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json','User-Agent':'FinanceMonitorMarketDashboard/1.0'})
             try:
                 with self.opener(request,timeout=min(35,remaining),context=self.context) as response:
                     result=json.loads(response.read(1024*1024))

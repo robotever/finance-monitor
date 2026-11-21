@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a live, fault-tolerant global debt risk module to the NewsMonitor homepage.
+**Goal:** Add a live, fault-tolerant global debt risk module to the Finance Monitor homepage.
 
 **Architecture:** A pure JavaScript model parses FRED CSV and derives signals; a TypeScript API adapter loads public series through the existing Cloudflare proxy; a Vue component renders the four observation themes without coupling them to the news store. The homepage owns placement only.
 

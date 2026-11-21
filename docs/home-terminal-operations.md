@@ -39,7 +39,7 @@ TradingView实际测试：HSI:HSTECH仅日线、NASDAQ:IXIC与TVC:DXY等代码�
 
 新增模型/API测试覆盖时间、过期、去重、查询id、故障隔离、非执行式解析、时区、允许名单、分时横轴。生产构建 `npm run build:production-rotation`；完整测试 `npm test`。旧债务模型两条固定日期样例补显式时钟，避免日期推移让样例过期，不改变其生产算法。
 
-部署仍为Cloudflare Pages newsmonitor。构建会清空dist，部署前需恢复原 `dist/data/sector-research` 静态归档（本轮从旧部署保留491文档），云端D1实时板块数据不作迁移或重写。首页图表与快讯在云端按访问获取；板块仍依赖Mac采集，架构不能混淆。
+部署仍为Cloudflare Pages finance-monitor。构建会清空dist，部署前需恢复原 `dist/data/sector-research` 静态归档（本轮从旧部署保留491文档），云端D1实时板块数据不作迁移或重写。首页图表与快讯在云端按访问获取；板块仍依赖Mac采集，架构不能混淆。
 
 ## 本轮验收记录
 
@@ -64,7 +64,7 @@ TradingView实际测试：HSI:HSTECH仅日线、NASDAQ:IXIC与TVC:DXY等代码�
 
 ### 滚动初判记录（已被下述回归修复取代）
 
-在用户实际Chrome页面读到动画名none、时长0s，且既未悬停也无焦点暂停，确认由系统减少动态效果覆盖。修复为站点内显式播放可覆盖该组件的减少动画规则，播放/暂停选择保存在 `newsmonitor.rail.motion.v1`，不修改操作系统设置。无主动选择时继续尊重系统设置。模拟reduce模式验证：初始静态，点击播放有真实位移，刷新后仍为rail-flow。13项相关检查及生产构建通过。
+在用户实际Chrome页面读到动画名none、时长0s，且既未悬停也无焦点暂停，确认由系统减少动态效果覆盖。修复为站点内显式播放可覆盖该组件的减少动画规则，播放/暂停选择保存在 `finance-monitor.rail.motion.v1`，不修改操作系统设置。无主动选择时继续尊重系统设置。模拟reduce模式验证：初始静态，点击播放有真实位移，刷新后仍为rail-flow。13项相关检查及生产构建通过。
 
 ### 最终回归修复：恢复旧版逐帧滚动
 

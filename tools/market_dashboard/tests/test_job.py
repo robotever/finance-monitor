@@ -25,7 +25,7 @@ class ScheduleTests(unittest.TestCase):
     def test_state_root_override_and_precedence_without_logging_paths(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            fake_module = root / 'project/newsmonitor/tools/market_dashboard/job.py'
+            fake_module = root / 'project/finance-monitor/tools/market_dashboard/job.py'
             for explicit, override, expected in [
                 (None, None, root / 'project/state'),
                 (None, str(root / 'env state'), root / 'env state'),
@@ -122,7 +122,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(requests[0][0].get_header('Authorization'), 'Bearer private-token')
         self.assertEqual(requests[0][0].get_header('Content-type'), 'application/json')
-        self.assertEqual(requests[0][0].get_header('User-agent'), 'NewsmonitorMarketDashboard/1.0')
+        self.assertEqual(requests[0][0].get_header('User-agent'), 'FinanceMonitorMarketDashboard/1.0')
         self.assertEqual(requests[0][1], 8)
         self.assertEqual(json.loads(requests[0][0].data)['styles'][0]['id'], '000300.SH')
         self.assertNotIn('private-token', repr(result))

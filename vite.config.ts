@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => ({
     transformIndexHtml(html) {
       const env = loadEnv(mode, process.cwd(), 'VITE_')
       if (mode !== 'sector-acceptance' || env.VITE_SECTOR_ROTATION_ACCEPTANCE !== 'true') return html
-      return html.replace('<title>NewsMonitor · 实时热榜聚合</title>', '<title>板块轮动临时验收 · 测试数据</title>')
+      return html.replace('<title>Finance Monitor · 全市场研究终端</title>', '<title>板块轮动临时验收 · 测试数据</title>')
         .replace('<!-- build metadata -->', '<meta name="description" content="临时验收环境，全部为合成测试数据，不代表真实市场信号。" />\n    <meta name="robots" content="noindex,nofollow" />')
     },
   }],

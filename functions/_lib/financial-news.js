@@ -15,7 +15,7 @@ export async function loadFeed(source,fetcher=fetch){
  if(QUERIES[source]){const u=new URL('https://ai-news-search.futunn.com/news_search');for(const [key,value] of Object.entries({keyword:QUERIES[source],size:'20',news_type:'1',lang:'zh-CN',sort_type:'2'}))u.searchParams.set(key,value);url=u.toString()}
  if(!url)throw Error('UNSUPPORTED_SOURCE')
  const referer=source.startsWith('futu_')?'https://news.futunn.com/main/live':source==='jin10'?'https://www.jin10.com/':source==='wallstreetcn'?'https://wallstreetcn.com/':'https://mktnews.net/'
- let text=await upstreamText(url,{fetcher,headers:{'User-Agent':QUERIES[source]?'futunn-news-search/0.0.4 (NewsMonitor)':'Mozilla/5.0','Accept':'application/json, text/javascript, */*','Accept-Language':'zh-CN,zh;q=0.9','Referer':referer}})
+ let text=await upstreamText(url,{fetcher,headers:{'User-Agent':QUERIES[source]?'futunn-news-search/0.0.4 (Finance Monitor)':'Mozilla/5.0','Accept':'application/json, text/javascript, */*','Accept-Language':'zh-CN,zh;q=0.9','Referer':referer}})
  if(source==='jin10')text=text.replace(/^\s*var\s+newest\s*=\s*/,'').replace(/;\s*$/,'')
  return JSON.parse(text)
 }

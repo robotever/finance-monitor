@@ -24,7 +24,7 @@ hithink_publisher = '--hithink-publisher' in arguments
 actions = [argument for argument in arguments if argument not in ('--allow-worktree', '--hithink-shadow', '--hithink-live','--hithink-publisher')]
 action = actions[0] if actions else '--prepare'
 repo, root = Path(repo_value).resolve(), Path(root_value).resolve()
-label = 'com.robot-ever.newsmonitor.market-dashboard' + ('.hithink-publisher' if hithink_publisher else '.hithink-live' if hithink_live else '.hithink-shadow' if hithink_shadow else '')
+label = 'com.robot-ever.finance-monitor.market-dashboard' + ('.hithink-publisher' if hithink_publisher else '.hithink-live' if hithink_live else '.hithink-shadow' if hithink_shadow else '')
 domain = f'gui/{os.getuid()}'
 job = f'{domain}/{label}'
 agents = Path.home() / 'Library/LaunchAgents'
@@ -52,7 +52,7 @@ def validate_checkout():
         raise ValueError('temporary worktree refused; use a stable checkout or explicitly --allow-worktree')
     required = [repo / 'tools/market_dashboard/job.py', repo / 'config/market-dashboard.json',
                 repo / 'ops/macos/run-market-dashboard.sh',
-                repo / 'ops/macos/com.robot-ever.newsmonitor.market-dashboard.plist', root / 'scripts/rotate_service_logs.py']
+                repo / 'ops/macos/com.robot-ever.finance-monitor.market-dashboard.plist', root / 'scripts/rotate_service_logs.py']
     if hithink_shadow or hithink_live or hithink_publisher:
         required.append(repo / 'tools/market_dashboard/hithink_job.py')
     if hithink_live or hithink_publisher:
@@ -112,7 +112,7 @@ try:
             fd = os.open(logs / name, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
             os.fchmod(fd, 0o600)
             os.close(fd)
-        template = repo / 'ops/macos/com.robot-ever.newsmonitor.market-dashboard.plist'
+        template = repo / 'ops/macos/com.robot-ever.finance-monitor.market-dashboard.plist'
         data = plistlib.loads(template.read_bytes())
         data['Label'] = label
         data['ProgramArguments'][1] = str(repo / 'ops/macos/run-market-dashboard.sh')

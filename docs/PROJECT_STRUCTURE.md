@@ -2,15 +2,15 @@
 
 ## 工作目录
 
-- 当前实现工作树：`/Users/robot_ever/.codex/worktrees/market-research-homepage/newsmonitor`。
-- 稳定 checkout：`/Users/robot_ever/Codex/Financial Knowledge Repository/newsmonitor`。
+- 当前实现工作树：`/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`。
+- 稳定 checkout：`/Users/robot_ever/Codex/Financial Knowledge Repository/finance-monitor`。
 
 两者共享项目历史，但提交实现不代表稳定 checkout 或服务已更新。私有 SQLite 位于运行根目录的 `data/market-dashboard/sector-history.sqlite3`，运行数据不提交 Git；供应商管理的股票 DuckDB 留在共享数据目录，通过官方 CLI 只读访问。
 
 ## 顶层目录
 
 ```text
-newsmonitor/
+finance-monitor/
 ├── src/                       # Vue 前端
 ├── functions/                 # Cloudflare Pages Functions
 ├── tools/market_dashboard/    # Python 采集、评分、影子运行与诊断

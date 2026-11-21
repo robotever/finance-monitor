@@ -13,7 +13,7 @@ before creating files or invoking launchctl. Linked worktrees and paths under
 because removing the worktree breaks its executable paths. The same flag is
 needed to disable or remove a job intentionally created from a worktree.
 From that checkout, set the Financial Knowledge Repository root explicitly when
-the checkout is not its direct `newsmonitor/` child:
+the checkout is not its direct `finance-monitor/` child:
 
 ```bash
 export MARKET_DASHBOARD_PROJECT_ROOT="/Users/robot_ever/Codex/Financial Knowledge Repository"
@@ -23,7 +23,7 @@ export MARKET_DASHBOARD_PYTHON="$(command -v python3)"
 ```
 
 Preparation validates the existing `scripts/rotate_service_logs.py` path, writes
-`~/Library/LaunchAgents/com.robot-ever.newsmonitor.market-dashboard.plist` with
+`~/Library/LaunchAgents/com.robot-ever.finance-monitor.market-dashboard.plist` with
 mode 0600, and creates `logs/market-dashboard/` with mode 0700 and private logs.
 Both the wrapper and installer reject symlinks at `logs` and
 `logs/market-dashboard` before creating/chmodding files; individual log files

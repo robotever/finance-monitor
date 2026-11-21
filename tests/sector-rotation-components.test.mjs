@@ -222,7 +222,7 @@ test('ordinary and shadow HTML retain default metadata even with the acceptance 
       const ordinary = await createServer({ mode, server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' })
       try {
         const html = await ordinary.transformIndexHtml('/', readFileSync(new URL('../index.html', import.meta.url), 'utf8'))
-        assert.match(html, /<title>NewsMonitor · 实时热榜聚合<\/title>/)
+        assert.match(html, /<title>Finance Monitor · 全市场研究终端<\/title>/)
         assert.ok(!html.includes('noindex'))
         const module = await ordinary.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
         const rendered = await renderToString(createSSRApp({ render: () => h(module.default) }))

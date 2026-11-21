@@ -1,8 +1,8 @@
-# NewsMonitor Project Documentation Implementation Plan
+# Finance Monitor Project Documentation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 建立可持续维护的 NewsMonitor 项目文档体系，并校正当前状态说明。
+**Goal:** 建立可持续维护的 Finance Monitor 项目文档体系，并校正当前状态说明。
 
 **Architecture:** README 只负责导航和快速开始；按职责拆分架构、目录、数据源、开发和状态文档；运行细节继续由现有运维手册负责，历史设计与验证记录继续作为证据。所有状态陈述使用日期快照，并区分生产、验收、影子和规划。
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a NewsMonitor homepage that converts Wind, MX, FRED, and official-source inputs into versioned 0–100 strength, heat, and risk scores for the global environment, A-share market, six styles, and 35 Wind level-2 industries.
+**Goal:** Build a Finance Monitor homepage that converts Wind, MX, FRED, and official-source inputs into versioned 0–100 strength, heat, and risk scores for the global environment, A-share market, six styles, and 35 Wind level-2 industries.
 
 **Architecture:** A macOS-local Python job collects and scores source data every 15 minutes, then publishes one validated dashboard payload to authenticated Cloudflare Pages Functions backed by D1. The Vue frontend reads only the processed payload and short score history; raw credentials and provider responses remain local.
 

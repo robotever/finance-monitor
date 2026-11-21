@@ -18,7 +18,7 @@ class LivePublishTests(unittest.TestCase):
             seen.append(request)
             self.assertTrue(context.check_hostname)
             self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
-            self.assertEqual(request.get_header('User-agent'),'NewsmonitorMarketDashboard/1.0')
+            self.assertEqual(request.get_header('User-agent'),'FinanceMonitorMarketDashboard/1.0')
             self.assertEqual(request.full_url,'https://newsmonitor.pages.dev/api/sector-live/publish')
             return io.BytesIO(b'{"ok":true}')
         self.assertTrue(LiveTransport('test-token',opener=opener)({'action':'health'})['ok'])
