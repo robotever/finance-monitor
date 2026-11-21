@@ -39,4 +39,4 @@ Files: src/components/FixedMarketCharts.vue, src/features/market-watch/*, functi
 - [x] Fresh whole-change independent review; fix important findings.
 - [x] Browser desktop/mobile verify page, chart switching, news timestamp ordering, expiry/error states, sector link.
 - [x] Update changelog, ops and actual evidence including source limitations.
-- [ ] Build production, preserve static sector fallback, deploy existing Cloudflare project and verify real URLs, push dev branch.
+- [x] Build production, preserve static sector fallback, deploy existing Cloudflare project and verify real URLs, push dev branch.
