@@ -1,59 +1,16 @@
 <template>
-  <div>
-  <nav class="home-primary-nav" aria-label="看板导航">
-    <a class="sector-entry-card" href="/sectors/research">
-      <span class="sector-entry-card__copy"><strong>板块研究看板</strong><span>行业与概念 · 历史轮动 · 强度 / 机会 / 风险 · 成分股涨幅榜</span><small>交易时段每15分钟更新 · 采集时间以板块页面为准</small></span>
-      <span class="sector-entry-card__action">进入板块看板 →</span>
-    </a>
-  </nav>
-  <main class="home-layout">
-    <div class="home-content">
-      <MarketResearchDashboard :show-sectors="false" />
-      <DebtRiskDashboard />
-      <div class="news-grid">
-      <div
-        v-for="source in NEWS_SOURCES"
-        :key="source.id"
-        class="news-grid__item"
-      >
-        <NewsCard
-          :source="source"
-          :data="store.getNews(source.id)"
-          @refresh="store.fetchSource(source.id)"
-        />
-      </div>
-      <div class="news-grid__footer">
-        NewsMonitor · 每5分钟自动刷新
-      </div>
-      </div>
-    </div>
-
-  <aside class="home-ticker">
-    <VerticalTicker />
-  </aside>
-  </main>
-  </div>
+ <div class="research-home">
+  <section class="home-intro"><div><p class="eyebrow">MARKET INTELLIGENCE / 全市场观察</p><h1>看清市场，连接线索<span class="intro-dot">.</span></h1><p class="home-intro__subtitle">全球价格联动 · 行业与概念 · 最新财经事件</p></div><a class="sector-entry" href="/sectors/research"><span class="sector-entry__icon">↗</span><div><strong>板块研究看板</strong><span>强度 / 机会 / 风险 · 历史轮动</span></div><b>进入 →</b></a></section>
+  <main class="home-layout"><div class="home-content"><FixedMarketCharts/><MarketResearchDashboard :show-sectors="false"/><details class="home-research-detail terminal-panel"><summary><span>跨市场风险监测</span><small>债务 · 信用 · 利率环境</small><span>展开研究 ↓</span></summary><DebtRiskDashboard/></details><section class="source-reading" aria-labelledby="source-reading-title"><header class="section-heading"><div><p class="eyebrow">READING DESK</p><h2 id="source-reading-title">资讯阅读 <span>按来源 · 每源最多10条</span></h2></div><span>深度文章不混入实时快讯</span></header><div class="news-grid"><NewsCard v-for="source in NEWS_SOURCES" :key="source.id" :source="source" :data="store.getNews(source.id)" @refresh="store.fetchSource(source.id)"/></div></section><footer class="home-footer"><span>NEWSMONITOR / 市场研究工作台</span><span>快讯每60秒检查 · 来源阅读每5分钟检查</span></footer></div><aside class="home-ticker"><VerticalTicker/></aside></main>
+ </div>
 </template>
-
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useNewsStore } from '@/stores/news'
-import { NEWS_SOURCES } from '@/api/sources'
+import {useNewsStore} from '@/stores/news'
+import {NEWS_SOURCES} from '@/api/sources'
 import NewsCard from '@/components/NewsCard.vue'
 import VerticalTicker from '@/components/VerticalTicker.vue'
+import FixedMarketCharts from '@/components/FixedMarketCharts.vue'
 import DebtRiskDashboard from '@/components/DebtRiskDashboard.vue'
 import MarketResearchDashboard from '@/components/MarketResearchDashboard.vue'
-
-const store = useNewsStore()
-onMounted(() => { store.fetchAll(); store.startAutoRefresh() })
+const store=useNewsStore()
 </script>
-
-<style scoped>
-.home-primary-nav{padding:12px 12px 0}
-.sector-entry-card{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 22px;border:2px solid #40b8ce;border-radius:12px;background:linear-gradient(110deg,#103744,#102330 75%);box-shadow:0 5px 22px #0004;color:#e6f9ff;text-decoration:none}
-.sector-entry-card:hover{border-color:#8de8f6;background:#123b49;color:#fff}
-.sector-entry-card:focus-visible{outline:3px solid #fff;outline-offset:3px}
-.sector-entry-card__copy{display:grid;gap:6px}.sector-entry-card strong{font-size:23px;line-height:1.3}.sector-entry-card__copy>span{font-size:13px;color:#b6dce8}.sector-entry-card small{font-size:11px;color:#8eafbc}
-.sector-entry-card__action{flex-shrink:0;padding:13px 20px;border-radius:8px;background:#65d8e9;color:#062633;font-size:15px;font-weight:700}
-@media(max-width:600px){.home-primary-nav{padding:8px 8px 0}.sector-entry-card{padding:15px;align-items:stretch;flex-direction:column;gap:12px}.sector-entry-card strong{font-size:21px}.sector-entry-card__copy>span{font-size:12px;line-height:1.6}.sector-entry-card__action{text-align:center}}
-</style>

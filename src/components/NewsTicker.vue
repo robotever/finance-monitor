@@ -1,56 +1,21 @@
 <template>
-  <div v-if="items.length" style="
-    background:#040d14; border-bottom:1px solid #0e2030;
-    display:flex; align-items:center; overflow:hidden; height:20px;
-  ">
-    <div style="
-      flex-shrink:0; padding:0 8px; height:100%; display:flex; align-items:center;
-      background:#c0392b; color:#fff; font-size:10px; font-weight:700; letter-spacing:0.5px;
-    ">LIVE</div>
-    <div style="flex:1; overflow:hidden; position:relative;">
-      <div
-        ref="tickerRef"
-        style="display:flex; align-items:center; gap:24px; white-space:nowrap; will-change:transform;"
-        :style="{ transform: `translateX(${offset}px)` }"
-        @mouseenter="paused = true"
-        @mouseleave="paused = false"
-      >
-        <template v-for="(item, i) in doubled" :key="i">
-          <a :href="item.url" target="_blank" rel="noopener" style="
-            font-size:11px; color:#7ab8e0; text-decoration:none;
-            display:flex; align-items:center; gap:5px;
-          ">
-            <span :style="{ color: item.sourceColor, fontWeight: 600 }">{{ item.source }}</span>
-            <span style="color:#4a8aaa;">{{ item.title }}</span>
-          </a>
-          <span style="color:#0e2a3a; font-size:10px;">●</span>
-        </template>
-      </div>
+ <section class="news-tape" aria-label="最新财经快讯">
+  <span class="news-tape__label"><i class="status-dot"/> 快讯</span>
+  <div class="news-tape__window" :class="{'is-static':paused}" @mouseenter="hovered=true" @mouseleave="hovered=false" @focusin="focused=true" @focusout="focused=false">
+   <div v-if="items.length" class="news-tape__track" :class="{'is-paused':paused||hovered||focused}" :style="{'--tape-duration':`${Math.max(90,items.slice(0,20).reduce((n,i)=>n+i.title.length,0)*.32)}s`}">
+    <div v-for="copy in 2" :key="copy" class="news-tape__group" :aria-hidden="copy===2?true:undefined">
+     <a v-for="item in items.slice(0,20)" :key="item.id" :href="item.url" target="_blank" rel="noopener noreferrer" :tabindex="copy===2?-1:0"><time>{{ time(item.publishedAt) }}</time><span class="news-tape__source">{{item.sourceName}}</span><span>{{item.title}}</span></a>
     </div>
+   </div>
+   <span v-else class="news-tape__empty">{{loading?'正在连接财经快讯…':'最近2小时暂无新快讯'}}<template v-if="error"> · {{error}}</template></span>
   </div>
+  <button type="button" class="quiet-button" :aria-pressed="paused" :aria-label="paused?'播放顶部快讯':'暂停顶部快讯'" @click="paused=!paused">{{paused?'播放':'暂停'}}</button>
+ </section>
 </template>
-
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { TickerItem } from '@/types'
-
-const props = defineProps<{ items: TickerItem[] }>()
-const tickerRef = ref<HTMLElement | null>(null)
-const offset = ref(0)
-const paused = ref(false)
-let raf: number
-
-const doubled = computed(() => [...props.items, ...props.items])
-
-function animate() {
-  if (!paused.value && tickerRef.value) {
-    offset.value -= 0.6
-    const half = tickerRef.value.scrollWidth / 2
-    if (Math.abs(offset.value) >= half) offset.value = 0
-  }
-  raf = requestAnimationFrame(animate)
-}
-
-onMounted(() => { raf = requestAnimationFrame(animate) })
-onUnmounted(() => cancelAnimationFrame(raf))
+import {ref} from 'vue'
+import type {LiveNewsItem} from '@/features/live-news/model.mjs'
+defineProps<{items:LiveNewsItem[];loading?:boolean;error?:string}>()
+const paused=ref(false),hovered=ref(false),focused=ref(false)
+const time=(ms:number)=>new Date(ms).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'})
 </script>

@@ -1,10 +1,9 @@
-<template>
-  <div style="min-height:100vh; background:#07111a;">
-    <AppHeader />
-    <RouterView />
-  </div>
-</template>
-
+<template><div class="app-shell"><AppHeader/><RouterView/></div></template>
 <script setup lang="ts">
+import {onMounted,onUnmounted} from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import {useNewsStore} from '@/stores/news'
+const store=useNewsStore()
+onMounted(()=>{void store.fetchAll();void store.fetchLive();store.startAutoRefresh()})
+onUnmounted(()=>store.stopAutoRefresh())
 </script>

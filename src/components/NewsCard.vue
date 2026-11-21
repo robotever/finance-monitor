@@ -6,7 +6,7 @@
         <span :style="{
           display:'inline-flex', alignItems:'center', justifyContent:'center',
           width:'16px', height:'16px', borderRadius:'2px',
-          background: source.color, color:'#fff', fontSize:'9px', fontWeight:700,
+          background: '#16394c', color:'#8bd3e6', fontSize:'9px', fontWeight:700,
           flexShrink:0,
         }">{{ source.icon }}</span>
         <span>{{ source.name }}</span>
@@ -14,7 +14,7 @@
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
         <span v-if="data.updatedAt && !data.loading" style="font-size:10px; color:#667;">
-          {{ timeAgo(data.updatedAt) }}
+          读取 {{ timeAgo(data.updatedAt) }}
         </span>
         <button @click="$emit('refresh')" style="
           background:none; border:none; cursor:pointer; color:#667; font-size:11px; padding:0 2px;

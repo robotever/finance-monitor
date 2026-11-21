@@ -30,7 +30,7 @@ export async function loadNewsSource(sourceId: string): Promise<NewsData> {
   }
   const fetcher = FETCHERS[sourceId]
   if (!fetcher) {
-    return { source: sourceId, items: limitNewsItems(getMockItems(sourceId)), updatedAt: Date.now(), loading: false }
+    return { source: sourceId, items: [], updatedAt: 0, loading: false, error: '未配置信源' }
   }
   try {
     const items = await fetcher()

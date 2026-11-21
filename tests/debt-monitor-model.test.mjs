@@ -45,7 +45,7 @@ test('deriveDebtDashboard calculates European spreads and a warning state', () =
     IRLTLT01DEM156N: [{ date: '2026-10-01', value: 2.6 }],
     IRLTLT01FRM156N: [{ date: '2026-10-01', value: 3.45 }],
     IRLTLT01ITM156N: [{ date: '2026-10-01', value: 4.1 }],
-  })
+  }, new Date('2026-11-12T00:00:00Z'))
 
   assert.equal(dashboard.europe.franceGermanySpread.value, 85)
   assert.equal(dashboard.europe.italyGermanySpread.value, 150)
@@ -77,7 +77,7 @@ test('deriveDebtDashboard flags severe credit and sovereign stress as alert', ()
     IRLTLT01DEM156N: [{ date: '2026-10-01', value: 2.5 }],
     IRLTLT01FRM156N: [{ date: '2026-10-01', value: 4.0 }],
     IRLTLT01ITM156N: [{ date: '2026-10-01', value: 4.8 }],
-  })
+  }, new Date('2026-11-12T00:00:00Z'))
 
   assert.equal(dashboard.status, 'alert')
   assert.equal(dashboard.label, '警戒')
