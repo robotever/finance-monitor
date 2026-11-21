@@ -27,3 +27,5 @@ button,a{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-vi
 .live-rail__window.is-static .live-rail__track{animation:none;transform:none}.live-rail__window.is-static .live-rail__group:nth-child(2){display:none}.news-tape__window.is-static{overflow-x:auto;mask-image:none}.news-tape__window.is-static .news-tape__track{animation:none;transform:none}.news-tape__window.is-static .news-tape__group:nth-child(2){display:none}
 
 .live-story.is-important{border-left:2px solid #64d4ed;padding-left:10px}.live-story__meta>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* A deliberate play choice overrides reduced motion only for this ticker. */
+@media(prefers-reduced-motion:reduce){.live-rail__track.motion-allowed{animation:rail-flow var(--rail-duration,150s) linear infinite!important}.live-rail__track.motion-allowed.is-paused{animation-play-state:paused!important}.live-rail__track.motion-allowed .live-rail__group:nth-child(2){display:block}.live-rail__window.is-playing{overflow:hidden}}
