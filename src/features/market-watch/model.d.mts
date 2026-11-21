@@ -9,3 +9,5 @@ export function chartGeometry(points:{time:string;price:number}[],previousClose:
 export function parseDaily(data:unknown,code:string,now?:number):MarketQuote
 
 export function parseDollar(quoteText:string,historyText:string,now?:number):MarketQuote
+
+export function visibleChartPoints<T>(points:T[],zoom?:number):T[]

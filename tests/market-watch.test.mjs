@@ -49,3 +49,12 @@ test('weekend quotes are clearly closed rather than only delayed',()=>{
  const d=parseDollar('var hq_str_DINIW="05:59:00,103.8404,103.8404,103.9423,3813,103.9573,103.9618,103.5805,103.8404,美元指数,2026-11-21";','var _data=("2026-11-19,103.8,103.5,104,103.9423,|2026-11-20,103.9,103.5,104,103.8404");',Date.parse('2026-11-21T04:00Z'))
  assert.equal(d.status,'closed')
 })
+
+test('chart zoom keeps latest observations and supports resetting full range',async()=>{
+ const {visibleChartPoints}=await import('../src/features/market-watch/model.mjs')
+ const points=Array.from({length:40},(_,i)=>({time:String(i),price:i+1}))
+ assert.deepEqual(visibleChartPoints(points,1),points)
+ assert.deepEqual(visibleChartPoints(points,2),points.slice(-20))
+ assert.deepEqual(visibleChartPoints(points,4),points.slice(-10))
+ assert.deepEqual(visibleChartPoints(points.slice(0,2),4),points.slice(0,2))
+})

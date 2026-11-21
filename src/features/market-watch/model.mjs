@@ -54,3 +54,5 @@ export function parseDollar(quoteText,historyText,now=Date.now()){
  if(points.length<2||!(price>0)||!(previousClose>0)||!Number.isFinite(Date.parse(observedAt))||Date.parse(observedAt)>now+60000)throw Error('INVALID_QUOTE')
  return {price,previousClose,changePercent:Math.round((price/previousClose-1)*10000)/100,marketDate:points.at(-1).time,observedAt,points,status:weekendClosed(now)?'closed':'delayed',provider:'新浪财经 · DINIW 日线 / 报价可能延迟',fetchedAt:now}
 }
+
+export function visibleChartPoints(points,zoom=1){return points.slice(-Math.max(2,Math.ceil(points.length/Math.max(1,zoom))))}

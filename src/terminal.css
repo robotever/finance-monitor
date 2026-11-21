@@ -28,3 +28,5 @@ button,a{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-vi
 
 .live-story.is-important{border-left:2px solid #64d4ed;padding-left:10px}.live-story__meta>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .news-category-tabs{display:flex;gap:3px;padding:7px 10px;border-bottom:1px solid var(--terminal-border);flex-wrap:wrap}.news-category-tabs button{padding:4px 6px;border:1px solid transparent;border-radius:4px;background:none;color:#8ea9bf;font-size:10px;cursor:pointer}.news-category-tabs button.active{border-color:#32677b;background:#12364a;color:#8ce2f5}.news-category-tabs small{font-size:9px;opacity:.7}.live-story__category{display:inline;font-size:9px;font-weight:500;color:#73b9cd;margin-right:5px}
+
+.chart-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:8px 0 12px}.chart-controls button{border:1px solid #2b5269;border-radius:5px;background:#123045;color:#b4d8e9;padding:6px 10px;font-size:11px;cursor:pointer}.chart-controls button:disabled{opacity:.4;cursor:default}.chart-controls span{font-size:10px;color:#8ba3bb;margin-left:auto}.tradingview-host>div{height:100%;width:100%}
