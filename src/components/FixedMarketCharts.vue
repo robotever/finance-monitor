@@ -21,7 +21,8 @@
 <script setup lang="ts">
 import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue'
 import {INSTRUMENTS,chartGeometry,chartX,widgetConfig,type MarketQuote} from '@/features/market-watch/model.mjs'
-const selected=ref('shanghai'),active=computed(()=>INSTRUMENTS.find(i=>i.id===selected.value)!),quote=ref<MarketQuote|null>(null),loading=ref(false),error=ref(''),widgetError=ref(false),widgetHost=ref<HTMLElement|null>(null),hoverIndex=ref<number|null>(null)
+const requested=new URLSearchParams(window.location.search).get('watch')
+const selected=ref(INSTRUMENTS.some(i=>i.id===requested)?requested!:'shanghai'),active=computed(()=>INSTRUMENTS.find(i=>i.id===selected.value)!),quote=ref<MarketQuote|null>(null),loading=ref(false),error=ref(''),widgetError=ref(false),widgetHost=ref<HTMLElement|null>(null),hoverIndex=ref<number|null>(null)
 const geometry=computed(()=>quote.value?chartGeometry(quote.value.points,quote.value.previousClose,active.value.session):null)
 const hoverPoint=computed(()=>hoverIndex.value===null?null:quote.value?.points[hoverIndex.value]),hoverX=computed(()=>hoverIndex.value===null?10:active.value.session==='daily'?10+hoverIndex.value/Math.max(1,quote.value!.points.length-1)*920:chartX(quote.value!.points[hoverIndex.value]!.time,active.value.session))
 let interval:ReturnType<typeof setInterval>,controller:AbortController|undefined,widgetTimer:ReturnType<typeof setTimeout>|undefined,observer:MutationObserver|undefined
@@ -41,6 +42,6 @@ async function renderWidget(){
 }
 function tabKey(e:KeyboardEvent,id:string){if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const n=INSTRUMENTS.findIndex(i=>i.id===id),index=e.key==='Home'?0:e.key==='End'?7:(n+(e.key==='ArrowRight'?1:7))%8;selected.value=INSTRUMENTS[index]!.id;void nextTick(()=>document.getElementById('watch-tab-'+selected.value)?.focus())}
 watch(selected,async()=>{controller?.abort();clearTimeout(widgetTimer);observer?.disconnect();quote.value=null;hoverIndex.value=null;error.value='';if(active.value.provider!=='tradingview')await loadQuote();else await renderWidget()})
-onMounted(()=>{void loadQuote();interval=setInterval(()=>{if(!document.hidden)void loadQuote()},60000)})
+onMounted(()=>{if(active.value.provider==='tradingview')void renderWidget();else void loadQuote();interval=setInterval(()=>{if(!document.hidden)void loadQuote()},60000)})
 onUnmounted(()=>{clearInterval(interval);clearTimeout(widgetTimer);controller?.abort();observer?.disconnect()})
 </script>

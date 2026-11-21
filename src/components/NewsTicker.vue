@@ -4,7 +4,7 @@
   <div class="news-tape__window" :class="{'is-static':paused}" @mouseenter="hovered=true" @mouseleave="hovered=false" @focusin="focused=true" @focusout="focused=false">
    <div v-if="items.length" class="news-tape__track" :class="{'is-paused':paused||hovered||focused}" :style="{'--tape-duration':`${Math.max(90,items.slice(0,20).reduce((n,i)=>n+i.title.length,0)*.32)}s`}">
     <div v-for="copy in 2" :key="copy" class="news-tape__group" :aria-hidden="copy===2?true:undefined">
-     <a v-for="item in items.slice(0,20)" :key="item.id" :href="item.url" target="_blank" rel="noopener noreferrer" :tabindex="copy===2?-1:0"><time>{{ time(item.publishedAt) }}</time><span class="news-tape__source">{{item.sourceName}}</span><span>{{item.title}}</span></a>
+     <a v-for="item in items.slice(0,20)" :key="item.id" :href="item.url" target="_blank" rel="noopener noreferrer" :tabindex="copy===2?-1:0"><time>{{ time(item.publishedAt) }}</time><span class="news-tape__source">{{item.sourceName}}</span><span><template v-if="item.categoryLabel">[{{item.categoryLabel}}] </template>{{item.title}}</span></a>
     </div>
    </div>
    <span v-else class="news-tape__empty">{{loading?'正在连接财经快讯…':'最近2小时暂无新快讯'}}<template v-if="error"> · {{error}}</template></span>
