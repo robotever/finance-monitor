@@ -58,3 +58,10 @@ test('chart zoom keeps latest observations and supports resetting full range',as
  assert.deepEqual(visibleChartPoints(points,4),points.slice(-10))
  assert.deepEqual(visibleChartPoints(points.slice(0,2),4),points.slice(0,2))
 })
+
+test('seven approved instruments use exact TradingView symbols with supported default periods',()=>{
+ const expected={shanghai:['SSE:000001','D'],chinext:['SZSE:399006','15'],hstech:['HSI:HSTECH','D'],gold:['OANDA:XAUUSD','15'],oil:['TVC:USOIL','15'],dollar:['INDEX:DXY','D'],cnh:['FX_IDC:USDCNH','15']}
+ for(const [id,[symbol,interval]] of Object.entries(expected)){assert.equal(widgetConfig(id).symbol,symbol);assert.equal(widgetConfig(id).interval,interval);assert.equal(widgetConfig(id).hide_top_toolbar,false)}
+ assert.throws(()=>widgetConfig('nasdaq'))
+ assert.equal(INSTRUMENTS.find(i=>i.id==='shanghai').provider,'tencent')
+})

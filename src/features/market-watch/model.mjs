@@ -1,16 +1,16 @@
 export const INSTRUMENTS=[
- {id:'shanghai',name:'上证指数',code:'sh000001',provider:'tencent',unit:'点',description:'上证综合指数 · 人民币'},
- {id:'chinext',name:'创业板指',code:'sz399006',provider:'tencent',unit:'点',description:'创业板价格指数 · 人民币'},
- {id:'hstech',name:'恒生科技',code:'hkHSTECH',provider:'tencent',session:'hongkong',description:'恒生科技指数 · 港元 · 行情可能延迟'},
+ {id:'shanghai',symbol:'SSE:000001',chartInterval:'D',name:'上证指数',code:'sh000001',provider:'tencent',unit:'点',description:'上证综合指数 · 人民币'},
+ {id:'chinext',symbol:'SZSE:399006',name:'创业板指',code:'sz399006',provider:'tencent',unit:'点',description:'创业板价格指数 · 人民币'},
+ {id:'hstech',symbol:'HSI:HSTECH',chartInterval:'D',name:'恒生科技',code:'hkHSTECH',provider:'tencent',session:'hongkong',description:'恒生科技指数 · 港元 · 行情可能延迟'},
  {id:'nasdaq',name:'纳斯达克',code:'us.IXIC',provider:'tencent',session:'daily',description:'纳斯达克综合指数 · 60交易日日线 · 行情可能延迟'},
  {id:'gold',name:'黄金',symbol:'OANDA:XAUUSD',provider:'tradingview',description:'OANDA 黄金现货 / 美元 · 美元/盎司'},
  {id:'oil',name:'原油',symbol:'TVC:USOIL',provider:'tradingview',description:'WTI 原油 CFD · 美元/桶'},
- {id:'dollar',name:'美元指数',provider:'sina',session:'daily',description:'美元指数 DINIW · 60交易日日线 · 行情可能延迟'},
+ {id:'dollar',symbol:'INDEX:DXY',chartInterval:'D',name:'美元指数',provider:'sina',session:'daily',description:'美元指数 DINIW · 60交易日日线 · 行情可能延迟'},
  {id:'cnh',name:'离岸人民币',symbol:'FX_IDC:USDCNH',provider:'tradingview',description:'美元 / 离岸人民币 · 人民币/美元'},
 ]
 export function widgetConfig(id){
  const i=INSTRUMENTS.find(i=>i.id===id);if(!i?.symbol)throw Error('UNSUPPORTED_INSTRUMENT')
- return {autosize:true,symbol:i.symbol,interval:'15',timezone:'Asia/Shanghai',theme:'dark',style:'2',locale:'zh_CN',allow_symbol_change:false,hide_side_toolbar:true,hide_top_toolbar:false,save_image:false,calendar:false,hide_volume:true,backgroundColor:'#0b1626',gridColor:'rgba(110,145,180,0.08)',support_host:'https://www.tradingview.com'}
+ return {autosize:true,symbol:i.symbol,interval:i.chartInterval??'15',timezone:'Asia/Shanghai',theme:'dark',style:'2',locale:'zh_CN',allow_symbol_change:false,hide_side_toolbar:true,hide_top_toolbar:false,save_image:false,calendar:false,hide_volume:true,backgroundColor:'#0b1626',gridColor:'rgba(110,145,180,0.08)',support_host:'https://www.tradingview.com'}
 }
 export function parseMinute(data,code,now=Date.now()){
  const row=data?.data?.[code],day=row?.data?.date,quote=row?.qt?.[code]

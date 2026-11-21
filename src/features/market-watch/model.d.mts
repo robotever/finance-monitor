@@ -1,4 +1,4 @@
-export interface Instrument {id:string;name:string;code?:string;symbol?:string;provider:string;unit?:string;description:string;session?:string}
+export interface Instrument {id:string;name:string;code?:string;symbol?:string;chartInterval?:string;provider:string;unit?:string;description:string;session?:string}
 export interface MarketQuote {price:number;previousClose:number;changePercent:number;marketDate:string;observedAt:string;points:{time:string;price:number}[];status:string;provider:string;fetchedAt:number}
 export const INSTRUMENTS:Instrument[]
 export function widgetConfig(id:string):Record<string,unknown>
