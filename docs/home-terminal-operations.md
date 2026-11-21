@@ -71,3 +71,7 @@ TradingView实际测试：HSI:HSTECH仅日线、NASDAQ:IXIC与TVC:DXY等代码�
 用户指出同一浏览器旧版正常后，对照8e18ff8确认：旧版使用requestAnimationFrame逐帧设置transform；新版换为CSS animation并新增减少动画/焦点暂停规则，导致行为改变。前述“浏览器设置导致”不能作为根因结论，根因是本项目改版引入的不一致。
 
 现恢复requestAnimationFrame，按实际帧间隔30px/s推进（等效旧版60Hz每帧0.5px），后台间隔最多计100ms以避免恢复时大跳；一份列表高度取模实现循环。默认播放，不读取此前误加的motion偏好，不修改浏览器或系统设置。保留显式按钮暂停与悬停暂停，移除焦点持续暂停及右侧CSS动画/减少动画覆盖。单帧算法测试覆盖60/144Hz一致、循环和后台恢复；两种系统动画偏好下均应无需点击即滚动。
+
+## 2026-11-21 跨市场风险监控第一版
+
+旧FRED债务面板已由独立云端跨市场模块替换，默认展开，直达 `/#cross-market-risk`。六组证据使用Cboe/美财政部/联储与现有腾讯/新浪历史，不依赖Mac采集。接口 `/api/cross-market/risk`、模型 `cross-market-risk-v1`；日/周频按实际观测日期展示，每5分钟核验。规则/局限与数据源见 [方法](cross-market-risk-methodology.md)，真实数据和故障验证见 [验收](verification/2026-11-21-cross-market-risk.md)。
