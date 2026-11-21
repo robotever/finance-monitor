@@ -1,8 +1,7 @@
 <template>
  <section class="live-rail terminal-panel" aria-labelledby="live-rail-title">
-  <header class="terminal-panel__header"><div><p class="eyebrow">LIVE INTELLIGENCE</p><h2 id="live-rail-title">财经快讯 <i class="status-dot"/></h2></div><button type="button" class="quiet-button" :aria-pressed="paused" @click="paused=!paused">{{paused?'播放滚动':'暂停滚动'}}</button></header>
-  <div class="live-rail__status"><span>最近2小时 · {{store.tickerItems.length}}条</span><button type="button" class="quiet-button" :disabled="store.liveLoading" @click="store.fetchLive()">{{store.liveLoading?'更新中':'刷新快讯'}}</button></div>
-  <nav class="news-category-tabs" aria-label="快讯分类"><button v-for="tab in categoryTabs" :key="tab.id" type="button" :aria-pressed="store.selectedNewsCategory===tab.id" :class="{active:store.selectedNewsCategory===tab.id}" @click="store.selectedNewsCategory=tab.id">{{tab.label}} <small>{{tab.id==='all'?store.allTickerItems.length:store.categoryCounts[tab.id]}}</small></button></nav>
+  <header class="terminal-panel__header"><h2 id="live-rail-title">财经快讯</h2><div class="live-rail__actions"><button type="button" class="quiet-button" :disabled="store.liveLoading" @click="store.fetchLive()">{{store.liveLoading?'更新中':'刷新'}}</button><button type="button" class="quiet-button" :aria-pressed="paused" @click="paused=!paused">{{paused?'播放':'暂停'}}</button></div></header>
+  <nav class="news-category-tabs" aria-label="快讯分类"><button v-for="tab in categoryTabs" :key="tab.id" type="button" :aria-pressed="store.selectedNewsCategory===tab.id" :class="{active:store.selectedNewsCategory===tab.id}" @click="store.selectedNewsCategory=tab.id">{{tab.label}}</button></nav>
   <p v-if="store.liveError" class="live-rail__notice" role="status">{{store.liveError}}</p>
   <div v-if="store.tickerItems.length" class="live-rail__window" :class="{'is-static':paused}" @mouseenter="hovered=true" @mouseleave="hovered=false">
    <div ref="trackRef" class="live-rail__track" :style="{transform:`translateY(${paused?0:offset}px)`}">
@@ -11,8 +10,8 @@
     </div>
    </div>
   </div>
-  <div v-else class="terminal-empty" role="status"><i class="status-dot"/><h3>{{store.liveLoading?'正在连接快讯源':store.selectedNewsCategory==='all'?'最近2小时暂无财经快讯':'当前分类暂无新快讯'}}</h3><p>{{store.selectedNewsCategory==='market'?'休市或未出现有效异动时保持空白。':'新消息会自动出现，不使用旧新闻填充。'}}</p></div>
-  <footer class="live-rail__footer"><span>北京时间 · 60秒检查 · {{paused?'已暂停':hovered?'悬停暂停':'滚动中'}}</span><details><summary>通道 {{store.liveHealthyCount}} / {{store.liveSources.length||7}}</summary><p v-for="source in store.liveSources" :key="source.id">{{source.name}} · {{source.status==='ok'?'已连接':source.status==='empty'?'暂无数据':'暂不可用'}}<template v-if="source.note"> · {{source.note}}</template><template v-if="source.newestAt"> · 最新 {{time(source.newestAt)}}</template></p><p v-if="store.liveCheckedAt">最近检查 {{time(store.liveCheckedAt)}}</p></details></footer>
+  <div v-else class="terminal-empty" role="status"><i class="status-dot"/><h3>{{store.liveLoading?'正在连接快讯源':store.selectedNewsCategory==='all'?'最近2小时暂无财经快讯':'当前分类暂无新快讯'}}</h3></div>
+  <footer class="live-rail__footer"><details><summary>来源状态</summary><p v-for="source in store.liveSources" :key="source.id">{{source.name}} · {{source.status==='ok'?'已连接':source.status==='empty'?'暂无数据':'暂不可用'}}<template v-if="source.note"> · {{source.note}}</template><template v-if="source.newestAt"> · 最新 {{time(source.newestAt)}}</template></p><p v-if="store.liveCheckedAt">最近检查 {{time(store.liveCheckedAt)}}</p></details></footer>
  </section>
 </template>
 <script setup lang="ts">

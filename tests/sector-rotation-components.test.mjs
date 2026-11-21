@@ -102,7 +102,7 @@ test('production rotation build exposes real observation beta while retaining re
     const module = await production.ssrLoadModule('/src/components/MarketResearchDashboard.vue')
     const html = await renderToString(createSSRApp({ render: () => h(module.default) }))
     assert.match(html, /data-environment="sector-observation"/)
-    assert.match(html, /真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号/)
+    assert.doesNotMatch(html, /真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号/)
     const { acceptanceFetch } = await import('../src/features/market-dashboard/acceptance.mjs')
     let networkCalls = 0
     globalThis.fetch = async (...args) => { networkCalls++; return acceptanceFetch(...args) }

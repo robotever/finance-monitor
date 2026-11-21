@@ -1,9 +1,8 @@
 <template>
   <section class="market-dashboard fv-card" aria-labelledby="market-dashboard-title" :aria-busy="loading" :data-environment="acceptanceEnabled ? 'sector-acceptance' : productionObservationEnabled ? 'sector-observation' : undefined">
     <div v-if="acceptanceEnabled" class="sector-acceptance-banner" role="note">临时验收环境 · 全部为测试数据 · 不代表真实市场信号</div>
-    <div v-if="productionObservationEnabled" class="sector-acceptance-banner" role="note">真实数据观察期 · 评分方法尚未完成历史验证 · 不构成交易信号</div>
     <header class="market-dashboard__header">
-      <div><div class="market-dashboard__eyebrow">MARKET RESEARCH / 全市场研究</div><h2 id="market-dashboard-title">市场研究雷达 <span>{{ props.showSectors === false ? '全局环境 · A股市场 · 风格观察' : acceptanceEnabled ? '临时验收 · 测试数据' : productionObservationEnabled ? '真实数据观察 · 板块强度 · 机会 · 风险' : v3Active ? '影子预览 · 板块强度 · 机会 · 风险' : 'v0.1 / 试运行 · 强度 · 热度 · 风险' }}</span></h2></div>
+      <h2 id="market-dashboard-title">市场研究雷达</h2>
       <button type="button" class="market-button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新研究数据' }}</button>
     </header>
     <div class="market-status" aria-live="polite">
@@ -12,7 +11,6 @@
         <span>{{ dashboard.session === 'close' ? '收盘确认' : '盘中快照' }}</span>
         <span :class="{ 'market-badge is-missing': dashboard.dataStatus.completeness < 70 }">完整度 {{ dashboard.dataStatus.completeness }}%<template v-if="dashboard.dataStatus.completeness < 70"> · 证据不足</template></span>
         <span class="market-badge" :class="{ 'is-stale': dashboard.freshness.stale }">{{ dashboard.freshness.label }}</span>
-        <span class="market-status__version">{{ v3Active ? v3Latest?.schemaVersion : dashboard.schemaVersion }} / {{ dashboard.scoringVersion }}</span>
       </template>
       <span v-else>{{ loading ? '正在读取最新研究快照…' : '等待有效研究快照' }}</span>
     </div>
@@ -44,7 +42,6 @@
       <div v-else-if="!loading" class="market-empty"><h3>研究面板等待首次有效数据</h3><p>全局环境、A 股与风格观察将在快照可用后显示。</p><button class="market-button" type="button" @click="refresh">重新读取</button></div>
     </div>
     <SectorRotationDetail v-if="props.showSectors !== false && v3Active && !v4Active" :open="detailOpen" :acceptance-environment="acceptanceEnabled" :detail="detailView" :name="detailName" :loading="detailLoading" :error="detailError" :observations="detailPayload?.history" :selected-cell="selectedCell" :selected-axis="rotationSelection.axis" @close="closeDetail" />
-    <footer class="market-dashboard__footer"><span>统一评分 0–100 · 高强度不等于低风险</span><span>缺失项以 — 表示 · 研究参考，非买卖建议</span></footer>
   </section>
 </template>
 <script setup lang="ts">
