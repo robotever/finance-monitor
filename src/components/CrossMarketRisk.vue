@@ -1,6 +1,7 @@
 <template>
  <section id="cross-market-risk" class="cross-risk terminal-panel" aria-label="跨市场风险监控" :aria-busy="loading">
   <ModuleHeader title="跨市场风险监控" :time-text="latestDate?`最新观测 · ${latestDate}`:undefined" :datetime="latestDate||undefined" time-title="各序列发布频率不同，具体数据日期见指标" :loading="loading" @refresh="refresh"/>
+  <LocalDataNote :status="dashboard?.localStatus"/>
   <div class="cross-risk__body">
   <header class="cross-risk__overview">
    <div><p v-if="dashboard" class="cross-risk__summary">{{dashboard.summary}}</p><p v-else>{{loading?'正在核验跨市场数据…':'暂未取得有效风险数据'}}</p><div v-if="dashboard" class="cross-risk__coverage"><span>{{dashboard.assessable}}/{{dashboard.total}}项可评估</span><span v-if="dashboard.stressCount" class="risk-tone-stress">{{dashboard.stressCount}}项压力</span><span v-if="dashboard.watchCount" class="risk-tone-watch">{{dashboard.watchCount}}项升温</span><span v-if="dashboard.unknownCount">{{dashboard.unknownCount}}项待核验</span><span v-if="dashboard.sourceErrors">{{dashboard.sourceErrors}}个数据源未更新</span></div></div>
@@ -36,6 +37,7 @@
 </template>
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,shallowRef} from 'vue'
+import LocalDataNote from './LocalDataNote.vue'
 import ModuleHeader from './ModuleHeader.vue'
 import {RISK_VERSION,RULES,type Metric,type Point,type RiskCard,type RiskModel} from '@/features/cross-market-risk/model.mjs'
 const dashboard=shallowRef<RiskModel|null>(null),loading=ref(false),error=ref('')

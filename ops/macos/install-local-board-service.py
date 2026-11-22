@@ -13,7 +13,7 @@ import time
 from urllib.request import build_opener,ProxyHandler
 
 LABEL='com.robot-ever.finance-monitor.local-board'
-URL='http://127.0.0.1:5184/__hithink-preview'
+URL='http://127.0.0.1:5184/'
 APP_NAME='Finance Monitor 本地看板.app'
 
 
@@ -30,7 +30,7 @@ def desktop_launcher(repo,python):
 
 
 def is_local_board_html(content):
-    return b'/@id/virtual:hithink-preview' in content
+    return b'/@id/virtual:hithink-preview' in content or b'/src/main.ts' in content and b'Finance Monitor' in content
 
 
 def ready():
@@ -75,8 +75,8 @@ def install(repo):
         "登录 Mac 后服务自动运行，关闭浏览器不会停止服务。\n\n"
         f"备用地址：{URL}\n"
         "可以将这个地址加入浏览器书签；仅适用于这台 Mac。\n\n"
-        "目前提供板块研究、历史轮动、评分与成分股详情。\n"
-        "数据以页面时间为准：网络中断时可以查看已采集的数据；新闻和完整首页尚未做成本地版。\n"
+        "本地完整首页包括全球联动、市场研究雷达、跨市场风险、财经快讯和板块研究。\n"
+        "数据以页面时间为准：网络中断时可以查看已采集的数据；海外来源可能受网络影响；离线数据会标明保存时间，过期新闻只放入存档。\n"
         "如果入口未打开，可以稍后再次双击。后台日志在用户资源库的 Logs/Finance Monitor 文件夹中。\n")
     write(home/'Desktop/Finance Monitor 本地说明.txt',note.encode())
     domain=f'gui/{os.getuid()}'

@@ -41,3 +41,6 @@ data/market-dashboard/sector-live-collector.lock
 # Private browser verification artifacts
 .playwright-cli/
 output/playwright/
+
+# Private complete local homepage source caches
+data/local-home/

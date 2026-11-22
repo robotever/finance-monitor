@@ -2,12 +2,15 @@
 
 Finance Monitor 是一个面向个人研究流程的金融市场首页，整合实时财经新闻、全球债务风险、A 股市场状态、行业／概念雷达和板块轮动研究。
 
+- 本地完整首页：[本机入口](http://127.0.0.1:5184/)（[打开与维护说明](docs/local-board-access.md)）
 - 生产页面：[Finance Monitor](https://newsmonitor.pages.dev/)
 - 代码仓库：[robotever/finance-monitor](https://github.com/robotever/finance-monitor)
-- 首页：全球联动图表、财经快讯与市场研究雷达
+- 首页：全球联动图表、财经快讯与市场研究雷达；新增[沪深300 ETF资金观察与比例历史图](docs/csi300-etf-observation.md)
 - 板块研究：同花顺行业/概念评分、历史轮动与成分股；Mac采集计算，Cloudflare D1发布派生结果
 
 > 本项目提供研究辅助信息，不构成投资建议。评分、阈值和权重仍是待回测的研究假设。
+
+开发交付要求：功能修改必须同时更新本地版与线上版，并分别验证实际运行页面；详见 [开发规范](docs/DEVELOPMENT.md)。
 
 ## 主要能力
 

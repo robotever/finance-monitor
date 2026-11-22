@@ -17,4 +17,5 @@ class LocalBoardServiceTests(unittest.TestCase):
   self.assertNotIn('codex ',script)
  def test_readiness_bypasses_proxy_and_rejects_unrelated_listener(self):
   self.assertTrue(module.is_local_board_html(b'<script src="/@id/virtual:hithink-preview"></script>'))
+  self.assertTrue(module.is_local_board_html(b'<title>Finance Monitor</title><script src="/src/main.ts"></script>'))
   self.assertFalse(module.is_local_board_html(b'<html>other app</html>'))

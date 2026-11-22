@@ -52,6 +52,11 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--etf-observation' in arguments:
+        arguments.remove('--etf-observation')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.etf_observation_job', *arguments], os.environ)
     if '--radar-inputs' in arguments:
         arguments.remove('--radar-inputs')
         os.chdir(repo)

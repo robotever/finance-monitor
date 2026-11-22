@@ -80,6 +80,10 @@ errors. Weekdays are an approximation unless `schedule.tradingDates` is present
 in the checkout's versioned config; supply the same calendar for job and health
 before relying on holiday suppression.
 
-## 本地备用板块页
+## 完整本地备用首页
 
-使用`python3 ops/macos/install-local-board-service.py --install`安装登录后自动运行的回环网页服务及桌面 **Finance Monitor 本地看板.app**。桌面入口可自行恢复服务，无需Codex在线。仅本机可访问，不改采集器。打开方式与维护见[本地使用说明](../../docs/local-board-access.md)。
+使用`python3 ops/macos/install-local-board-service.py --install`安装登录后自动运行的回环网页服务及桌面 **Finance Monitor 本地看板.app**。桌面入口可自行恢复服务，无需Codex在线。打开 `http://127.0.0.1:5184/`，包含全球联动、雷达、跨市场风险、新闻与板块研究。直接公开源及本机缓存支持无代理访问；断网保留原时间，失效风险不显示常态。仅本机可访问，不改采集器。打开方式与维护见[本地使用说明](../../docs/local-board-access.md)。
+
+## ETF资金观察日频服务
+
+`python3 ops/macos/install-etf-observation-service.py --enable` 安装独立的 `com.robot-ever.finance-monitor.etf-observation`。每30分钟唤醒，上海9–23点检查；完整同日数据复用，失败按小时重试，次日确认前一日份额。源与方法见 [ETF观察](../../docs/csi300-etf-observation.md)。不修改原板块及雷达评分服务。

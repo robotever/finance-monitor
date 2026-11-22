@@ -23,6 +23,7 @@ export interface NewsSource {
 }
 
 export interface NewsData {
+  cached?: boolean
   source: string
   items: NewsItem[]
   updatedAt: number
