@@ -15,9 +15,9 @@
 - Publishing must retain existing static sector archive and generation. No browser credentials.
 
 ## Tasks
-- [ ] Source probes: official SSE+SZSE shares, NAV history and ordinary circulating cap history; save normalized private inputs.
-- [ ] Model: tests first for alignment, units, 1/5/20 windows, split safety, missing values and payload validation; implement src/features/etf-observation/model.mjs and types.
-- [ ] Producer/transport: tests for strict fixed identities, cache/date validation, auth, stale-write rejection. New isolated D1 table + functions API, local route and scheduled producer, no existing writes.
-- [ ] UI: observation table + adjacent SVG chart, ranges/crosshair/zoom/fullscreen; share module refresh, error/cached dates, mobile compact layout.
-- [ ] Run model/API/full Node tests, production build and independent review; fix findings.
-- [ ] Collect real history, install automatic daily updates, validate actual local5184, preserve archive then preview/deploy production and validate actual online. Record both outcomes, update docs and changelog, sync source.
+- [x] Source probes: official SSE+SZSE shares, NAV history and ordinary circulating cap history; save normalized private inputs.
+- [x] Model: tests first for alignment, units, 1/5/20 windows, split safety, missing values and payload validation; implement src/features/etf-observation/model.mjs and types.
+- [x] Producer/transport: tests for strict fixed identities, cache/date validation, auth, stale-write rejection. New isolated D1 table + functions API, local route and scheduled producer, no existing writes.
+- [x] UI: observation table + adjacent SVG chart, ranges/crosshair/zoom/fullscreen; share module refresh, error/cached dates, mobile compact layout.
+- [x] Run model/API/full Node tests, production build and independent review; fix findings.
+- [x] Collect real history, install automatic daily updates, validate actual local5184, preserve archive then preview/deploy production and validate actual online. Record both outcomes, update docs and changelog, sync source.
