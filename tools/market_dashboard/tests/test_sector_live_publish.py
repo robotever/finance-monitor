@@ -35,6 +35,14 @@ class LivePublishTests(unittest.TestCase):
         for key in keys:(root/(key+'.json')).write_text(json.dumps({'value':key}))
         return manifest,root
 
+    def test_explicit_equal_observation_replacement_is_forwarded_only_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp);self.fixture(path);calls=[]
+            publish_export(path,lambda body:calls.append(body),checkpoint=path/'checkpoint.json',expected_active_generation='b'*64)
+            self.assertEqual(calls[-1],dict(action='activate',generation='a'*64,expectedActiveGeneration='b'*64))
+            with self.assertRaisesRegex(ValueError,'INVALID_EXPECTED_GENERATION'):
+                publish_export(path,lambda body:None,checkpoint=path/'checkpoint.json',expected_active_generation='invalid')
+
     def test_complete_deterministic_preparation_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp);manifest,root=self.fixture(path)

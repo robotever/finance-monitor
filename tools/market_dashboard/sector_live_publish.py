@@ -63,7 +63,8 @@ def prepare_documents(directory):
         digest=digest('\n'.join(digests).encode()),documents=documents)
 
 
-def publish_export(directory,transport,*,checkpoint,max_workers=2):
+def publish_export(directory,transport,*,checkpoint,max_workers=2,expected_active_generation=None):
+    if expected_active_generation is not None and not re.fullmatch('[0-9a-f]{64}',expected_active_generation):raise ValueError('INVALID_EXPECTED_GENERATION')
     started=time.monotonic()
     prepared=prepare_documents(directory);generation=prepared['generation']
     checkpoint=Path(checkpoint)
@@ -96,7 +97,9 @@ def publish_export(directory,transport,*,checkpoint,max_workers=2):
         for future in futures:future.cancel()
         raise
     finally:pool.shutdown(wait=True,cancel_futures=True)
-    transport(dict(action='activate',generation=generation))
+    activation=dict(action='activate',generation=generation)
+    if expected_active_generation is not None:activation['expectedActiveGeneration']=expected_active_generation
+    transport(activation)
     state.pop('lastFailedParts',None);state['activated']=True;_atomic(checkpoint,state)
     return dict(generation=generation,sourceGeneration=prepared['manifest'].get('sourceGeneration',generation),documents=prepared['documentCount'],parts=len(prepared['documents']),
         requests=len(batches)+2,elapsedSeconds=time.monotonic()-started,

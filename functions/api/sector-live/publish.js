@@ -43,10 +43,11 @@ export async function onRequestPost({request,env}) {
    return jsonResponse({ok:true,generation:body.generation},inserted?201:200)
   }
   check(body.action==='activate')
+  if(body.expectedActiveGeneration!==undefined)check(HEX.test(body.expectedActiveGeneration))
   const {results:documents}=await db.prepare('SELECT document_key,digest FROM sector_live_documents WHERE generation=? ORDER BY document_key').bind(body.generation).all()
   validateKeys(documents);check(await sha(new TextEncoder().encode(documents.map(d=>`${d.document_key}:${d.digest}`).join('\n')))===generation.digest,'DIGEST_MISMATCH')
   await db.batch([
-   db.prepare('INSERT INTO sector_live_active(id,generation,observed_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,observed_at=excluded.observed_at WHERE excluded.observed_at>sector_live_active.observed_at').bind(body.generation,generation.observed_at),
+   db.prepare('INSERT INTO sector_live_active(id,generation,observed_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,observed_at=excluded.observed_at WHERE excluded.observed_at>sector_live_active.observed_at OR (excluded.observed_at=sector_live_active.observed_at AND sector_live_active.generation=?)').bind(body.generation,generation.observed_at,body.expectedActiveGeneration??null),
    db.prepare('UPDATE sector_live_generations SET activated_at=COALESCE(activated_at,?) WHERE generation=? AND EXISTS(SELECT 1 FROM sector_live_active WHERE generation=?)').bind(new Date().toISOString(),body.generation,body.generation),
   ])
   const active=await db.prepare('SELECT generation FROM sector_live_active WHERE id=1').first();check(active?.generation===body.generation,'STALE_GENERATION')

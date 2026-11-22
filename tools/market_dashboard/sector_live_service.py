@@ -133,7 +133,12 @@ def run_service(args,*,collector=run_hithink_cycle,exporter=None,transport=None,
                     '--state-root',str(root),'--output-root',str(directory),*options],cwd=BASE,check=True,
                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=360)
         if isinstance(transport,LiveTransport):transport.deadline=time.monotonic()+540
-        result=publish_export(directory,transport,checkpoint=checkpoint)
+        # A new full baseline and its equivalent first daily projection share the
+        # same source observation. Require that exact baseline to still be active.
+        replacement=generation if storage_mode=='daily-v1' and settings.get('historyBaseGeneration')==generation else None
+        publish_options={'checkpoint':checkpoint}
+        if replacement is not None:publish_options['expected_active_generation']=replacement
+        result=publish_export(directory,transport,**publish_options)
         # Pointer activation is idempotent; publisher checkpoint advances only afterwards.
         publication_health(transport,'publication','success')
         if collection_failed:publication_health(transport,'collection','failed','COLLECTION_FAILED')
