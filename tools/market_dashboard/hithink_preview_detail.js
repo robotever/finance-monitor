@@ -63,7 +63,7 @@ export default {
    h('section',[h('h3','数据质量与缺失'),grid([['总体完整度',number(point.completeness)+'%'],['有效历史样本',number(point.validCloses)+'个交易日'],['样本状态',point.coldStart?'冷启动／历史不足':'正常'],['改善证据',number(point.improvementEvidence)+'类'],['成分关系',point.membershipMode==='current_members_backfill'?'当前成分回填历史':'当天成分快照'],['活跃状态',({cold:'冷',neutral:'中性',warming:'升温',active:'活跃',crowded:'拥挤'})[point.heatState]??'暂未判定']]),
     h('p',{class:'preview-meta'},'完整度表示输入覆盖，不是预测成功率。历史重建即使使用当天成分，也不等于当时已可获得。'),
     missing.length?h('p',{class:'preview-missing'},'缺失说明：'+missing.join('、')+'。缺失不补零，按现有规则降低完整度或使相关分项不可用。'):h('p',{class:'preview-meta'},'当前记录没有报告缺失项。')]),
-   h('details',{class:'preview-notes'},[h('summary','评分拆解 · 查看分项和覆盖率'),h('p','分项分为归一化后的 0–100 分，不是原始涨幅。名义权重来自当前评分配置；缺失会影响有效权重，机会分另有改善证据门槛，不能把名义权重简单相乘当作最终贡献。'),...breakdown(point,props.detail.scoringWeights)]),
+   h('details',{class:'preview-notes'},[h('summary','评分拆解 · 查看分项和覆盖率'),h('p',props.detail.sectorScoringVersion==='sector-score-v0.4'?'分项为归一化0–100分。机会分以历史价格位置60%为基础，广度15%、动量10%、参与度10%、相对转折5%加分；位置越低得分越高，改善证据仅作说明、不再封顶69分。必要历史和覆盖不足仍留空。价格低位不等于估值便宜，也不代表已经企稳。':'分项为归一化0–100分；这是旧版机会评分，含改善证据门槛。缺失会影响有效权重。'),...breakdown(point,props.detail.scoringWeights)]),
    h('details',{class:'preview-notes'},[h('summary','历史对比 · '+history.length+'个交易日'),h('div',{class:'preview-table-scroll'},h('table',{class:'preview-table'},[h('thead',h('tr',['日期','涨幅','强度','机会','风险'].map(t=>h('th',t)))),h('tbody',historyRows)]))]),
    h('details',{class:'preview-notes'},[h('summary','技术字段（排查用）'),h('pre',JSON.stringify(point,null,2))])
   ]))

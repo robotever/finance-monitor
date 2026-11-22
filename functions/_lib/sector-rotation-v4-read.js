@@ -7,7 +7,7 @@ const versionColumns = ['schema_version', 'scoring_version', 'universe_version',
 // Every public read joins the manifest and pins the complete version tuple.
 const active = `m.status='active' AND ${versionColumns.map(k => `m.${k}=?`).join(' AND ')}`
 const versionValues = Object.values(V4_VERSIONS)
-const joined = 'sector_rotation_v4_sectors s JOIN sector_rotation_v4_manifests m ON m.batch_id=s.batch_id'
+const joined = 'sector_rotation_v04_sectors s JOIN sector_rotation_v04_manifests m ON m.batch_id=s.batch_id'
 const chronological = 'm.observed_at DESC, m.batch_id DESC'
 
 export function parseV4Query(request, kind) {
@@ -122,7 +122,7 @@ async function readCatalog(db,m,q) {
 async function readHistory(db,m,q) {
   const value=q.axis==='return1d'?"CASE WHEN json_type(s.row_json,'$.metrics.return1d') IN ('integer','real') THEN json_extract(s.row_json,'$.metrics.return1d') END":`s.${q.axis}`
   const rank=q.axis==='return1d'?`CASE WHEN (${value}) IS NOT NULL THEN ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY (${value}) DESC,s.sector_id) END`:`s.${q.axis}_rank`
-  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND (m.official_close=1 OR m.market_date=?) AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.sector_id,s.sector_name,${value} AS axis_value,${rank} AS axis_rank,json_object('membershipMode',json_extract(s.row_json,'$.membershipMode')) AS row_json,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.market_date,m.observed_at,q.days,...versionValues,q.universe).all()
+  const result = await db.prepare(`WITH chosen AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v04_manifests m WHERE ${active} AND (m.official_close=1 OR m.market_date=?) AND m.observed_at<=?), days AS (SELECT batch_id,market_date FROM chosen WHERE ordinal=1 ORDER BY market_date DESC LIMIT ?) SELECT s.sector_id,s.sector_name,${value} AS axis_value,${rank} AS axis_rank,json_object('membershipMode',json_extract(s.row_json,'$.membershipMode')) AS row_json,m.market_date FROM ${joined} JOIN days d ON d.batch_id=m.batch_id WHERE ${active} AND s.universe=? ORDER BY s.sector_id,m.market_date`).bind(...versionValues,m.market_date,m.observed_at,q.days,...versionValues,q.universe).all()
   if (!result.results.length) return null
   const dates = [...new Set(result.results.map(r => r.market_date))].sort().reverse(), grouped = new Map()
   for (const r of result.results) { if (!grouped.has(r.sector_id)) grouped.set(r.sector_id,{id:r.sector_id,name:r.sector_name,values:new Map()}); grouped.get(r.sector_id).values.set(r.market_date,{marketDate:r.market_date,score:r.axis_value,rank:r.axis_rank}) }
@@ -134,21 +134,21 @@ async function readDetail(db,m,q) {
   const result = await db.prepare(`
     WITH canonical AS (
       SELECT m.*, ROW_NUMBER() OVER (PARTITION BY m.observed_at ORDER BY ${chronological}) AS ordinal
-      FROM sector_rotation_v4_manifests m WHERE ${active} AND m.observed_at<=?
+      FROM sector_rotation_v04_manifests m WHERE ${active} AND m.observed_at<=?
     ), dates AS (
-      SELECT DISTINCT m.market_date FROM sector_rotation_v4_sectors s
+      SELECT DISTINCT m.market_date FROM sector_rotation_v04_sectors s
       JOIN canonical m ON m.batch_id=s.batch_id
       WHERE m.ordinal=1 AND s.universe=? AND s.sector_id=?
       ORDER BY m.market_date DESC LIMIT ?
     )
     SELECT s.*,m.observed_at,m.market_date,m.session,m.official_close
-    FROM sector_rotation_v4_sectors s JOIN canonical m ON m.batch_id=s.batch_id
+    FROM sector_rotation_v04_sectors s JOIN canonical m ON m.batch_id=s.batch_id
     JOIN dates d ON d.market_date=m.market_date
     WHERE m.ordinal=1 AND s.universe=? AND s.sector_id=?
     ORDER BY m.observed_at
   `).bind(...versionValues,m.observed_at,q.universe,q.id,q.days,q.universe,q.id).all()
   if (!result.results.length) return null
-  const closes = await db.prepare(`WITH ranked AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v4_manifests m WHERE ${active} AND m.official_close=1 AND m.market_date<?) SELECT m.market_date,s.strength,s.opportunity,s.risk FROM ranked m LEFT JOIN sector_rotation_v4_sectors s ON s.batch_id=m.batch_id AND s.universe=? AND s.sector_id=? WHERE m.ordinal=1 ORDER BY m.market_date DESC`).bind(...versionValues,m.market_date,q.universe,q.id).all()
+  const closes = await db.prepare(`WITH ranked AS (SELECT m.batch_id,m.market_date,ROW_NUMBER() OVER (PARTITION BY m.market_date ORDER BY ${chronological}) AS ordinal FROM sector_rotation_v04_manifests m WHERE ${active} AND m.official_close=1 AND m.market_date<?) SELECT m.market_date,s.strength,s.opportunity,s.risk FROM ranked m LEFT JOIN sector_rotation_v04_sectors s ON s.batch_id=m.batch_id AND s.universe=? AND s.sector_id=? WHERE m.ordinal=1 ORDER BY m.market_date DESC`).bind(...versionValues,m.market_date,q.universe,q.id).all()
   const priorFor = date => closes.results.find(r => r.market_date < date)
   // The current observation uses the same derived dynamic membership as catalog/latest.
   // Historical observations retain their published role evidence.

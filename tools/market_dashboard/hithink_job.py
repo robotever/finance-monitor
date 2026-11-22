@@ -508,7 +508,7 @@ def run_hithink_cycle(args,deps=None):
         return HithinkJobResult('failed',bucket.key if bucket else None,code)
 
 
-_VERSIONS={'schemaVersion':'market-dashboard-v4','sectorScoringVersion':'sector-score-v0.3',
+_VERSIONS={'schemaVersion':'market-dashboard-v4','sectorScoringVersion':'sector-score-v0.4',
     'sectorUniverseVersion':'sector-universe-ths-v1','featureVersion':'sector-features-ths-v1',
     'membershipVersion':'sector-membership-ths-v1'}
 _PUBLIC_FIELDS=('id','name','universe','strength','opportunity','risk','completeness','ranks',

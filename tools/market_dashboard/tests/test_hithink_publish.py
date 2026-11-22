@@ -8,7 +8,7 @@ class HithinkPublishTests(unittest.TestCase):
         return dict(id=f'885{i:03}.TI',name='示例概念',universe='concept',strength=55,opportunity=44,risk=33,
             completeness=80,ranks={'strength':i+1,'opportunity':i+1,'risk':i+1},heatState=None,
             coldStart=False,validCloses=250,improvementEvidence=2,membershipMode='point_in_time_snapshot',
-            missing=[],schemaVersion='market-dashboard-v4',sectorScoringVersion='sector-score-v0.3',
+            missing=[],schemaVersion='market-dashboard-v4',sectorScoringVersion='sector-score-v0.4',
             sectorUniverseVersion='sector-universe-ths-v1',featureVersion='sector-features-ths-v1',
             membershipVersion='sector-membership-ths-v1',_rawScores={'strength':55.111},
             members=['private member'],metrics={'return1d':.01},namePrivate='/Users/private')

@@ -1,4 +1,4 @@
-export const VERSIONS = Object.freeze({schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'})
+export const VERSIONS = Object.freeze({schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.4',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'})
 export const AXES = ['strength','opportunity','risk']
 export const HISTORY_AXES = ['return1d',...AXES]
 export function formatHistoryValue(value,axis) {

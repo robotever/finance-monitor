@@ -1,6 +1,6 @@
 import { authorized, jsonResponse, errorResponse } from './market-dashboard.js'
 
-export const V4_VERSIONS = Object.freeze({schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'})
+export const V4_VERSIONS = Object.freeze({schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.4',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'})
 export const V4_MAX_BYTES = 131072
 const axes = ['strength','opportunity','risk']
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -62,11 +62,11 @@ export async function v4PublishRequest(request,env,action) {
  }
 }
 export const requireBatch = p => {check(shape(p,['batchId'])&&batchId(p.batchId));return p.batchId}
-export async function getV4Manifest(db,id) {return db.prepare('SELECT * FROM sector_rotation_v4_manifests WHERE batch_id = ?').bind(id).first()}
+export async function getV4Manifest(db,id) {return db.prepare('SELECT * FROM sector_rotation_v04_manifests WHERE batch_id = ?').bind(id).first()}
 export async function createV4Manifest(p,db) {
  validateV4Manifest(p)
  const serialized=JSON.stringify(Object.fromEntries(Object.keys(p).sort().map(k=>[k,p[k]])))
- const result=await db.prepare(`INSERT INTO sector_rotation_v4_manifests
+ const result=await db.prepare(`INSERT INTO sector_rotation_v04_manifests
  (batch_id,observed_at,market_date,session,official_close,schema_version,scoring_version,universe_version,feature_version,membership_version,industry_count,concept_count,chunk_count,digest,manifest_json,created_at)
  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(batch_id) DO NOTHING`).bind(p.batchId,p.observedAt,p.marketDate,p.session,p.officialClose?1:0,p.schemaVersion,p.sectorScoringVersion,p.sectorUniverseVersion,p.featureVersion,p.membershipVersion,p.industryCount,p.conceptCount,p.chunkCount,p.digest,serialized,new Date().toISOString()).run()
  const stored=await getV4Manifest(db,p.batchId)
@@ -82,15 +82,15 @@ export async function uploadV4Chunk(p,db) {
  check(p.index<m.chunk_count)
  const manifest=validateV4Manifest(JSON.parse(m.manifest_json));rows.forEach(r=>validateV4Row(r,manifest))
  check(new Set(rows.map(r=>r.universe+':'+r.id)).size===rows.length)
- const old=await db.prepare('SELECT * FROM sector_rotation_v4_chunks WHERE batch_id=? AND chunk_index=?').bind(p.batchId,p.index).first()
+ const old=await db.prepare('SELECT * FROM sector_rotation_v04_chunks WHERE batch_id=? AND chunk_index=?').bind(p.batchId,p.index).first()
  if(old){if(old.digest!==p.digest||old.rows_json!==p.rowsJson)throw Error('BATCH_CONFLICT');return jsonResponse({ok:true,duplicate:true})}
  if(m.status!=='staging')throw Error('BATCH_CONFLICT')
- const overlap=await db.prepare('SELECT sector_id,universe FROM sector_rotation_v4_sectors WHERE batch_id=?').bind(p.batchId).all()
+ const overlap=await db.prepare('SELECT sector_id,universe FROM sector_rotation_v04_sectors WHERE batch_id=?').bind(p.batchId).all()
  if(overlap.results.some(s=>rows.some(r=>r.id===s.sector_id&&r.universe===s.universe)))throw Error('BATCH_CONFLICT')
- const statements=[db.prepare('INSERT INTO sector_rotation_v4_chunks(batch_id,chunk_index,digest,row_count,rows_json) VALUES(?,?,?,?,?)').bind(p.batchId,p.index,p.digest,rows.length,p.rowsJson)]
- for(const r of rows)statements.push(db.prepare(`INSERT INTO sector_rotation_v4_sectors(batch_id,chunk_index,universe,sector_id,sector_name,strength,opportunity,risk,completeness,strength_rank,opportunity_rank,risk_rank,row_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(p.batchId,p.index,r.universe,r.id,r.name,r.strength,r.opportunity,r.risk,r.completeness,r.ranks.strength,r.ranks.opportunity,r.ranks.risk,JSON.stringify(r)))
+ const statements=[db.prepare('INSERT INTO sector_rotation_v04_chunks(batch_id,chunk_index,digest,row_count,rows_json) VALUES(?,?,?,?,?)').bind(p.batchId,p.index,p.digest,rows.length,p.rowsJson)]
+ for(const r of rows)statements.push(db.prepare(`INSERT INTO sector_rotation_v04_sectors(batch_id,chunk_index,universe,sector_id,sector_name,strength,opportunity,risk,completeness,strength_rank,opportunity_rank,risk_rank,row_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(p.batchId,p.index,r.universe,r.id,r.name,r.strength,r.opportunity,r.risk,r.completeness,r.ranks.strength,r.ranks.opportunity,r.ranks.risk,JSON.stringify(r)))
  try {await db.batch(statements)}catch(error){
-  const retry=await db.prepare('SELECT digest,rows_json FROM sector_rotation_v4_chunks WHERE batch_id=? AND chunk_index=?').bind(p.batchId,p.index).first()
+  const retry=await db.prepare('SELECT digest,rows_json FROM sector_rotation_v04_chunks WHERE batch_id=? AND chunk_index=?').bind(p.batchId,p.index).first()
   if(retry?.digest===p.digest&&retry.rows_json===p.rowsJson)return jsonResponse({ok:true,duplicate:true})
   if(retry || /constraint|BATCH_FROZEN/i.test(error.message))throw Error('BATCH_CONFLICT')
   throw error
@@ -101,7 +101,7 @@ export async function activateV4Manifest(p,db) {
  const id=requireBatch(p),m=await getV4Manifest(db,id);if(!m)throw Error('BATCH_CONFLICT')
  if(m.status==='active')return jsonResponse({ok:true,duplicate:true})
  const manifest=validateV4Manifest(JSON.parse(m.manifest_json))
- const chunks=(await db.prepare('SELECT * FROM sector_rotation_v4_chunks WHERE batch_id=? ORDER BY chunk_index').bind(id).all()).results
+ const chunks=(await db.prepare('SELECT * FROM sector_rotation_v04_chunks WHERE batch_id=? ORDER BY chunk_index').bind(id).all()).results
  if(chunks.length!==m.chunk_count)throw Error('BATCH_CONFLICT')
  const identities=new Set();let industries=0,concepts=0
  for(const [index,c] of chunks.entries()){
@@ -112,12 +112,12 @@ export async function activateV4Manifest(p,db) {
  if(industries!==m.industry_count||concepts!==m.concept_count||await sha256(chunks.map(c=>c.digest).join('\n'))!==m.digest)throw Error('BATCH_CONFLICT')
  // Chunks/rows are append-only. Rechecking counts in this one atomic SQL statement
  // closes the gap between asynchronous digest validation and publication.
- const result=await db.prepare(`UPDATE sector_rotation_v4_manifests SET status='active',activated_at=?
+ const result=await db.prepare(`UPDATE sector_rotation_v04_manifests SET status='active',activated_at=?
  WHERE batch_id=? AND status='staging'
- AND (SELECT COUNT(*) FROM sector_rotation_v4_chunks WHERE batch_id=?)=chunk_count
- AND (SELECT SUM(row_count) FROM sector_rotation_v4_chunks WHERE batch_id=?)=industry_count+concept_count
- AND (SELECT COUNT(*) FROM sector_rotation_v4_sectors WHERE batch_id=? AND universe='industry')=industry_count
- AND (SELECT COUNT(*) FROM sector_rotation_v4_sectors WHERE batch_id=? AND universe='concept')=concept_count`).bind(new Date().toISOString(),id,id,id,id,id).run()
+ AND (SELECT COUNT(*) FROM sector_rotation_v04_chunks WHERE batch_id=?)=chunk_count
+ AND (SELECT SUM(row_count) FROM sector_rotation_v04_chunks WHERE batch_id=?)=industry_count+concept_count
+ AND (SELECT COUNT(*) FROM sector_rotation_v04_sectors WHERE batch_id=? AND universe='industry')=industry_count
+ AND (SELECT COUNT(*) FROM sector_rotation_v04_sectors WHERE batch_id=? AND universe='concept')=concept_count`).bind(new Date().toISOString(),id,id,id,id,id).run()
  if(!result.meta.changes&&(await getV4Manifest(db,id)).status!=='active')throw Error('BATCH_CONFLICT')
  return jsonResponse({ok:true,duplicate:!result.meta.changes})
 }

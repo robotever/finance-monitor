@@ -1,4 +1,4 @@
-"""Pure Hithink sector-score-v0.3 features, scoring and continuity.
+"""Pure Hithink sector-score-v0.4 features, scoring and continuity.
 
 No provider, filesystem, SQLite or clock calls. Daily mappings use the private
 store's snake_case names; returned score rows use the independent v4 public
@@ -19,12 +19,26 @@ from zoneinfo import ZoneInfo
 from collections import Counter
 
 from .rotation import (_combine, _difference, _finite, _leaf, _mean, _number,
-                       _percentile, _ratio, position_curve, rank_sector_scores)
+                       _percentile, _ratio, rank_sector_scores)
 
-SCORE_VERSION = 'sector-score-v0.3'
+SCORE_VERSION = 'sector-score-v0.4'
 UNIVERSE_VERSION = 'sector-universe-ths-v1'
 FEATURE_VERSION = 'sector-features-ths-v1'
 MEMBERSHIP_VERSION = 'sector-membership-ths-v1'
+
+
+def opportunity_position(percentile):
+    """Price-location attractiveness only; no reversal confirmation penalty."""
+    return 100.-percentile if _number(percentile) and not isinstance(percentile,bool) and 0<=percentile<=100 else None
+
+
+def opportunity_axis(components, valid_closes, settings):
+    axis=_combine(components,settings['weights']['opportunity'])
+    value=axis['value']
+    gates=settings['gates']
+    if valid_closes<gates['minimumCloses'] or axis['coverage']*100<gates['minimumOpportunityCompleteness']:
+        value=None
+    return value,axis['coverage']*100
 
 
 def validate_v4_config(config):
@@ -338,7 +352,7 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
     if m.get('strengthSlope5d') is None and len(past)>=5:
         delta=_difference(strength,past[-5].get('_rawScores',{}).get('strength'))
         m['strengthSlope5d']=delta/5 if delta is not None else None
-    combine('position',{key:_leaf(position_curve(m.get(key)),current.get('positionCoverage',{}).get(key[8:-1],1)) for key in settings['componentWeights']['position']})
+    combine('position',{key:_leaf(opportunity_position(m.get(key)),current.get('positionCoverage',{}).get(key[8:-1],1)) for key in settings['componentWeights']['position']})
     combine('breadthImprovement',{'delta5d':leaf('breadthDelta5d',breadth=True),
                                  'improvingDays':_leaf(m.get('breadthImprovingDays')/5*100 if _number(m.get('breadthImprovingDays')) else None,coverage)})
     combine('momentumImprovement',{key:leaf(key) for key in settings['componentWeights']['momentumImprovement']})
@@ -364,9 +378,7 @@ def score_v4_sector(current, prior_closes, universe_current, config, *, _prepare
     gates=settings['gates']
     evidence=sum(positive and _number(c[key]['value']) and c[key]['value']>=gates['improvementThreshold'] for key,positive in positives.items())
     valid=current.get('validCloses',len(past))
-    if raw['opportunity'] is not None:
-        if evidence<gates['requiredImprovementComponents']: raw['opportunity']=min(raw['opportunity'],gates['unconfirmedOpportunityCap'])
-        if valid<gates['minimumCloses'] or axes['opportunity']['coverage']*100<gates['minimumOpportunityCompleteness']: raw['opportunity']=None
+    raw['opportunity'],_=opportunity_axis(c,valid,settings)
     result={key:current[key] for key in ('id','name','universe','marketDate','session','observedAt','officialClose','availableAt') if key in current}
     heat=None; activity=m['participation']
     if _number(activity) and c['participation']['coverage']*100>=settings['heat']['minimumCompleteness']:

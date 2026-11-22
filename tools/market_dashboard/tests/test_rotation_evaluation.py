@@ -299,7 +299,7 @@ class HithinkEvaluationTests(unittest.TestCase):
         # the outcome is the official index and does not inherit membership bias.
         self.assertEqual(approx['horizons']['1']['validDates'],5)
         self.assertEqual(result['inputAudit']['membershipModes'],{'current_members_backfill':50,'point_in_time_snapshot':70})
-        self.assertEqual(result['versions']['sectorScoringVersion'],'sector-score-v0.3')
+        self.assertEqual(result['versions']['sectorScoringVersion'],'sector-score-v0.4')
 
     def test_v4_rejects_unknown_provenance_and_cross_version(self):
         c=json.loads(Path('config/hithink-sector-dashboard.json').read_text())

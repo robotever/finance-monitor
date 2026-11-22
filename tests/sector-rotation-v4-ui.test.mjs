@@ -5,7 +5,7 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { validateLatest, selectSectorAdapter, deriveBoard, buildHistoryMatrix, catalogQuery, formatHistoryValue } from '../src/features/sector-rotation-v4/model.mjs'
 import { loadHithinkLatest, loadHithinkCatalog } from '../src/features/sector-rotation-v4/api.mjs'
-const versions = {schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
+const versions = {schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.4',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
 const row = (n, universe='industry') => ({ id:`${universe==='industry'?'881':'885'}${String(n).padStart(3,'0')}.TI`,name:`测试板块${n}`,universe,strength:80,opportunity:70,risk:20,completeness:80,ranks:{strength:n+1,opportunity:n+1,risk:n+1},heatState:'active',coldStart:false,validCloses:60,improvementEvidence:2,membershipMode:'current_members_backfill',conceptRole:universe==='concept'?'core':null,missing:[],approximateHistory:true,change1d:{strength:null,opportunity:null,risk:null} })
 export const payload = () => ({...versions,batchId:'test',sourceMode:'hithink',observedAt:'2026-11-13T07:00:00.000Z',marketDate:'2026-11-13',session:'close',officialClose:true,membershipModes:['current_members_backfill'],approximateHistory:true,industry:Object.fromEntries(['potential','main','risk'].map(k=>[k,Array.from({length:10},(_,i)=>row(i))])),concept:{...Object.fromEntries(['potential','main','risk'].map(k=>[k,Array.from({length:10},(_,i)=>row(i,'concept'))])),core:Array.from({length:25},(_,i)=>row(i,'concept')),dynamic:Array.from({length:10},(_,i)=>({...row(i+25,'concept'),conceptRole:'dynamic'}))}})
 test('isolated v4 contract rejects wrong source, versions, excess lists, duplicated identities and missing scores',()=>{
@@ -42,7 +42,7 @@ test('history defaults to daily return and formats percentages separately from s
  try{app.mount({});assert.equal(state.axis.value,'return1d');assert.ok(requests[0].includes('axis=return1d'))}finally{app.unmount();globalThis.fetch=previous}
 })
 test('board renders all three industry lists, exact core/dynamic choices and provenance',async()=>{
- const {default:Board}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorBoard.vue');const html=await renderToString(createSSRApp({render:()=>h(Board,{latest:payload(),now:new Date('2026-11-16T09:00:00Z')})}));for(const text of ['行业90','潜在轮动','主线确认','风险升温','核心25','动态10','同花顺','sector-score-v0.3','当前成分','已过期','全部行业与概念'])assert.ok(html.includes(text),text);assert.equal((html.match(/data-industry-row=/g)||[]).length,30)
+ const {default:Board}=await server.ssrLoadModule('/src/components/sector-rotation/HithinkSectorBoard.vue');const html=await renderToString(createSSRApp({render:()=>h(Board,{latest:payload(),now:new Date('2026-11-16T09:00:00Z')})}));for(const text of ['行业90','潜在轮动','主线确认','风险升温','核心25','动态10','同花顺','sector-score-v0.4','当前成分','已过期','全部行业与概念'])assert.ok(html.includes(text),text);assert.equal((html.match(/data-industry-row=/g)||[]).length,30)
 })
 test('explorer resets page on search/filter and fetches literal full-universe page without fixture fallback',async()=>{
  const {default:Explorer}=await server.ssrLoadModule('/src/views/HithinkSectorExplorerView.vue')

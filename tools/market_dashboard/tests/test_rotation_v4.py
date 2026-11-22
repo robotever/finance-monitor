@@ -25,7 +25,7 @@ class V4ScoringTests(unittest.TestCase):
         c=config(); v4.validate_v4_config(c)
         self.assertEqual(c['scoring']['weights'], {
             'strength':dict(priceTrend=30,breadth=30,participation=20,persistence=20),
-            'opportunity':dict(position=25,breadthImprovement=25,momentumImprovement=20,participationWarming=15,relativeTurn=15),
+            'opportunity':dict(position=60,breadthImprovement=15,momentumImprovement=10,participationWarming=10,relativeTurn=5),
             'risk':dict(downsideDiffusion=30,trendDeterioration=25,divergence=20,crowding=15,concentration=10)})
         self.assertEqual(c['scoring']['componentWeights'], {
             'priceTrend':dict(return1d=20,return5d=45,return20d=35),
@@ -83,7 +83,7 @@ class V4ScoringTests(unittest.TestCase):
         history[-1]['metrics']['strengthRank']=None
         self.assertIsNone(v4.top_decile_continuity(history)['topDecileStreak'])
 
-    def test_opportunity_needs_two_independent_positive_changes(self):
+    def test_independent_positive_changes_are_audited_without_score_cap(self):
         indexes,breadth=panel(); f=v4.build_v4_features(indexes,breadth)
         # A high cross-sectional percentile of negative changes is not evidence.
         f['metrics'].update(breadthDelta5d=-.01,shortAcceleration=-1,mediumAcceleration=-1,
@@ -92,7 +92,7 @@ class V4ScoringTests(unittest.TestCase):
         peer['metrics'].update(breadthDelta5d=-1,shortAcceleration=-2,mediumAcceleration=-2)
         result=v4.score_v4_sector(f,[],[f,peer],config())
         self.assertEqual(result['improvementEvidence'],0)
-        self.assertLessEqual(result['opportunity'],69)
+        self.assertIsNotNone(result['opportunity'])
         f['metrics'].update(breadthDelta5d=.1,shortAcceleration=1,mediumAcceleration=1)
         peer=deepcopy(f); peer['id']='881002.TI'
         peer['metrics'].update(breadthDelta5d=-1,shortAcceleration=-2,mediumAcceleration=-2)

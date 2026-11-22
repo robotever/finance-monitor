@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-const migrations = ['0001_market_dashboard.sql','0002_sector_rotation.sql','0003_hithink_sector_rotation_v4.sql'].map(n=>new URL('../migrations/'+n,import.meta.url))
+const migrations = ['0001_market_dashboard.sql','0002_sector_rotation.sql','0003_hithink_sector_rotation_v4.sql','0007_sector_score_v04.sql'].map(n=>new URL('../migrations/'+n,import.meta.url))
 function database(t) {
   const directory = mkdtempSync(join(tmpdir(), 'rotation-d1-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
@@ -52,7 +52,7 @@ print(json.dumps(results))
 
 
 const sha = value => createHash('sha256').update(value).digest('hex')
-const versions = {schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
+const versions = {schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.4',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
 function row(n, universe='industry') { return {id:(universe==='industry'?'881':'885')+String(n).padStart(3,'0')+'.TI',name:'行业'+n,universe,strength:70,opportunity:30,risk:20,completeness:80,ranks:{strength:n+1,opportunity:n+1,risk:n+1},heatState:'active',coldStart:false,validCloses:60,improvementEvidence:2,membershipMode:'current_members_backfill',conceptRole:null,missing:[]} }
 function fixture() {
   const rows=[...Array.from({length:90},(_,n)=>row(n)),...Array.from({length:390},(_,n)=>row(n,'concept'))]
@@ -66,10 +66,10 @@ async function upload(db,f) { assert.equal((await post('manifest',f.manifest,db)
 
 test('staged batches are invisible through every interruption, then activate exactly once with rank 390',async t=>{
  const db=database(t),f=fixture(); assert.equal((await post('manifest',f.manifest,db)).status,201)
- for(const c of f.chunks) { assert.equal((await post('chunk',c,db)).status,201); assert.equal(db.execute("SELECT count(*) AS n FROM sector_rotation_v4_sectors s JOIN sector_rotation_v4_manifests m USING(batch_id) WHERE m.status='active'").results[0].n,0); if(c.index<f.chunks.length-1) assert.equal((await post('activate',{batchId:f.manifest.batchId},db)).status,409) }
+ for(const c of f.chunks) { assert.equal((await post('chunk',c,db)).status,201); assert.equal(db.execute("SELECT count(*) AS n FROM sector_rotation_v04_sectors s JOIN sector_rotation_v04_manifests m USING(batch_id) WHERE m.status='active'").results[0].n,0); if(c.index<f.chunks.length-1) assert.equal((await post('activate',{batchId:f.manifest.batchId},db)).status,409) }
  assert.equal((await post('activate',{batchId:f.manifest.batchId},db)).status,200)
- assert.equal(db.execute("SELECT count(*) AS n FROM sector_rotation_v4_sectors s JOIN sector_rotation_v4_manifests m USING(batch_id) WHERE m.status='active'").results[0].n,480)
- assert.equal(db.execute('SELECT MAX(strength_rank) AS r FROM sector_rotation_v4_sectors').results[0].r,390)
+ assert.equal(db.execute("SELECT count(*) AS n FROM sector_rotation_v04_sectors s JOIN sector_rotation_v04_manifests m USING(batch_id) WHERE m.status='active'").results[0].n,480)
+ assert.equal(db.execute('SELECT MAX(strength_rank) AS r FROM sector_rotation_v04_sectors').results[0].r,390)
  assert.equal((await post('activate',{batchId:f.manifest.batchId},db)).status,200)
  assert.equal((await post('chunk',f.chunks[0],db)).status,200)
  assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_snapshots').results[0].n,0)
@@ -103,22 +103,22 @@ test('wrong total digest and per-universe counts never activate',async t=>{
  for(const change of [{digest:'0'.repeat(64)},{conceptCount:391}]) {
  const db=database(t),f=fixture(); Object.assign(f.manifest,change); await upload(db,f)
  assert.equal((await post('activate',{batchId:'test-batch'},db)).status,409)
- assert.equal(db.execute("SELECT status FROM sector_rotation_v4_manifests").results[0].status,'staging')
+ assert.equal(db.execute("SELECT status FROM sector_rotation_v04_manifests").results[0].status,'staging')
  }
 })
 
 test('migration is repeatable and frozen rows cannot be inserted, updated or deleted',async t=>{
  const db=database(t),f=fixture(); db.execute(readFileSync(migrations[2],'utf8'),[],true)
  await upload(db,f); await post('activate',{batchId:'test-batch'},db)
- for(const sql of ["UPDATE sector_rotation_v4_sectors SET strength=1 WHERE batch_id='test-batch'", "DELETE FROM sector_rotation_v4_sectors WHERE batch_id='test-batch'", "DELETE FROM sector_rotation_v4_chunks WHERE batch_id='test-batch'", "INSERT INTO sector_rotation_v4_chunks VALUES('test-batch',99,'"+'0'.repeat(64)+"',1,'[]')"]) assert.throws(()=>db.execute(sql))
- assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v4_sectors').results[0].n,480)
+ for(const sql of ["UPDATE sector_rotation_v04_sectors SET strength=1 WHERE batch_id='test-batch'", "DELETE FROM sector_rotation_v04_sectors WHERE batch_id='test-batch'", "DELETE FROM sector_rotation_v04_chunks WHERE batch_id='test-batch'", "INSERT INTO sector_rotation_v04_chunks VALUES('test-batch',99,'"+'0'.repeat(64)+"',1,'[]')"]) assert.throws(()=>db.execute(sql))
+ assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v04_sectors').results[0].n,480)
 })
 test('failed chunk batch rolls back every row and the chunk receipt',async t=>{
  const db=database(t),f=fixture(); await post('manifest',f.manifest,db)
  const failing={...db,batch:statements=>db.batch([...statements,db.prepare('INSERT INTO nonexistent_table VALUES(1)')])}
  assert.equal((await post('chunk',f.chunks[0],failing)).status,503)
- assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v4_chunks').results[0].n,0)
- assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v4_sectors').results[0].n,0)
+ assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v04_chunks').results[0].n,0)
+ assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v04_sectors').results[0].n,0)
  assert.equal((await post('chunk',f.chunks[0],db)).status,201)
 })
 test('bad bearer and malformed schemas/dates are rejected without writes',async t=>{
@@ -127,5 +127,5 @@ test('bad bearer and malformed schemas/dates are rejected without writes',async 
  const env={MARKET_DB:db,MARKET_DASHBOARD_PUBLISH_TOKEN:'test-token',HITHINK_PUBLIC_RELEASE_AUTHORIZATION:'verified'}
  assert.equal((await onRequestPost({request:new Request('https://example.test',{method:'POST',headers:{Authorization:'Bearer wrong'},body:JSON.stringify(f.manifest)}),env})).status,401)
  for(const change of [{marketDate:'2026-11-12'},{officialClose:false},{featureVersion:'sector-features-v3'},{sourceMode:'wind'},{privatePath:'/Users/private'}])assert.equal((await post('manifest',{...f.manifest,...change},db)).status,400)
- assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v4_manifests').results[0].n,0)
+ assert.equal(db.execute('SELECT count(*) AS n FROM sector_rotation_v04_manifests').results[0].n,0)
 })

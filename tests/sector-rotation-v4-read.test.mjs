@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-const migrations = ['0001_market_dashboard.sql','0002_sector_rotation.sql','0003_hithink_sector_rotation_v4.sql'].map(n=>new URL('../migrations/'+n,import.meta.url))
+const migrations = ['0001_market_dashboard.sql','0002_sector_rotation.sql','0003_hithink_sector_rotation_v4.sql','0007_sector_score_v04.sql'].map(n=>new URL('../migrations/'+n,import.meta.url))
 function database(t) {
   const directory = mkdtempSync(join(tmpdir(), 'rotation-d1-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
@@ -51,7 +51,7 @@ print(json.dumps(results))
 
 
 
-const versions={schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.3',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
+const versions={schemaVersion:'market-dashboard-v4',sectorScoringVersion:'sector-score-v0.4',sectorUniverseVersion:'sector-universe-ths-v1',featureVersion:'sector-features-ths-v1',membershipVersion:'sector-membership-ths-v1'}
 function seed(db,{id='current',date='2026-11-13',time='07:00',active=true,close=true,offset=0,mutate=()=>{}}={}) {
  const observedAt=date+'T'+time+':00.000Z'
  const rows=['industry','concept'].flatMap(universe=>Array.from({length:universe==='industry'?90:390},(_,n)=>({
@@ -61,9 +61,9 @@ function seed(db,{id='current',date='2026-11-13',time='07:00',active=true,close=
  improvementEvidence:4,membershipMode:n%2?'point_in_time_snapshot':'current_members_backfill',conceptRole:universe==='industry'?null:n<25?'core':n<45?'dynamic':'candidate',missing:[],
  components:{strength:{value:80,coverage:1,missing:[],privatePath:'/Users/secret'}},metrics:{return1d:2,privatePath:'/Users/secret',password:123},privatePath:'/Users/secret',constituents:['SECRET'],rankKeys:{strength:80+n/1000,opportunity:80+n/1000,risk:80+n/1000}
  })))
- const statements=[db.prepare(`INSERT INTO sector_rotation_v4_manifests(batch_id,observed_at,market_date,session,official_close,schema_version,scoring_version,universe_version,feature_version,membership_version,industry_count,concept_count,chunk_count,digest,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,observedAt,date,close?'close':'intraday',close?1:0,...Object.values(versions),90,390,1,'0'.repeat(64),'{}',observedAt),db.prepare('INSERT INTO sector_rotation_v4_chunks VALUES(?,?,?,?,?)').bind(id,0,'0'.repeat(64),1,'[]')]
- for(const r of rows){mutate(r);for(const a of ['strength','opportunity','risk'])if(r[a]!==null)r[a]-=offset;statements.push(db.prepare('INSERT INTO sector_rotation_v4_sectors VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,0,r.universe,r.id,r.name,r.strength,r.opportunity,r.risk,r.completeness,r.ranks.strength,r.ranks.opportunity,r.ranks.risk,JSON.stringify(r)))}
- if(active)statements.push(db.prepare("UPDATE sector_rotation_v4_manifests SET status='active' WHERE batch_id=?").bind(id))
+ const statements=[db.prepare(`INSERT INTO sector_rotation_v04_manifests(batch_id,observed_at,market_date,session,official_close,schema_version,scoring_version,universe_version,feature_version,membership_version,industry_count,concept_count,chunk_count,digest,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,observedAt,date,close?'close':'intraday',close?1:0,...Object.values(versions),90,390,1,'0'.repeat(64),'{}',observedAt),db.prepare('INSERT INTO sector_rotation_v04_chunks VALUES(?,?,?,?,?)').bind(id,0,'0'.repeat(64),1,'[]')]
+ for(const r of rows){mutate(r);for(const a of ['strength','opportunity','risk'])if(r[a]!==null)r[a]-=offset;statements.push(db.prepare('INSERT INTO sector_rotation_v04_sectors VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,0,r.universe,r.id,r.name,r.strength,r.opportunity,r.risk,r.completeness,r.ranks.strength,r.ranks.opportunity,r.ranks.risk,JSON.stringify(r)))}
+ if(active)statements.push(db.prepare("UPDATE sector_rotation_v04_manifests SET status='active' WHERE batch_id=?").bind(id))
  return db.batch(statements)
 }
 async function get(endpoint,db,query='') {const {onRequestGet}=await import('../functions/api/sector-rotation/v4/'+endpoint+'.js');return onRequestGet({request:new Request('https://example.test/api/sector-rotation/v4/'+endpoint+query),env:{MARKET_DB:db}})}
@@ -114,7 +114,7 @@ test('daily-return history ranks actual percentages independently of score ranks
 test('exact five-version filters apply to every read and prior baseline',async t=>{
  for(const column of ['schema_version','scoring_version','universe_version','feature_version','membership_version']){
  const db=database(t);await seed(db)
- db.execute(`PRAGMA ignore_check_constraints=ON; UPDATE sector_rotation_v4_manifests SET ${column}='incompatible';`,[],true)
+ db.execute(`PRAGMA ignore_check_constraints=ON; UPDATE sector_rotation_v04_manifests SET ${column}='incompatible';`,[],true)
  for(const [e,q]of [['latest',''],['catalog','?universe=industry'],['history','?universe=concept&axis=risk'],['detail','?universe=industry&id=881001.TI']])assert.equal((await get(e,db,q)).status,404)
  }
 })
@@ -126,7 +126,7 @@ test('four independent improvement families remain valid publish rows',async()=>
 
 test('prior close excludes incompatible versions and same-day snapshots and missing scores never pad lists',async t=>{
  const db=database(t);await seed(db,{id:'prior',date:'2026-11-12',offset:5})
- db.execute("PRAGMA ignore_check_constraints=ON; UPDATE sector_rotation_v4_manifests SET feature_version='old' WHERE batch_id='prior';",[],true)
+ db.execute("PRAGMA ignore_check_constraints=ON; UPDATE sector_rotation_v04_manifests SET feature_version='old' WHERE batch_id='prior';",[],true)
  await seed(db,{id:'same-day-early',time:'06:00',offset:3})
  await seed(db,{mutate:r=>{if(r.universe==='concept'){r.strength=null;r.opportunity=null;r.risk=null;r.completeness=0}}})
  const p=await(await get('latest',db)).json()

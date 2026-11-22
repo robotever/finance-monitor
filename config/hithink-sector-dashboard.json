@@ -1,6 +1,6 @@
 {
   "schemaVersion": "market-dashboard-v4",
-  "scoreVersion": "sector-score-v0.3",
+  "scoreVersion": "sector-score-v0.4",
   "universeVersion": "sector-universe-ths-v1",
   "featureVersion": "sector-features-ths-v1",
   "membershipVersion": "sector-membership-ths-v1",
@@ -29,7 +29,7 @@
   },
   "economicPolicy": "hithink_fee_unrestricted_user_2026-11-16",
   "scoring": {
-    "version": "sector-score-v0.3",
+    "version": "sector-score-v0.4",
     "weights": {
       "strength": {
         "priceTrend": 30,
@@ -38,11 +38,11 @@
         "persistence": 20
       },
       "opportunity": {
-        "position": 25,
-        "breadthImprovement": 25,
-        "momentumImprovement": 20,
-        "participationWarming": 15,
-        "relativeTurn": 15
+        "position": 60,
+        "breadthImprovement": 15,
+        "momentumImprovement": 10,
+        "participationWarming": 10,
+        "relativeTurn": 5
       },
       "risk": {
         "downsideDiffusion": 30,
@@ -133,8 +133,7 @@
       "coldStartCloses": 60,
       "minimumOpportunityCompleteness": 70,
       "improvementThreshold": 60,
-      "requiredImprovementComponents": 2,
-      "unconfirmedOpportunityCap": 69
+      "requiredImprovementComponents": 2
     },
     "heat": {
       "coldBelow": 30,
