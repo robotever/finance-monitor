@@ -162,3 +162,11 @@ functions/
 D1 迁移 `migrations/0003_hithink_sector_rotation_v4.sql` 是本地已实现但未远端执行的附加迁移。Node 验证入口为 `tests/sector-rotation-v4-{publish,read,ui}.test.mjs`；Python 对应 `tests/test_hithink_*.py` 和 `test_rotation_v4.py`。当前状态以 [STATUS](STATUS.md) 和 [v4 验证记录](verification/2026-11-17-hithink-sector-v4.md) 为准；旧设计文件不证明已完成生产切换。
 
 本地首页临时数据位于 `data/local-home/`（不入Git），桌面启动方式见 [本地使用说明](local-board-access.md)。
+
+## 沪深300 ETF资金观察
+
+- `src/features/etf-observation/model.mjs`：固定四只、严格数据契约、交易日／同日净值／流通市值计算与异常过滤。
+- `src/components/EtfCapitalObservation.vue`：雷达内观察卡与交互比例图。
+- `tools/market_dashboard/etf_observation_job.py`：沪深交易所、同花顺净值、妙想流通市值的独立日频采集和发布。
+- `functions/api/market-radar/etf.js`、`functions/_lib/etf-observation.js`、`migrations/0008_etf_observation.sql`：隔离存储及认证读写。
+- `ops/macos/install-etf-observation-service.py`：独立自动更新服务。来源、方法与运行边界见 [观察卡文档](csi300-etf-observation.md)。
