@@ -30,3 +30,9 @@ test('detail adds real component breakdown without mutating scores or exposing p
  assert.equal(point.components.priceTrend.value,70);assert.equal(point.components.priceTrend.parts.return1d.value,80);assert.equal(point.strength,55);assert.equal(point.returnRank,1);assert.equal(d.scoringWeights.strength.priceTrend,30)
  assert.ok(!JSON.stringify(point.components).includes('secret'));assert.ok(!JSON.stringify(point).includes('_rawScores'));assert.equal(r.components.priceTrend.privatePath,'/private/secret')
 })
+test('potential rotation triggers for an improving unconfirmed sector and moves strong sectors to main',()=>{
+ const b=bundle(),r=b.payload.rows[0];Object.assign(r,{opportunity:74,strength:64,risk:11,completeness:93,heatState:null});b.chunks=chunks(b.payload)
+ assert.deepEqual(localSnapshot(b).industry.potential.map(x=>x.id),[r.id])
+ Object.assign(r,{opportunity:71,strength:77,risk:28});b.chunks=chunks(b.payload)
+ const p=localSnapshot(b);assert.equal(p.industry.potential.length,0);assert.deepEqual(p.industry.main.map(x=>x.id),[r.id])
+})

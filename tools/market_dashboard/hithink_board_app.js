@@ -59,8 +59,7 @@ export function createSectorBoard({snapshot=false,live=false}={}){return {setup(
    h('div',{class:'module-header__actions'},[h('time',{datetime:latest.value?.observedAt,title:'最近有效数据采集时间'},latest.value?new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})+' 北京':'数据时间待更新'),button(refreshing.value?'刷新中…':'刷新',refresh,{disabled:refreshing.value,'aria-label':'刷新板块研究'})])
   ]),
   h('nav',{class:'preview-links','aria-label':'页面快速导航'},[snapshot?h('a',{href:'/'},'← 市场雷达与新闻'):null,h('a',{href:'#preview-overview'},'行业三榜'),h('a',{href:'#preview-concepts'},'概念观察'),h('a',{href:'#reconstruction-history'},'历史轮动'),h('a',{href:'#preview-catalog'},'全部目录')]),
-  live?h('p',{class:'market-notice',role:'status'},liveStatus.value.mode==='fallback'?'线上首批数据尚未发布，当前显示静态归档快照。':liveStatus.value.mode==='live'?(liveStatus.value.publishHealth?.state==='failed'?'最近一次数据'+(liveStatus.value.publishHealth?.phase==='collection'?'采集':'发布')+'未完成，当前保留上次成功数据。':latest.value&&!latest.value.officialClose&&!latest.value.historicalReconstruction&&Date.now()-Date.parse(latest.value.observedAt)>1800000?'采集时间距今已超过30分钟，请结合市场日期与盘中／收盘状态阅读。':'交易时段每15分钟采集，页面每30秒检查更新；休市时保留最近数据。'):'正在检查线上数据…'):snapshot?h('p',{class:'market-notice'},'当前为发布时的数据快照，尚未接通线上自动更新，请以显示的采集时间为准。'):null,
-  h('details',{class:'preview-notes'},[h('summary',live?'数据说明 · 交易时段15分钟采集 / 历史含重建':snapshot?'数据说明 · 发布快照 / 历史含重建':'数据说明 · 15分钟采集 / 历史含重建 / 仅本机'),h('p',(live?'交易时段每15分钟采集，页面每30秒检查更新；非交易时段保留最近有效数据。':snapshot?'本版数据固定在发布时点。':'盘中每15分钟采集，页面每30秒检查本地更新。')+'历史含事后重建及当前成分回填，存在幸存者偏差。缺失不补零，评分未完成预测有效性验证。'+(snapshot||live?'':'仅本机，未公开发布。')),latest.value?h('p',latest.value.sectorScoringVersion+' / '+latest.value.sectorUniverseVersion):null]),
+  live&&liveStatus.value.mode==='fallback'?h('p',{class:'market-notice',role:'status'},'实时数据暂不可用，当前为上次归档快照。'):live&&liveStatus.value.publishHealth?.state==='failed'?h('p',{class:'market-notice',role:'status'},'最近一次更新未完成，保留上次成功数据。'):null,
   error.value?h('p',{class:'market-notice',role:'status'},error.value):null,
   detailLoading.value?h('p',{class:'market-notice',role:'status'},'正在读取板块详情，成分股较多的板块可能需要稍等…'):null,
   h('section',{id:'preview-overview'},[h('h2','行业三榜'),h('div',{class:'preview-leaderboards'},views.map(([key,label])=>h('section',{class:'preview-panel'},[
@@ -73,7 +72,7 @@ export function createSectorBoard({snapshot=false,live=false}={}){return {setup(
    table(latest.value?.concept[tab.value]??[],'概念观察')
   ]),
   h('section',{id:'reconstruction-history'},[
-   h('div',{class:'preview-section-heading'},[h('h2','历史轮动'),h('span','最近日期在左 · 点击板块看详情')]),
+   h('div',{class:'preview-section-heading'},[h('h2','历史轮动')]),
    h('div',{class:'preview-history-controls'},[
     h('label',['分类 ',h('select',{value:universe.value,onChange:e=>{universe.value=e.target.value;page.value=1;load()}},[h('option',{value:'concept'},'概念'),h('option',{value:'industry'},'行业')])]),
     h('div',{class:'sector-rotation__tabs sector-rotation__history-tabs',role:'group','aria-label':'轮动排序维度'},[['return1d','涨幅'],['strength','强度'],['opportunity','机会'],['risk','风险']].map(([key,label])=>button(label,()=>{axis.value=key;load()},{'aria-pressed':(history.value?.axis??axis.value)===key})))
@@ -81,8 +80,7 @@ export function createSectorBoard({snapshot=false,live=false}={}){return {setup(
    history.value?h('div',{class:'sector-rotation__matrix-scroll',tabindex:0,'aria-label':'15个交易日轮动矩阵'},[h('table',{class:'sector-rotation__matrix','data-history-columns':history.value.dates.length},[
     h('thead',h('tr',[h('th',{scope:'col'},'排名'),...history.value.dates.map(d=>h('th',{scope:'col','data-history-date':d},d+(d===history.value.liveDate?' · 盘中':'')))])),
     h('tbody',buildHistoryMatrix(history.value).map(rank=>h('tr',[h('th',{scope:'row'},rank.rank),...rank.cells.map(cell=>h('td',cell?h('button',{type:'button','aria-label':cell.name+' '+cell.marketDate+' 第'+rank.rank+'名，打开详情',onClick:()=>select({...cell,universe:universe.value},cell.marketDate)},[h('span',cell.name),h('strong',{class:history.value.axis==='return1d'?tone(cell.score):''},formatHistoryValue(cell.score,history.value.axis))]):'—'))])))
-   ])]):h('p',{class:'preview-empty'},'历史加载中…'),
-   h('p',{class:'preview-meta'},(snapshot&&!live?'当日列为发布时点快照；':'当日列随有效采集更新；')+'前日变化相对前一交易日，历史重建不代表当时已知信息。')
+   ])]):h('p',{class:'preview-empty'},'历史加载中…')
   ]),
   h('details',{id:'preview-catalog',class:'preview-fold'},[
    h('summary','全部行业与概念 · 480项 · 搜索、分页与详细评分'),
