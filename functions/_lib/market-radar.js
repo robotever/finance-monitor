@@ -1,3 +1,4 @@
+import {readInputs} from './radar-inputs.js'
 import {upstreamText} from './upstream.js'
 import {loadRiskSource} from './cross-market-risk.js'
 import {INDEXES,RADAR_VERSION,parseRadarBars,completedBars,deriveRadar} from '../../src/features/market-radar/model.mjs'
@@ -18,16 +19,18 @@ export async function loadRadarIndex(id,{cache,origin='https://newsmonitor.pages
   return data
  }catch{return {id,name:def.indexName??def.name,code:def.code,status:'failed',bars:old?.bars??[],lastSuccessAt:old?.lastSuccessAt??null,cached:Boolean(old),safeErrorCode:'INDEX_UNAVAILABLE'}}
 }
-export async function buildMarketRadar({loadIndex,loadMacro,now}={}){
+export async function buildMarketRadar({loadIndex,loadMacro,loadInputs,now}={}){
+ const inputsPromise=loadInputs?loadInputs().catch(()=>null):Promise.resolve(null)
  const defs=[...INDEXES.map(d=>({kind:'index',id:d.id})),...RADAR_MACRO.map(id=>({kind:'macro',id}))],results=new Array(defs.length);let next=0
  async function worker(){while(next<defs.length){const i=next++,d=defs[i];try{results[i]=await(d.kind==='index'?loadIndex(d.id):loadMacro(d.id))}catch{results[i]={id:d.id,status:'failed',bars:[],data:{},safeErrorCode:'SOURCE_UNAVAILABLE'}}}}
  await Promise.all(Array.from({length:4},worker))
  const index=Object.fromEntries(INDEXES.map((d,i)=>[d.id,results[i]])),macro=results.slice(INDEXES.length),series=Object.assign({},...macro.map(x=>x.data??{})),failed=macro.some(x=>x.status!=='ok')
- const data=deriveRadar(index,{series,failed},now??Date.now())
- return {...data,sources:results.map((r,i)=>({id:defs[i].id,name:r.name??defs[i].id,status:r.status,observedAt:defs[i].kind==='index'?r.bars?.at(-1)?.date??null:Object.values(r.data??{}).flatMap(rows=>rows.map(p=>p.date)).sort().at(-1)??null,lastSuccessAt:r.lastSuccessAt??null,cached:r.cached??false})),sourceErrors:results.filter(x=>x.status!=='ok').length}
+ const realInputs=await inputsPromise
+ const data=deriveRadar(index,{series,failed},now??Date.now(),realInputs)
+ return {...data,inputBatch:realInputs?{marketDate:realInputs.marketDate,observedAt:realInputs.observedAt}:null,sources:results.map((r,i)=>({id:defs[i].id,name:r.name??defs[i].id,status:r.status,observedAt:defs[i].kind==='index'?r.bars?.at(-1)?.date??null:Object.values(r.data??{}).flatMap(rows=>rows.map(p=>p.date)).sort().at(-1)??null,lastSuccessAt:r.lastSuccessAt??null,cached:r.cached??false})),sourceErrors:results.filter(x=>x.status!=='ok').length}
 }
-export async function radarResponse({request,waitUntil,cache=globalThis.caches?.default}){
+export async function radarResponse({request,env,waitUntil,cache=globalThis.caches?.default}){
  const origin=new URL(request.url).origin
- const data=await buildMarketRadar({loadIndex:id=>loadRadarIndex(id,{origin,cache,waitUntil}),loadMacro:id=>loadRiskSource(id,{origin,cache,waitUntil,historyYears:2})})
+ const data=await buildMarketRadar({loadInputs:()=>readInputs(env?.MARKET_DB),loadIndex:id=>loadRadarIndex(id,{origin,cache,waitUntil}),loadMacro:id=>loadRiskSource(id,{origin,cache,waitUntil,historyYears:2})})
  return Response.json(data,{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})
 }

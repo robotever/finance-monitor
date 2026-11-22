@@ -1,5 +1,12 @@
 # 系统架构
 
+## 2026-11-22 首页雷达输入链路
+
+市场研究雷达与板块是独立链路：Mac日线任务采集同花顺/中证成份及妙想资金广度，校验后向独立D1表radar_input_batches发布聚合包；Pages在读取同日价格历史后计算radar-score-v2，浏览器展示分数、涨跌家数和净流入原值。云端公开行情/宏观源与D1真实输入并行读取，源失败不复制旧日期、不重分配权重。板块Mac评分及原D1批次不受影响。
+
+独立源代码、契约与更新边界见[雷达方法](market-radar-methodology.md)；日线采集器radar_inputs.py，发布器radar_input_service.py，安装器ops/macos/install-radar-input-service.py。
+
+
 ## 1. 系统边界
 
 Finance Monitor 由四个运行边界组成：浏览器前端、Cloudflare 边缘接口与存储、本地采集评分任务、外部数据源。

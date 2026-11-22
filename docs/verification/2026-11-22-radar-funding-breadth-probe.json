@@ -1,0 +1,99 @@
+{
+  "verifiedOn": "2026-11-22",
+  "observationDate": "2026-11-20",
+  "scope": "read-only probes; production scores unchanged",
+  "conclusion": "Funds and breadth were not sufficiently investigated before changing score factors.",
+  "hithink": {
+    "cliVersion": "0.2.4",
+    "uniqueQuotes": 5584,
+    "validTradingQuotes": 5572,
+    "excludedNontradingOrInvalid": 12,
+    "up": 313,
+    "down": 5236,
+    "flat": 23,
+    "timestampMeaning": "response assembly time, not individual trade time",
+    "dedicatedTradingFundFlowCapabilityFound": false,
+    "supportedConstituents": {
+      "000300.SH": 300,
+      "000852.SH": 1000,
+      "399006.SZ": 100,
+      "000688.SH": 50
+    },
+    "unsupportedConstituents": [
+      "000985.SH",
+      "000919.SH",
+      "000922.SH"
+    ]
+  },
+  "mx": {
+    "marketIdentity": "001071 全部A股; not necessarily CSI All Share constituents",
+    "exactBreadthMatchWithHithink": true,
+    "histories": [
+      {
+        "probe": "market-long-history",
+        "code": "001071",
+        "rows": 97,
+        "first": "2026-07-01",
+        "last": "2026-11-20",
+        "validByField": {
+          "下跌家数": 97,
+          "平盘家数": 97,
+          "主力净流入资金(合计)": 97,
+          "成交额(合计)": 97,
+          "上涨家数": 97
+        }
+      },
+      {
+        "probe": "large-long-breadth",
+        "code": "399300.SZ",
+        "rows": 97,
+        "first": "2026-07-01",
+        "last": "2026-11-20",
+        "validByField": {
+          "下跌家数": 97,
+          "平盘家数": 97,
+          "上涨家数": 97
+        }
+      }
+    ],
+    "styleFlows": [
+      {
+        "code": "000688.SH",
+        "rows": 50,
+        "total": 50,
+        "sameMembersAsHithink": true,
+        "completeForObservedMembership": true
+      },
+      {
+        "code": "399006.SZ",
+        "rows": 100,
+        "total": 100,
+        "sameMembersAsHithink": true,
+        "completeForObservedMembership": true
+      }
+    ],
+    "wholeMarketScreen": {
+      "total": 5572,
+      "returned": 200,
+      "complete": false
+    },
+    "mainNetFlowYuan": {
+      "1": -52183473235,
+      "5": -183013878177,
+      "20": -446013898991
+    }
+  },
+  "rejected": [
+    "Six-index batch became individual stocks, including 000919.SZ.",
+    "Natural language added positive-flow/ST filters despite instructions.",
+    "Dividend concept was not proven CSI000922 membership.",
+    "200 returned rows cannot represent all 5572 active stocks."
+  ],
+  "limits": [
+    "No next-session intraday freshness proof from Sunday probes.",
+    "Members retrieved Nov22 cannot establish strict point-in-time membership Nov20.",
+    "Stock-screen fund values have rounded Chinese-unit strings.",
+    "No CLI capability found does not prove the entire Hithink vendor lacks funds data.",
+    "Value breadth and signed flows across every style remain unresolved."
+  ]
+}

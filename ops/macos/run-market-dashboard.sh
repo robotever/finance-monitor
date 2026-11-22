@@ -52,6 +52,11 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--radar-inputs' in arguments:
+        arguments.remove('--radar-inputs')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.radar_input_service', *arguments], os.environ)
     if '--hithink-live' in arguments:
         arguments.remove('--hithink-live')
         os.chdir(repo)

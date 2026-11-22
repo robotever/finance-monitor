@@ -1,5 +1,16 @@
 # 项目结构
 
+## 2026-11-22 雷达恢复新增入口
+
+- `tools/market_dashboard/radar_inputs.py`：日线资金/广度采集、成员全量核验、单位归一、缓存与恢复。
+- `tools/market_dashboard/radar_input_service.py`：隔离锁、日线时间窗和鉴权发布；配置/密钥复用既有运行包装器。
+- `ops/macos/install-radar-input-service.py`：独立LaunchAgent安装，稳定checkout运行。
+- `functions/api/market-radar/inputs.js`、`functions/_lib/radar-inputs.js`：独立输入存读与验证。
+- `migrations/0006_radar_input_batches.sql`：独立D1表，不变更板块数据。
+- `src/features/market-radar/model.mjs`、`RadarScoreCard.vue`：保留原价格因子，接回真实资金及广度。
+- 运行根目录为`/Users/robot_ever/Codex/Financial Knowledge Repository/state/market-radar-inputs`，原始请求缓存不提交仓库。
+
+
 ## 工作目录
 
 - 当前实现工作树入口（兼容别名）：`/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`。

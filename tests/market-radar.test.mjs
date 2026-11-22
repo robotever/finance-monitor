@@ -99,3 +99,24 @@ test('style missing a session never compares different five-session windows',()=
  const benchmark=bars(),style=benchmark.filter(x=>x.date!==benchmark.at(-3).date)
  assert.equal(indexScoreSeries(style,benchmark).at(-1).strength,null)
 })
+test('real breadth and signed funds affect v2 scores without removing price factors',()=>{
+ const prices=bars(120,()=>100),date=prices.at(-1).date
+ const evidence={history:[{date,up:80,down:10,flat:10,turnover:1e9,mainNetFlow:5e7,fundMatched:null,fundExpected:null,membershipMode:'provider-aggregate'}]}
+ const positive=indexScoreSeries(prices,undefined,25,evidence).at(-1)
+ const negative=indexScoreSeries(prices,undefined,25,{history:[{...evidence.history[0],up:10,down:80,mainNetFlow:-5e7}]}).at(-1)
+ assert.ok(positive.strength>negative.strength);assert.ok(positive.risk<negative.risk)
+ assert.ok(positive.factors.strength.some(f=>f.key==='ma60'))
+ assert.ok(positive.factors.strength.some(f=>f.key==='advancingShare'))
+ assert.ok(positive.factors.strength.some(f=>f.key==='fundDirection'))
+ assert.equal(positive.factors.strength.reduce((sum,f)=>sum+f.weight,0),100)
+})
+test('missing or off-date funds never renormalize required factors or reuse old dates',()=>{
+ const prices=bars(),date=prices.at(-1).date,r={date,up:30,down:60,flat:10,turnover:1e9,mainNetFlow:null,fundMatched:null,fundExpected:null,membershipMode:'provider-aggregate'}
+ const p=indexScoreSeries(prices,undefined,25,{history:[r]}).at(-1)
+ assert.equal(p.strength,null);assert.equal(p.risk,null);assert.ok(Number.isFinite(p.heat))
+ assert.equal(indexScoreSeries(prices,undefined,25,{history:[{...r,date:'2026-11-19',mainNetFlow:1e7}]}).at(-1).strength,null)
+})
+test('incomplete member funds cannot enter scores even if a sum is present',()=>{
+ const prices=bars(),r={date:prices.at(-1).date,up:30,down:60,flat:10,turnover:1e9,mainNetFlow:1e7,fundMatched:99,fundExpected:100,membershipMode:'current-members'}
+ assert.equal(indexScoreSeries(prices,undefined,25,{history:[r]}).at(-1).strength,null)
+})

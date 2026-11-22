@@ -1,7 +1,7 @@
 import {numeric,validDate} from '../cross-market-risk/parsers.mjs'
 import {expectedCompletedSession} from './calendar.mjs'
 import {normalizeSeries} from '../cross-market-risk/model.mjs'
-export const RADAR_VERSION='market-radar-v1'
+export const RADAR_VERSION='market-radar-v2'
 export const INDEXES=[
  {id:'sp500',name:'标普500',code:'us.INX',kind:'global',market:'us'},
  {id:'ashare',name:'A股市场',indexName:'中证全指',code:'sh000985',kind:'market',market:'china'},
@@ -52,8 +52,15 @@ function priceFeatures(rows){
  const heat=[factor('volumeRank','本指数60期成交量分位',vrank,'%',vrank,50),factor('volumeRatio','相对前20期均量',ratio,'倍',ratioScore,50)]
  return {r5,r20,volumeRatio:ratio,factors:{strength,heat,risk}}
 }
-export function indexScoreSeries(input,benchmark,limit=Infinity){
- const rows=orderedBars(input),baseRows=benchmark?orderedBars(benchmark):null,base=baseRows?new Map(baseRows.map(r=>[r.date,r.close])):null,basePositions=baseRows?new Map(baseRows.map((r,i)=>[r.date,i])):null,out=[]
+function inputFeatures(row){
+ const counts=row&&[row.up,row.down,row.flat],validCounts=counts&&counts.every(n=>Number.isSafeInteger(n)&&n>=0)&&counts.reduce((a,b)=>a+b,0)>0
+ const total=validCounts?counts.reduce((a,b)=>a+b,0):null,up=validCounts?row.up/total*100:null,down=validCounts?row.down/total*100:null
+ const covered=row&&(row.membershipMode==='provider-aggregate'||Number.isSafeInteger(row.fundExpected)&&row.fundExpected>0&&row.fundMatched===row.fundExpected)
+ const ratio=covered&&finite(row.mainNetFlow)&&finite(row.turnover)&&row.turnover>0&&Math.abs(row.mainNetFlow)<=row.turnover*1.05?row.mainNetFlow/row.turnover*100:null
+ return {up,down,ratio,total}
+}
+export function indexScoreSeries(input,benchmark,limit=Infinity,evidence){
+ const rows=orderedBars(input),baseRows=benchmark?orderedBars(benchmark):null,base=baseRows?new Map(baseRows.map(r=>[r.date,r.close])):null,basePositions=baseRows?new Map(baseRows.map((r,i)=>[r.date,i])):null,inputs=new Map((evidence?.history??[]).map(r=>[r.date,r])),out=[]
  for(let i=Math.max(59,rows.length-limit);i<rows.length;i++){
   const window=rows.slice(i-59,i+1),f=priceFeatures(window)
   if(base){
@@ -61,8 +68,18 @@ export function indexScoreSeries(input,benchmark,limit=Infinity){
    const r5=relative(5),r20=relative(20)
    f.factors.strength=f.factors.strength.map(x=>({...x,weight:x.weight*.6})).concat([factor('relative5','相对全指5期表现',r5,'个百分点',scale(r5,-4,4),24),factor('relative20','相对全指20期表现',r20,'个百分点',scale(r20,-8,8),16)])
   }
+  const row=inputs.get(rows[i].date),real=inputFeatures(row)
+  if(evidence){
+   f.factors.strength=f.factors.strength.map(x=>({...x,weight:x.weight*.6})).concat([
+    factor('advancingShare','上涨占有效交易样本',real.up,'%',real.up,25),
+    factor('fundDirection','主力净流入/成交额',real.ratio,'%',scale(real.ratio,-10,10),15)])
+   f.factors.risk=f.factors.risk.map(x=>({...x,weight:x.weight*.6})).concat([
+    factor('decliningShare','下跌占有效交易样本',real.down,'%',real.down,20),
+    factor('fundWithdrawal','主力净流出压力',real.ratio===null?null:Math.max(0,-real.ratio),'%',real.ratio===null?null:scale(Math.max(0,-real.ratio),0,10),20)])
+  }
+  const inputEvidence=evidence?{date:rows[i].date,up:row?.up??null,down:row?.down??null,flat:row?.flat??null,total:real.total,mainNetFlow:real.ratio===null?null:row.mainNetFlow,turnover:row?.turnover??null,fundRatio:real.ratio,fundMatched:row?.fundMatched??null,fundExpected:row?.fundExpected??null,membershipMode:row?.membershipMode??null,membershipAsOf:evidence.membershipAsOf??null,sources:evidence.sources??[],scope:evidence.scope??''}:null
   const exact=Object.fromEntries(Object.entries(f.factors).map(([axis,factors])=>[axis,weighted(factors)]))
-  out.push({date:rows[i].date,...Object.fromEntries(Object.entries(exact).map(([k,v])=>[k,v===null?null:Math.round(v)])),price:rows[i].close,return5:f.r5,volumeRatio:f.volumeRatio,factors:f.factors})
+  out.push({date:rows[i].date,...Object.fromEntries(Object.entries(exact).map(([k,v])=>[k,v===null?null:Math.round(v)])),inputEvidence,price:rows[i].close,return5:f.r5,volumeRatio:f.volumeRatio,factors:f.factors})
  }
  return out
 }
@@ -88,13 +105,13 @@ function objectView(def,history,status,now){
  const latest=history.at(-1),stale=latest&&expected&&latest.date<expected
  const state=status==='failed'?'failed':!latest?'insufficient':!expected?'calendar':stale?'stale':'ok',valid=state==='ok' 
  const change=period=>{const past=history.at(-1-period);return valid&&past?Object.fromEntries(['strength','heat','risk'].map(axis=>[axis,finite(latest[axis])&&finite(past[axis])?latest[axis]-past[axis]:null])):null}
- return {...def,status:state,date:latest?.date??null,...Object.fromEntries(['strength','heat','risk'].map(axis=>[axis,valid?latest[axis]:null])),change1d:change(1),change5d:change(5),history:valid?history.slice(-20).map(({date,strength,heat,risk})=>({date,strength,heat,risk})):[],factors:latest?.factors??{},return5:latest?.return5??null,volumeRatio:latest?.volumeRatio??null}
+ return {...def,scoreVersion:def.id==='global'?'global-score-v1':'radar-score-v2',inputEvidence:latest?.inputEvidence??null,status:state,date:latest?.date??null,...Object.fromEntries(['strength','heat','risk'].map(axis=>[axis,valid?latest[axis]:null])),change1d:change(1),change5d:change(5),history:valid?history.slice(-20).map(({date,strength,heat,risk})=>({date,strength,heat,risk})):[],factors:latest?.factors??{},return5:latest?.return5??null,volumeRatio:latest?.volumeRatio??null}
 }
-export function deriveRadar(indexData={},globalInput={},now=Date.now()){
+export function deriveRadar(indexData={},globalInput={},now=Date.now(),realInputs){
  const usable=Object.fromEntries(INDEXES.map(def=>[def.id,completedBars(orderedBars(indexData[def.id]?.bars),def.market,now)]))
- const benchmark=usable.ashare,ashare=objectView(INDEXES.find(x=>x.id==='ashare'),indexScoreSeries(benchmark,undefined,25),indexData.ashare?.status??'failed',now)
+ const benchmark=usable.ashare,ashare=objectView(INDEXES.find(x=>x.id==='ashare'),indexScoreSeries(benchmark,undefined,25,realInputs?.objects?.ashare??{history:[]}),indexData.ashare?.status??'failed',now)
  const styles=INDEXES.filter(x=>x.kind==='style').map(def=>{
-  const history=indexScoreSeries(usable[def.id],indexData.ashare?.status==='ok'?benchmark:[],25)
+  const history=indexScoreSeries(usable[def.id],indexData.ashare?.status==='ok'?benchmark:[],25,realInputs?.objects?.[def.id]??{history:[]})
   return objectView(def,history,indexData[def.id]?.status??'failed',now)
  })
  const rawGlobal={...Object.fromEntries(Object.entries(globalInput.series??{}).map(([id,points])=>[id,completedBars(normalizeSeries(points,now),'us',now)])),sp500:usable.sp500.map(r=>({date:r.date,value:r.close}))}

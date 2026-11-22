@@ -1,0 +1,8 @@
+/
+  Cache-Control: no-cache, must-revalidate
+/index.html
+  Cache-Control: no-cache, must-revalidate
+/sectors/research
+  Cache-Control: no-cache, must-revalidate
+/sectors/hithink
+  Cache-Control: no-cache, must-revalidate
