@@ -218,3 +218,31 @@ test('daily retention keeps date closes and pinned legacy baseline through intra
  assert.equal(detail.history.length,15);assert.equal(detail.history[0].marketDate,'2026-11-03')
  assert.equal((await(await manifest(context(db))).json()).storageMode,'daily-v1')
 })
+test('daily history stays inside its scoring baseline across a version cutover',async t=>{
+ const {dailySources}=await import('../functions/_lib/sector-live.js')
+ const db=database(t),base='b'.repeat(64),oldBase='a'.repeat(64)
+ const insert=(id,date,historyBaseGeneration)=>{
+  const manifest={storageMode:'daily-v1',historyBaseGeneration,marketDate:date}
+  db.execute('INSERT INTO sector_live_generations(generation,manifest_json,observed_at,digest,document_count,activated_at) VALUES(?,?,?,?,491,?)',[id,JSON.stringify(manifest),date+'T07:00:00.000Z','d'.repeat(64),date+'T08:00:00.000Z'])
+  return manifest
+ }
+ insert('1'.repeat(64),'2026-11-18',oldBase)
+ insert('2'.repeat(64),'2026-11-19',oldBase)
+ const manifest=insert('3'.repeat(64),'2026-11-20',base)
+ const request={generation:'3'.repeat(64),observed_at:'2026-11-20T07:00:00.000Z'}
+ const sources=await dailySources(db,request,manifest)
+ assert.deepEqual(sources.map(x=>x.generation),[request.generation])
+ insert('4'.repeat(64),'2026-11-19',base)
+ assert.deepEqual((await dailySources(db,request,manifest)).map(x=>x.generation),['4'.repeat(64),request.generation])
+})
+test('retention preserves daily dependencies from both scoring baselines',async t=>{
+ const {obsoleteGenerations}=await import('../functions/_lib/sector-live.js')
+ const db=database(t),oldBase='a'.repeat(64),base='b'.repeat(64)
+ const insert=(id,day,historyBaseGeneration)=>db.execute('INSERT INTO sector_live_generations(generation,manifest_json,observed_at,digest,document_count,activated_at) VALUES(?,?,?,?,491,?)',[id,JSON.stringify({storageMode:'daily-v1',historyBaseGeneration,marketDate:day}),day+'T07:00:00.000Z','d'.repeat(64),day+'T08:00:00.000Z'])
+ const oldDay='f'.repeat(64),newDay='2'.repeat(64),active='3'.repeat(64)
+ insert(oldDay,'2026-11-19',oldBase);insert(newDay,'2026-11-19',base);insert(active,'2026-11-20',base)
+ for(const id of ['6','7','8','9'])insert(id.repeat(64),'2026-11-20',oldBase)
+ db.execute('INSERT INTO sector_live_active(id,generation,observed_at) VALUES(1,?,?)',[active,'2026-11-20T07:00:00.000Z'])
+ const obsolete=db.execute(obsoleteGenerations).results.map(r=>r.generation)
+ assert.ok(!obsolete.includes(oldDay));assert.ok(!obsolete.includes(newDay))
+})

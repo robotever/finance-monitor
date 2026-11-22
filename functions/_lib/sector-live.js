@@ -72,6 +72,7 @@ dependency_candidates AS (
  FROM sector_live_generations reader JOIN sector_live_generations source
  ON source.activated_at IS NOT NULL AND source.observed_at<=reader.observed_at
  AND json_extract(source.manifest_json,'$.storageMode')='daily-v1'
+ AND json_extract(source.manifest_json,'$.historyBaseGeneration')=json_extract(reader.manifest_json,'$.historyBaseGeneration')
  AND json_extract(source.manifest_json,'$.marketDate')<=json_extract(reader.manifest_json,'$.marketDate')
  WHERE reader.generation IN (SELECT generation FROM readers)
  AND json_extract(reader.manifest_json,'$.storageMode')='daily-v1'
@@ -97,8 +98,9 @@ export async function dailySources(db,requested,manifest) {
  ROW_NUMBER() OVER (PARTITION BY json_extract(manifest_json,'$.marketDate') ORDER BY observed_at DESC,generation DESC) AS rank
  FROM sector_live_generations WHERE activated_at IS NOT NULL AND observed_at<=?
  AND json_extract(manifest_json,'$.storageMode')='daily-v1'
+ AND json_extract(manifest_json,'$.historyBaseGeneration')=?
  AND json_extract(manifest_json,'$.marketDate')<=?
- ) WHERE rank=1 ORDER BY json_extract(manifest_json,'$.marketDate') DESC LIMIT 15`).bind(requested.observed_at,manifest.marketDate).all()
+ ) WHERE rank=1 ORDER BY json_extract(manifest_json,'$.marketDate') DESC LIMIT 15`).bind(requested.observed_at,manifest.historyBaseGeneration,manifest.marketDate).all()
  // Equal-observation tie ordering must never replace the requested generation.
  return results.filter(r=>r.generation!==requested.generation && JSON.parse(r.manifest_json).marketDate!==manifest.marketDate).concat([{...requested,manifest_json:JSON.stringify(manifest)}])
 }
