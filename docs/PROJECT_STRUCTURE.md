@@ -102,7 +102,8 @@ functions/
 | `hithink_universe.py` | 90 行业 / 390 概念 / 25 核心及目录变更门禁 |
 | `hithink_backfill.py` | 可恢复指数／广度回填与覆盖记录 |
 | `hithink_breadth.py` | 成份快照、前复权面板及覆盖／近似披露 |
-| `rotation_v4.py` | v4 特征、三轴评分、排名与向前回放 |
+| `rotation_v4.py` | v4 特征、三轴评分（当前sector-score-v0.4）、排名与向前回放 |
+| `opportunity_migration.py` | 机会v0.3→v0.4离线历史候选、校验、备份和锁保护切换 |
 | `hithink_job.py` | 私有 15 分钟周期、优先调度、公共投影及分块助手 |
 | `sector_mapping.py` | Wind／同花顺当前成份解析、重合度门禁和聚合证据采集 |
 | `fixtures/` | 只用于测试的受控合成／截断样本 |
