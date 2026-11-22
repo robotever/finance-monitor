@@ -556,7 +556,7 @@ export async function authorized(request, token) {
   return difference === 0
 }
 
-export async function readBoundedJson(request) {
+export async function readBoundedJson(request, maxBytes = MAX_BODY_BYTES) {
   const reader = request.body?.getReader()
   if (!reader) throw new Error('INVALID_JSON')
   let length = 0
@@ -566,7 +566,7 @@ export async function readBoundedJson(request) {
       const { done, value } = await reader.read()
       if (done) break
       length += value.byteLength
-      if (length > MAX_BODY_BYTES) {
+      if (length > maxBytes) {
         await reader.cancel().catch(() => {})
         throw new Error('PAYLOAD_TOO_LARGE')
       }

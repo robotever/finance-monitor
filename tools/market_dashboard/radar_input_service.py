@@ -63,7 +63,7 @@ def publish(payload,url,token):
   context=ssl.create_default_context(cafile=certifi.where())
  except ImportError:context=ssl.create_default_context()
  opener=urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=context))
- req=urllib.request.Request(url,data=json.dumps(payload,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+token,'User-Agent':'FinanceMonitorMarketDashboard/1.0','Accept':'application/json'},method='POST')
+ req=urllib.request.Request(url,data=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+token,'User-Agent':'FinanceMonitorMarketDashboard/1.0','Accept':'application/json'},method='POST')
  with opener.open(req,timeout=40) as response:result=json.load(response)
  if result.get('ok') is not True:raise ValueError('PUBLICATION_FAILED')
 

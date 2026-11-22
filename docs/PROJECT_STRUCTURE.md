@@ -11,6 +11,13 @@
 - 运行根目录为`/Users/robot_ever/Codex/Financial Knowledge Repository/state/market-radar-inputs`，原始请求缓存不提交仓库。
 
 
+## 风格历史回填入口
+
+- `tools/market_dashboard/radar_fund_history.py`：公开日资金历史严格解析和私有成功缓存。
+- `tools/market_dashboard/radar_style_backfill.py`：同篮子历史资金/真实成交额/广度重建，只合入更早验证点。
+- `tools/market_dashboard/radar_history_job.py`：冻结成员、只读本地panel、恢复下载、报告和带备份的并发安全提交。
+- `functions/api/market-radar/fund-history.js`：固定源、已有发布鉴权保护的历史传输，凭据不转给数据源。
+
 ## 工作目录
 
 - 当前实现工作树入口（兼容别名）：`/Users/robot_ever/.codex/worktrees/market-research-homepage/finance-monitor`。

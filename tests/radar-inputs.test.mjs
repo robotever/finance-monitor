@@ -30,3 +30,12 @@ test('D1 latest query selects actual newest observation across legacy timezone f
  const script='import sqlite3,sys,json\nc=sqlite3.connect(":memory:")\nc.execute("CREATE TABLE radar_input_batches(observed_at TEXT,market_date TEXT,payload_json TEXT)")\nc.executemany("INSERT INTO radar_input_batches VALUES(?,?,?)",[("2026-11-22T12:42:00+08:00","2026-11-20","old"),("2026-11-22T05:15:00.000Z","2026-11-20","new")])\nprint(c.execute(json.load(sys.stdin)).fetchone()[0])'
  assert.equal(execFileSync('python3',['-c',script],{input:JSON.stringify(INPUTS_QUERY),encoding:'utf8'}).trim(),'new')
 })
+test('radar wire limit fits its validated history budget while legacy reader stays bounded',async()=>{
+ const {readBoundedJson}=await import('../functions/_lib/market-dashboard.js')
+ const p=payload();p.observedAt=new Date(Date.now()-60000).toISOString()
+ const body=' '.repeat(263000)+JSON.stringify(p)
+ await assert.rejects(()=>readBoundedJson(new Request('https://example.test',{method:'POST',body})),/PAYLOAD_TOO_LARGE/)
+ const db={prepare:()=>({first:async()=>null,bind(){return {run:async()=>({})}}})}
+ const result=await onRequestPost({request:new Request('https://example.test',{method:'POST',body,headers:{Authorization:'Bearer test-secret'}}),env:{MARKET_DB:db,MARKET_DASHBOARD_PUBLISH_TOKEN:'test-secret'}})
+ assert.equal(result.status,200)
+})

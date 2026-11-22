@@ -8,7 +8,7 @@ export async function onRequestPost({request,env}){
  if(!env.MARKET_DB||!env.MARKET_DASHBOARD_PUBLISH_TOKEN)return errorResponse('SERVICE_UNAVAILABLE',503)
  try{if(!await authorized(request,env.MARKET_DASHBOARD_PUBLISH_TOKEN))return errorResponse('UNAUTHORIZED',401)}catch{return errorResponse('UNAUTHORIZED',401)}
  let p
- try{p=validateInputs(await readBoundedJson(request))}catch{return errorResponse('INVALID_RADAR_INPUTS',400)}
+ try{p=validateInputs(await readBoundedJson(request,600000))}catch{return errorResponse('INVALID_RADAR_INPUTS',400)}
  try{
   const latest=await readInputs(env.MARKET_DB)
   if(latest&&(p.marketDate<latest.marketDate||p.marketDate===latest.marketDate&&Date.parse(p.observedAt)<Date.parse(latest.observedAt)))return errorResponse('OBSOLETE_INPUTS',409)
