@@ -1,5 +1,5 @@
 export const NEWS_WINDOW_MS=2*60*60*1000
-export const SOURCE_NAMES={wallstreetcn:'华尔街见闻',jin10:'金十数据',mktnews:'MktNews',futu_flash:'富途快讯',futu_company:'富途资讯',futu_industry:'富途资讯',futu_market:'富途资讯',market_monitor:'系统监测'}
+export const SOURCE_NAMES={cls_telegraph:'财联社',wallstreetcn:'华尔街见闻',jin10:'金十数据',mktnews:'MktNews',futu_flash:'富途快讯',futu_company:'富途资讯',futu_industry:'富途资讯',futu_market:'富途资讯',market_monitor:'系统监测'}
 export function parsePublishedAt(value){
  if(value==null||value===''||typeof value==='boolean')return null
  if(typeof value==='number'||/^\d{10,13}$/.test(String(value))){const n=Number(value),ms=n<1e12?n*1000:n;return Number.isFinite(ms)&&ms>=946684800000?ms:null}
@@ -27,15 +27,15 @@ export function freshNews(items,now=Date.now(),{accept}={}){
  return result
 }
 export function normalizeFeed(source,data){
- const futu=source.startsWith('futu_')
+ const futu=source.startsWith('futu_'),cls=source==='cls_telegraph'
  if(futu&&(Number(data?.code)!==0||source==='futu_flash'&&data?.data?.code!==undefined&&Number(data.data.code)!==0))throw Error('INVALID_FEED')
  const rows=futu?(source==='futu_flash'?data?.data?.data?.news:data?.data):source==='wallstreetcn'?data?.data?.items:source==='jin10'?data:data?.data
  if(!Array.isArray(rows))throw Error('INVALID_FEED')
- return rows.slice(0,100).filter(k=>source!=='jin10'||!k.channel?.includes(5)).map(k=>{
+ return rows.slice(0,100).filter(k=>k&&typeof k==='object'&&(!cls||/^\d+$/.test(String(k.id))&&Number(k.is_ad??0)===0&&Number(k.is_fad??0)===0)&&(source!=='jin10'||!k.channel?.includes(5))).map(k=>{
   const id=k.news_id??k.id
-  const title=plain(futu?(k.title||k.content):source==='wallstreetcn'?(k.title||k.content_text):(k.data?.title||k.data?.content)),publishedAt=parsePublishedAt(futu?(k.publish_time??k.time):source==='wallstreetcn'?k.display_time:k.time)
-  const url=futu?(k.url||k.detailUrl||`https://news.futunn.com/flash/${encodeURIComponent(id)}`):source==='wallstreetcn'?(k.uri||`https://wallstreetcn.com/livenews/${encodeURIComponent(id)}`):source==='jin10'?`https://flash.jin10.com/detail/${encodeURIComponent(id)}`:`https://mktnews.net/flashDetail.html?id=${encodeURIComponent(id)}`
-  return {id:id==null?'':`${source}:${id}`,title:title.slice(0,1200),url,source,sourceName:SOURCE_NAMES[source],publishedAt,important:futu?Number(k.level)>0:source==='wallstreetcn'?Number(k.score)>1:Boolean(k.important),relatedStockCount:Array.isArray(k.relatedStocks)?k.relatedStocks.length:0}
+  const title=plain(cls?(k.title||k.content):futu?(k.title||k.content):source==='wallstreetcn'?(k.title||k.content_text):(k.data?.title||k.data?.content)),publishedAt=parsePublishedAt(cls?k.ctime:futu?(k.publish_time??k.time):source==='wallstreetcn'?k.display_time:k.time)
+  const url=cls?`https://www.cls.cn/detail/${encodeURIComponent(id)}`:futu?(k.url||k.detailUrl||`https://news.futunn.com/flash/${encodeURIComponent(id)}`):source==='wallstreetcn'?(k.uri||`https://wallstreetcn.com/livenews/${encodeURIComponent(id)}`):source==='jin10'?`https://flash.jin10.com/detail/${encodeURIComponent(id)}`:`https://mktnews.net/flashDetail.html?id=${encodeURIComponent(id)}`
+  return {id:id==null?'':`${source}:${id}`,title:title.slice(0,1200),url,source,sourceName:SOURCE_NAMES[source],publishedAt,important:cls?['A','B'].includes(k.level):futu?Number(k.level)>0:source==='wallstreetcn'?Number(k.score)>1:Boolean(k.important),relatedStockCount:cls?(Array.isArray(k.stock_list)?k.stock_list.length:0):Array.isArray(k.relatedStocks)?k.relatedStocks.length:0}
  }).filter(k=>k.id&&k.title&&k.publishedAt!==null&&/^https:\/\//.test(k.url))
 }
 export async function collectNews(loader,now=Date.now(),sources=Object.keys(SOURCE_NAMES).filter(id=>id!=='market_monitor')){

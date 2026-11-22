@@ -12,8 +12,8 @@ test('inactive sources exclude all retired general-interest feeds', () => {
   }
 })
 
-test('active sources include the stock-focused Sina Finance feed and exclude the blocked STCN feed', () => {
-  assert.equal(ACTIVE_SOURCE_IDS.has('sinafinance'), true)
+test('fixed cards exclude Investing, Sina Finance and Gelonghui per user selection', () => {
+  for(const id of ['investing','sinafinance','gelonghui'])assert.equal(ACTIVE_SOURCE_IDS.has(id), false)
   assert.equal(ACTIVE_SOURCE_IDS.has('stcn'), false)
 })
 

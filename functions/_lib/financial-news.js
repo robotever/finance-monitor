@@ -1,8 +1,10 @@
+import {parseClsTelegraph} from './cls-news.js'
 import {upstreamText} from './upstream.js'
 import {normalizeFeed,freshNews,SOURCE_NAMES} from '../../src/features/live-news/model.mjs'
 import {financeNewsPolicy,selectFinancialNews,marketObservation,CATEGORY_LABELS,NEWS_POLICY_VERSION,mediaUnavailable} from '../../src/features/live-news/policy.mjs'
-export const NEWS_CHANNELS=['futu_flash','futu_company','futu_industry','futu_market','wallstreetcn','jin10']
+export const NEWS_CHANNELS=['cls_telegraph','futu_flash','futu_company','futu_industry','futu_market','wallstreetcn','jin10']
 const FEEDS={
+ cls_telegraph:'https://m.cls.cn/telegraph',
  wallstreetcn:'https://api-one.wallstcn.com/apiv1/content/lives?channel=a-stock-channel&limit=100',
  jin10:'https://www.jin10.com/flash_newest.js',
  mktnews:'https://api.mktnews.net/api/flash?type=0&limit=100',
@@ -14,8 +16,9 @@ export async function loadFeed(source,fetcher=fetch){
  let url=FEEDS[source]
  if(QUERIES[source]){const u=new URL('https://ai-news-search.futunn.com/news_search');for(const [key,value] of Object.entries({keyword:QUERIES[source],size:'20',news_type:'1',lang:'zh-CN',sort_type:'2'}))u.searchParams.set(key,value);url=u.toString()}
  if(!url)throw Error('UNSUPPORTED_SOURCE')
- const referer=source.startsWith('futu_')?'https://news.futunn.com/main/live':source==='jin10'?'https://www.jin10.com/':source==='wallstreetcn'?'https://wallstreetcn.com/':'https://mktnews.net/'
+ const referer=source==='cls_telegraph'?'https://m.cls.cn/':source.startsWith('futu_')?'https://news.futunn.com/main/live':source==='jin10'?'https://www.jin10.com/':source==='wallstreetcn'?'https://wallstreetcn.com/':'https://mktnews.net/'
  let text=await upstreamText(url,{fetcher,headers:{'User-Agent':QUERIES[source]?'futunn-news-search/0.0.4 (Finance Monitor)':'Mozilla/5.0','Accept':'application/json, text/javascript, */*','Accept-Language':'zh-CN,zh;q=0.9','Referer':referer}})
+ if(source==='cls_telegraph')return parseClsTelegraph(text)
  if(source==='jin10')text=text.replace(/^\s*var\s+newest\s*=\s*/,'').replace(/;\s*$/,'')
  return JSON.parse(text)
 }
