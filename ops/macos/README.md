@@ -79,3 +79,7 @@ explicit configured non-trading dates do not create intraday source-delay
 errors. Weekdays are an approximation unless `schedule.tradingDates` is present
 in the checkout's versioned config; supply the same calendar for job and health
 before relying on holiday suppression.
+
+## 本地备用板块页
+
+使用`python3 ops/macos/install-local-board-service.py --install`安装登录后自动运行的回环网页服务及桌面 **Finance Monitor 本地看板.app**。桌面入口可自行恢复服务，无需Codex在线。仅本机可访问，不改采集器。打开方式与维护见[本地使用说明](../../docs/local-board-access.md)。
