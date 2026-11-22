@@ -13,14 +13,14 @@ export const RISK_SOURCES=[
  ...[['dollar','DINIW'],['cnh','USDCNH'],['jpy','USDJPY']].map(([id,code])=>({id,name:'新浪财经 '+code,roles:[id],url:forex(code),parse:text=>({[id]:parseFx(text)})})),
  ...[['shanghai','sh000001'],['hstech','hkHSTECH'],['nasdaq','us.IXIC']].map(([id,code])=>({id,name:'腾讯财经 '+code,roles:[id],url:equity(code),parse:text=>({[id]:parseEquity(JSON.parse(text),code)})})),
 ]
-export async function fetchRiskSource(id,{fetcher=fetch,now=Date.now()}={}){
+export async function fetchRiskSource(id,{fetcher=fetch,now=Date.now(),historyYears}={}){
  const source=RISK_SOURCES.find(s=>s.id===id);if(!source)throw Error('INVALID_RISK_SOURCE')
  const headers={'User-Agent':'Mozilla/5.0 (FinanceMonitor)','Referer':id==='vix'?'https://www.cboe.com/':source.url?.includes('sina')?'https://finance.sina.com.cn/':undefined}
  if(!headers.Referer)delete headers.Referer
  const read=url=>upstreamText(url,{fetcher,headers,maxBytes:1500000})
  let result
  if(source.treasuryType){
-  const date=new Date(now),year=date.getUTCFullYear(),years=date.getUTCMonth()<2?[year-1,year]:[year]
+  const date=new Date(now),year=date.getUTCFullYear(),years=historyYears===2||date.getUTCMonth()<2?[year-1,year]:[year]
   const pieces=await Promise.all(years.map(y=>read(`${treasury}?data=${source.treasuryType}&field_tdr_date_value=${y}`)))
   result=source.parse(pieces.join('\n'))
  }else result=source.parse(await read(source.url))
@@ -28,15 +28,15 @@ export async function fetchRiskSource(id,{fetcher=fetch,now=Date.now()}={}){
  if(!Object.values(data).some(rows=>rows.length))throw Error('NO_VALID_RISK_DATA')
  return data
 }
-export async function loadRiskSource(id,{cache,origin='https://newsmonitor.pages.dev',fetcher=fetch,now=Date.now(),waitUntil}={}){
+export async function loadRiskSource(id,{cache,origin='https://newsmonitor.pages.dev',fetcher=fetch,now=Date.now(),waitUntil,historyYears}={}){
  const source=RISK_SOURCES.find(s=>s.id===id);if(!source)throw Error('INVALID_RISK_SOURCE')
- const key=new Request(new URL(`/api/cross-market/source-cache/${RISK_VERSION}/${id}`,origin))
+ const key=new Request(new URL(`/api/cross-market/source-cache/${RISK_VERSION}/${id}${historyYears===2?'/two-years':''}`,origin))
  let old=null
  try{const r=await cache?.match(key);old=r?await r.json():null}catch{}
  if(old&&(!Number.isFinite(old.lastSuccessAt)||old.lastSuccessAt>now||!old.data||!Object.values(old.data).every(Array.isArray)))old=null
  if(old&&now-old.lastSuccessAt<300000)return {...old,id,name:source.name,status:'ok',cached:true}
  try{
-  const data=await fetchRiskSource(id,{fetcher,now}),lastSuccessAt=Date.now()
+  const data=await fetchRiskSource(id,{fetcher,now,historyYears}),lastSuccessAt=Date.now()
   const result={id,name:source.name,status:'ok',data,lastSuccessAt}
   if(cache){const write=cache.put(key,Response.json(result,{headers:{'Cache-Control':'public,max-age=604800'}})).catch(()=>{});if(waitUntil)waitUntil(write);else await write}
   return result
