@@ -41,7 +41,7 @@ python3 -m tools.market_dashboard.radar_history_job --job-root '/private/tmp/rad
 
 默认读取稳定项目父目录下state/market-radar-inputs。源码/说明位于finance-monitor项目，原始股票响应和本地panel不提交仓库；持久审计缓存保存在运行根目录的history-backfill/2026-11-20。
 
-正式部署与生产核验结果在发布后补充，不以候选成功冒充已经上线。
+正式生产部署结果见下方。
 
 
 ## 云端候选验收
@@ -51,3 +51,11 @@ python3 -m tools.market_dashboard.radar_history_job --job-root '/private/tmp/rad
 实际接入时发现历史扩展包默认JSON带空白263364字节，超过旧共用256KiB传输上限；已统一雷达专用原始流600000字节上限与500000规范化契约，旧接口仍默认256KiB，生产发布器改紧凑编码238362字节。大包通过/旧默认拒绝的真实路由回归通过，数据已正确入库；没有为通过发布删除历史或放宽金融字段验证。
 
 原始审计输入、成员冻结、本地panel、1428成功缓存及回填报告已保存持久history-backfill/2026-11-20，latest提交前备份存在。
+
+## 正式生产验收
+
+2026-11-22，功能提交2550dbc已合入main并推送，生产部署46374b3e完成，稳定入口仍为 https://newsmonitor.pages.dev/#market-research-radar 。稳定目录发布器确认status=published、marketDate=2026-11-20。
+
+生产API issues=[]、sourceErrors=0，六风格1日/5日三轴均有值。真实浏览器加载index-BbBOFUli.js，六卡5日强度依次+8/-20/+11/-8/+3/-11分；展开科技显示1日(-25,-11,+22)、5日(-11,+4,+19)，无模块缺失提醒。
+
+发布前后板块generation均为25c52aa0d16465bb4bf00122b80a496cfcc531ff65b3d14e88baa97a511ef23b，板块数据未被本次回填改动。
