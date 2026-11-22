@@ -45,3 +45,12 @@ Mac须开机、登录、联网，日线任务不承诺盘中资金实时。原�
 最终聚焦Python41项、Node61项、生产构建通过；后续small动态停牌恢复仅用当次完整官方快照和同日MX原始广度精确吻合，不缓存到未来，日期/复牌/分页/数量失败不排除。旧完整包漏采日的早盘恢复已用同花顺真实交易日历修复。D1读取对早期混合+08/Z时区存量按实际时间排序，真SQLite集成回归通过；不删除既有记录。
 
 入口HTML加no-cache/must-revalidate，避免浏览器继续使用早期预览HTML；带hash资源仍正常缓存。发布后正式站、服务状态及板块generation将由实际验证确认。
+
+
+## 正式上线验证
+
+生产部署：https://e5da25e7.newsmonitor.pages.dev ，正式入口仍为 https://newsmonitor.pages.dev/#market-research-radar 。功能提交e89ad1e已合入并推送main。正式API实际验证market-radar-v2、11月20日、24个有效分数、issues=[]、sourceErrors=0；真实浏览器加载最新CeDF资源、无异常条，七组涨跌平和资金原值可见。
+
+新LaunchAgent已启用，路径为稳定checkout；每300秒，实测runs=1、last exit code=0、outside_daily_window，证明周日安全退出及调度接通，不伪称下个交易日自然执行已经验收。完整输入与跨日成功缓存已迁入持久目录state/market-radar-inputs；既有原板块LaunchAgent仍加载，生产sector generation与发布前相同（25c52aa0d16465bb4bf00122b80a496cfcc531ff65b3d14e88baa97a511ef23b），跨市场仍12源0错误。
+
+独立review最终未发现发布阻碍。动态停牌仅用当前官方快照和同日原始指数广度精确吻合，不作未来外推。正式HTML响应no-cache,must-revalidate，防旧页面资源长期滞留。历史资金不足的六个5日强度变化明确显示—，没有伪造或删去条目。
