@@ -1,6 +1,7 @@
 <template>
  <section id="market-research-radar" class="market-radar terminal-panel" aria-labelledby="market-radar-title" :aria-busy="loading">
   <ModuleHeader title="市场研究雷达" title-id="market-radar-title" :time-text="data?`日线 · ${data.commonDate??data.ashare.date??'待更新'}`:undefined" :datetime="data?.commonDate??undefined" time-title="已完成交易日；各市场具体日期见卡片" :loading="loading" @refresh="refresh"/>
+  <LocalDataNote :status="data?.localStatus"/>
   <div v-if="data" class="market-radar__body">
    <p v-if="error||data.issues.length" class="market-radar__notice" role="status">{{error||issueText}} <button class="quiet-button" @click="refresh" :disabled="loading">重试</button></p>
    <div class="market-radar__primary"><RadarScoreCard :item="data.global" :show-date="!data.commonDate"/><RadarScoreCard :item="data.ashare" :show-date="!data.commonDate"/></div>
@@ -12,6 +13,7 @@
 </template>
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,shallowRef} from 'vue'
+import LocalDataNote from './LocalDataNote.vue'
 import ModuleHeader from './ModuleHeader.vue'
 import RadarScoreCard from './RadarScoreCard.vue'
 import {RADAR_VERSION,type Radar,type RadarObject} from '@/features/market-radar/model.mjs'

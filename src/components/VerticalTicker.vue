@@ -11,7 +11,7 @@
    </div>
   </div>
   <div v-else class="terminal-empty" role="status"><i class="status-dot"/><h3>{{store.liveLoading?'正在连接快讯源':store.selectedNewsCategory==='all'?'最近2小时暂无财经快讯':'当前分类暂无新快讯'}}</h3></div>
-  <footer class="live-rail__footer"><details><summary>来源状态</summary><p v-for="source in store.liveSources" :key="source.id">{{source.name}} · {{source.status==='ok'?'已连接':source.status==='empty'?'暂无数据':'暂不可用'}}<template v-if="source.note"> · {{source.note}}</template><template v-if="source.newestAt"> · 最新 {{time(source.newestAt)}}</template></p><p v-if="store.liveCheckedAt">最近检查 {{time(store.liveCheckedAt)}}</p></details></footer>
+  <footer class="live-rail__footer"><details v-if="store.localArchiveItems.length"><summary>离线快讯存档 · {{store.localArchiveItems.length}}条</summary><p>以下消息已超过两小时，不参与实时滚动。</p><p v-for="item in store.localArchiveItems" :key="item.id"><time>{{new Date(item.publishedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})}}</time> · {{item.sourceName}} · <a :href="item.url" target="_blank" rel="noopener noreferrer">{{item.title}}</a></p></details><details><summary>来源状态</summary><p v-for="source in store.liveSources" :key="source.id">{{source.name}} · {{source.status==='ok'?'已连接':source.status==='empty'?'暂无数据':'暂不可用'}}<template v-if="source.note"> · {{source.note}}</template><template v-if="source.newestAt"> · 最新 {{time(source.newestAt)}}</template></p><p v-if="store.liveCheckedAt">最近检查 {{time(store.liveCheckedAt)}}</p></details></footer>
  </section>
 </template>
 <script setup lang="ts">

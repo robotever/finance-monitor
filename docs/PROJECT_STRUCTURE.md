@@ -85,6 +85,11 @@ functions/
 
 | 文件 | 职责 |
 |---|---|
+| `local_home_server.mjs` / `hithink_preview_server.mjs` | 完整本地首页与旧启动入口兼容，回环只读API、板块快照与成分股 |
+| `local_home_http.mjs` | 固定公开源直连、限时限量、原始响应缓存及原时间恢复 |
+| `local_home_news.mjs` | 财经快讯聚合、两小时筛选和过期快讯归档 |
+| `local_research_data.mjs` | 复用正式雷达／风险方法，读取本机资金广度和持久化原始序列 |
+| `local_market_quotes.mjs` | 八项全球报价与历史序列、来源标识和断网缓存 |
 | `job.py` | 任务入口、调度、锁、采集编排、发布与状态提交 |
 | `sources.py` | Wind、妙想、FRED 调用与源数据验证 |
 | `scoring.py` | v2 通用评分原语和加权模型 |
@@ -155,3 +160,5 @@ functions/
 ## Hithink v4 迁移入口
 
 D1 迁移 `migrations/0003_hithink_sector_rotation_v4.sql` 是本地已实现但未远端执行的附加迁移。Node 验证入口为 `tests/sector-rotation-v4-{publish,read,ui}.test.mjs`；Python 对应 `tests/test_hithink_*.py` 和 `test_rotation_v4.py`。当前状态以 [STATUS](STATUS.md) 和 [v4 验证记录](verification/2026-11-17-hithink-sector-v4.md) 为准；旧设计文件不证明已完成生产切换。
+
+本地首页临时数据位于 `data/local-home/`（不入Git），桌面启动方式见 [本地使用说明](local-board-access.md)。

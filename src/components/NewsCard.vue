@@ -14,7 +14,7 @@
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
         <span v-if="data.updatedAt && !data.loading" style="font-size:10px; color:#667;">
-          读取 {{ timeAgo(data.updatedAt) }}
+          {{data.cached?'缓存':'读取'}} {{ timeAgo(data.updatedAt) }}
         </span>
         <button @click="$emit('refresh')" style="
           background:none; border:none; cursor:pointer; color:#667; font-size:11px; padding:0 2px;
