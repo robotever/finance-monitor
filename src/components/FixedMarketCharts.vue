@@ -1,6 +1,6 @@
 <template>
  <section class="market-watch terminal-panel" aria-labelledby="watch-title">
-  <header class="terminal-panel__header"><h2 id="watch-title">全球联动</h2></header>
+  <ModuleHeader title="全球联动" title-id="watch-title" :time-text="usesTradingView?'数据时间见图内':quote?formatTime(quote.observedAt)+' 北京':undefined" :datetime="!usesTradingView?quote?.observedAt:undefined" :loading="loading" @refresh="refreshMarket"/>
   <div class="market-watch__tabs" role="tablist" aria-label="固定关注品种"><button v-for="instrument in INSTRUMENTS" :id="`watch-tab-${instrument.id}`" :key="instrument.id" type="button" role="tab" :aria-selected="selected===instrument.id" aria-controls="watch-chart" :tabindex="selected===instrument.id?0:-1" :class="{active:selected===instrument.id}" @click="selected=instrument.id" @keydown="tabKey($event,instrument.id)">{{instrument.name}}</button></div>
   <div id="watch-chart" role="tabpanel" :aria-labelledby="`watch-tab-${selected}`" class="market-watch__body">
    <div v-if="quote&&!usesTradingView" class="market-watch__quote market-watch__quote--compact"><div class="market-watch__price" :class="quote.changePercent>=0?'is-up':'is-down'"><strong>{{quote.price.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}}</strong><span>{{quote.changePercent>0?'+':''}}{{quote.changePercent.toFixed(2)}}%</span></div></div>
@@ -21,6 +21,7 @@
 </template>
 <script setup lang="ts">
 import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue'
+import ModuleHeader from './ModuleHeader.vue'
 import {INSTRUMENTS,chartGeometry,chartX,widgetConfig,visibleChartPoints,type MarketQuote} from '@/features/market-watch/model.mjs'
 const requested=new URLSearchParams(window.location.search).get('watch')
 const selected=ref(INSTRUMENTS.some(i=>i.id===requested)?requested!:'shanghai'),active=computed(()=>INSTRUMENTS.find(i=>i.id===selected.value)!),quote=ref<MarketQuote|null>(null),loading=ref(false),error=ref(''),widgetError=ref(false),widgetHost=ref<HTMLElement|null>(null),hoverIndex=ref<number|null>(null)
@@ -38,6 +39,7 @@ async function loadQuote(){
  const id=selected.value
  try{const response=await fetch(`/api/market-watch/quote?instrument=${id}`,{signal:AbortSignal.any([local.signal,AbortSignal.timeout(12000)])});if(!response.ok)throw Error('行情暂不可用');const value=await response.json() as MarketQuote;if(!Array.isArray(value.points)||!Number.isFinite(value.price))throw Error('行情格式异常');if(selected.value===id){quote.value=value;error.value=''}}catch{if(!local.signal.aborted&&selected.value===id)error.value='刷新失败；已有行情仅供核对，请注意时间'}finally{if(selected.value===id)loading.value=false}
 }
+async function refreshMarket(){if(loading.value)return;if(usesTradingView.value){loading.value=true;try{await renderWidget()}finally{loading.value=false}}else await loadQuote()}
 async function renderWidget(){
  clearTimeout(widgetTimer);observer?.disconnect();widgetError.value=false;await nextTick();if(!widgetHost.value||!usesTradingView.value)return
  const host=widgetHost.value;host.replaceChildren()
@@ -46,7 +48,7 @@ async function renderWidget(){
 }
 function tabKey(e:KeyboardEvent,id:string){if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const n=INSTRUMENTS.findIndex(i=>i.id===id),index=e.key==='Home'?0:e.key==='End'?7:(n+(e.key==='ArrowRight'?1:7))%8;selected.value=INSTRUMENTS[index]!.id;void nextTick(()=>document.getElementById('watch-tab-'+selected.value)?.focus())}
 watch(zoom,()=>{hoverIndex.value=null})
-watch(selected,async()=>{controller?.abort();clearTimeout(widgetTimer);observer?.disconnect();quote.value=null;zoom.value=1;hoverIndex.value=null;error.value='';if(!usesTradingView.value)await loadQuote();else await renderWidget()})
+watch(selected,async()=>{controller?.abort();clearTimeout(widgetTimer);observer?.disconnect();loading.value=false;quote.value=null;zoom.value=1;hoverIndex.value=null;error.value='';if(!usesTradingView.value)await loadQuote();else await renderWidget()})
 onMounted(()=>{if(usesTradingView.value)void renderWidget();else void loadQuote();interval=setInterval(()=>{if(!document.hidden)void loadQuote()},60000)})
 onUnmounted(()=>{clearInterval(interval);clearTimeout(widgetTimer);controller?.abort();observer?.disconnect()})
 </script>

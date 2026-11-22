@@ -1,3 +1,4 @@
+@import "../../src/module-header.css";
 .preview-compact{max-width:1480px;margin:12px auto;padding:14px!important;color:#dce9f0;border-top:0}
 .preview-compact h1{font-size:19px;margin:0}.preview-compact h2{font-size:15px;margin:12px 0 7px}.preview-compact h3{font-size:13px;margin:0;padding:7px 9px;border-bottom:1px solid #29404f}
 .preview-header,.preview-section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.preview-section-heading>span,.preview-meta{font-size:11px;color:#9eb3c2;line-height:1.5;margin:5px 0}

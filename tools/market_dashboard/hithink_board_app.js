@@ -38,8 +38,9 @@ export function createSectorBoard({snapshot=false,live=false}={}){return {setup(
    h('th',{scope:'row'},h('button',{type:'button',class:'preview-name',onClick:()=>select(r),title:r.id+' · 完整度'+r.completeness+'%'},r.name)),
    h('td',{class:tone(r.metrics?.return1d)},percent(r)),...['strength','opportunity','risk'].map(a=>h('td',r[a]??'—'))
   ])))])])}
- let timer,refreshing=false
- async function refresh(){if(refreshing)return;refreshing=true
+ let timer
+ const refreshing=ref(false)
+ async function refresh(){if(refreshing.value)return;refreshing.value=true
  const version=++viewVersion,selection=selectionVersion,opened=detail.value
  const urls=['latest',catalogUrl(),historyUrl()]
  if(opened)urls.push(detailUrl(opened))
@@ -49,13 +50,13 @@ export function createSectorBoard({snapshot=false,live=false}={}){return {setup(
   if(version!==viewVersion)return
   latest.value=values[0];catalog.value=values[1];history.value=values[2];error.value=''
   if(opened&&selection===selectionVersion&&detail.value?.id===opened.id&&opened.batchId!==values[0].batchId)detail.value=values[3]
- }catch{error.value='更新暂未完成，请稍后重试；已显示的数据仍保留。'}finally{refreshing=false}}
+ }catch{error.value='更新暂未完成，请稍后重试；已显示的数据仍保留。'}finally{refreshing.value=false}}
  onMounted(()=>{refresh();if(live||!snapshot)timer=setInterval(refresh,30000);window.addEventListener('focus',refresh)})
  onUnmounted(()=>{clearInterval(timer);window.removeEventListener('focus',refresh)})
  return()=>h('main',{class:'market-dashboard fv-card sector-rotation preview-compact'},[
-  h('header',{class:'preview-header'},[
-   h('div',[h('h1',live?'板块研究 · 在线实时看板':snapshot?'板块研究 · 在线验收版':'板块研究 · 本地实时看板'),h('p',{class:'preview-meta'},latest.value?'市场日期 '+latest.value.marketDate+' · 采集 '+new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' 北京时间 · '+(latest.value.historicalReconstruction?'历史重建':latest.value.officialClose?'收盘快照':'盘中快照'):'读取中…')]),
-   button('刷新',refresh)
+  h('header',{class:'module-header'},[
+   h('h1','板块研究'),
+   h('div',{class:'module-header__actions'},[h('time',{datetime:latest.value?.observedAt,title:'最近有效数据采集时间'},latest.value?new Date(latest.value.observedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})+' 北京':'数据时间待更新'),button(refreshing.value?'刷新中…':'刷新',refresh,{disabled:refreshing.value,'aria-label':'刷新板块研究'})])
   ]),
   h('nav',{class:'preview-links','aria-label':'页面快速导航'},[snapshot?h('a',{href:'/'},'← 市场雷达与新闻'):null,h('a',{href:'#preview-overview'},'行业三榜'),h('a',{href:'#preview-concepts'},'概念观察'),h('a',{href:'#reconstruction-history'},'历史轮动'),h('a',{href:'#preview-catalog'},'全部目录')]),
   live?h('p',{class:'market-notice',role:'status'},liveStatus.value.mode==='fallback'?'线上首批数据尚未发布，当前显示静态归档快照。':liveStatus.value.mode==='live'?(liveStatus.value.publishHealth?.state==='failed'?'最近一次数据'+(liveStatus.value.publishHealth?.phase==='collection'?'采集':'发布')+'未完成，当前保留上次成功数据。':latest.value&&!latest.value.officialClose&&!latest.value.historicalReconstruction&&Date.now()-Date.parse(latest.value.observedAt)>1800000?'采集时间距今已超过30分钟，请结合市场日期与盘中／收盘状态阅读。':'交易时段每15分钟采集，页面每30秒检查更新；休市时保留最近数据。'):'正在检查线上数据…'):snapshot?h('p',{class:'market-notice'},'当前为发布时的数据快照，尚未接通线上自动更新，请以显示的采集时间为准。'):null,

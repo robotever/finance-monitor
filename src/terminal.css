@@ -58,3 +58,5 @@ button,a{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-vi
 .research-home .live-rail__window{flex:none;height:clamp(56px,calc(var(--live-news-rows,12)*52px),640px);max-height:calc(100vh - 180px)}
 
 @media(max-width:850px){.research-home .home-content>.market-radar{grid-row:3}}
+
+@media(max-width:850px){.research-home .home-content>.cross-risk{grid-row:4}}
