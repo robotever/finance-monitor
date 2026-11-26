@@ -1,3 +1,4 @@
+import {validateTurnover} from './turnover.mjs'
 import {validDate} from '../cross-market-risk/parsers.mjs'
 export const MARKET_OBSERVATION_VERSION='market-observation-v1'
 export const OBSERVATION_METRICS={breadth:['upShare','upCount','downCount','medianChange'],trend:['ma20Share','ma60Share','high20Share','low20Share','high60Share','low60Share'],turnover:['turnoverCny','top10pctShare','dailyVolumeRatio20','dailyVolumePercentile'],relay:['upCount','downCount','sealRate','yesterdayReturn','promotionRate']}
@@ -11,7 +12,7 @@ function instant(x){check(text(x,50)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.
 function asOf(x,observed){if(validDate(x)){check(x<=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(observed)));return x;}check(instant(x)<=observed+300000);return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(x))}
 const approx=(a,b)=>Math.abs(a-b)<1e-6
 export function validateMarketObservation(p,now=Date.now()){
- shape(p,['schemaVersion','observedAt','marketDate','previousMarketDate','snapshotAt','scope','groups','details','sources','notes'],['cached'])
+ shape(p,['schemaVersion','observedAt','marketDate','previousMarketDate','snapshotAt','scope','groups','details','sources','notes'],['cached','turnover'])
  check(p.schemaVersion===MARKET_OBSERVATION_VERSION);const observed=instant(p.observedAt);check(observed<=now+300000)
  date(p.marketDate);date(p.previousMarketDate);check(p.previousMarketDate<p.marketDate&&asOf(p.snapshotAt,observed)===p.marketDate&&p.marketDate<=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(observed)))
  const s=p.scope;shape(s,['name','expected','received','active','excluded','historyMatched','historyExpected','historyAsOf']);check(text(s.name,150)&&[s.expected,s.received,s.active,s.excluded,s.historyMatched,s.historyExpected].every(count)&&s.expected>0&&s.expected===s.received&&s.active+s.excluded===s.received&&s.historyMatched<=s.historyExpected&&s.historyExpected<=s.received);date(s.historyAsOf);check(s.historyAsOf<=p.marketDate)
@@ -47,5 +48,6 @@ export function validateMarketObservation(p,now=Date.now()){
  check(Array.isArray(p.sources)&&p.sources.length>0&&p.sources.length<=200)
  for(const source of p.sources){shape(source,['id','url','asOf']);check(text(source.id,150));const u=new URL(source.url);check(u.protocol==='https:'&&u.hostname==='fuyao.aicubes.cn'&&!u.port&&!u.username&&!u.password&&!u.hash&&(u.pathname==='/'||u.pathname.startsWith('/api/')||u.pathname.startsWith('/docs/')));for(const key of u.searchParams.keys())check(!/key|token|secret|signature/i.test(key));asOf(source.asOf,observed)}
  check(Array.isArray(p.notes)&&p.notes.length<=30&&p.notes.every(n=>text(n,1200))&&(p.cached===undefined||typeof p.cached==='boolean'))
+ if(p.turnover!==undefined){validateTurnover(p.turnover,now);check(p.turnover.date<=p.marketDate&&(p.turnover.date<p.marketDate||p.turnover.previousDate===p.previousMarketDate))}
  check(new TextEncoder().encode(JSON.stringify(p)).length<1000000);return p
 }

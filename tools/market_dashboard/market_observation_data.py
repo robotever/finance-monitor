@@ -137,6 +137,19 @@ def derive_observation(snapshot, history, stats, down_rows, yesterday_rows, drag
     return {'schemaVersion':'market-observation-v1','observedAt':observed_at,'marketDate':market_date,'previousMarketDate':previous_date,'snapshotAt':at,'scope':{'name':'沪深北全A（含ST）','expected':total,'received':len(rows),'active':n,'excluded':total-n,'historyMatched':len(hist),'historyExpected':n,'historyAsOf':previous_date},'groups':groups,'details':{'distribution':distribution,'relay':relay,'dragonTiger':{'date':dragon.get('trade_date',previous_date),'asOf':stamp(dragon['timestamp']) if dragon.get('timestamp') else observed_at,'status':'ok' if dragon_ok else 'failed','rows':[{'code':r.get('thscode'),'name':r.get('name'),'netCny':number(r.get('org_net_value')),'buyCny':number(r.get('buy_value')),'sellCny':number(r.get('sell_value')),'rangeDays':r.get('range_days')} for r in dragon.get('stock_items',[])],'note':'机构榜；净额为机构净额，买入/卖出为榜单总额；一日与三日记录分别保留。' if dragon_ok else '来源请求失败，空列表不代表无上榜记录。'},'abnormal':{'asOf':observed_at,'status':'ok' if abnormal_ok else 'failed','rows':[{'code':r.get('thscode'),'name':r.get('name'),'startDate':stamp(r['start_date_ms'])[:10],'endDate':stamp(r['end_date_ms'])[:10] if r.get('end_date_ms') else None,'label':r.get('monitor_label','重点监控')} for r in abnormal.get('item',[])],'note':'来源请求失败，空列表不代表无异动记录。' if not abnormal_ok else '当前监控区间，非当日新增事件。'}},'sources':[],'notes':['广度剔除无有效成交量或行情的证券；平盘单列。','趋势采用前一交易日已完成前复权收盘；新高/低比较此前20/60个交易日收盘。','日成交额倍数和分位使用连续61日完整固定样本，样本数单列。','涨停、打开、触板及封板率取同一统计响应；跌停池、昨日接力独立采样。']}
 
 
+def enrich_turnover(payload,*,snapshot_rows,snapshot_at,previous_date,calendar_days,state_root,project_root):
+    from .market_turnover_data import collect_turnover
+    try:
+        payload['turnover']=collect_turnover(snapshot_rows=snapshot_rows,snapshot_at=snapshot_at,previous_date=previous_date,calendar_days=calendar_days,state_root=Path(state_root),project_root=Path(project_root))
+    except Exception:
+        try:
+            saved=json.loads((Path(state_root)/'latest.json').read_text()).get('turnover')
+            if saved:payload['turnover']=saved
+        except (OSError,ValueError):pass
+        payload['notes'].append('量能扩展本次未更新；如有已保存数据，保留原始日期与金额。')
+    return payload
+
+
 def collect_observation(*, state_root:Path, project_root:Path, now=None)->dict:
     clock_supplied=now is not None
     now=now or datetime.now(timezone.utc)
@@ -180,4 +193,6 @@ def collect_observation(*, state_root:Path, project_root:Path, now=None)->dict:
     payload['notes'].append('同花顺原始日线+公告事件，按CLI乘法口径自行调整；与实时行情供应商的复权计算存在算法及小数差异。')
     payload['details']['relay']['yesterdayLimitUp']['poolAsOf']=stamp(yesterday['timestamp'])
     payload['sources']=client.sources+[{'id':'hithink-readonly-daily-history','url':'https://fuyao.aicubes.cn/','asOf':history_meta.get('historyAsOf',previous)}]
+    enrich_turnover(payload,snapshot_rows=allrows,snapshot_at=payload['snapshotAt'],previous_date=previous,calendar_days=days,state_root=state_root,project_root=project_root)
+    if not clock_supplied:payload['observedAt']=datetime.now(timezone.utc).isoformat()
     return payload
