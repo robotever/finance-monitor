@@ -1,4 +1,5 @@
 // Private full homepage. All APIs below are read-only and independent of Pages/D1.
+import {validateMarketObservation} from '../../src/features/market-observation/model.mjs'
 import {validateEtfBundle} from '../../src/features/etf-observation/model.mjs'
 import {randomUUID} from 'node:crypto'
 import {readFile,stat,mkdir,writeFile,rename} from 'node:fs/promises'
@@ -51,6 +52,7 @@ async function route(url){
  if(path==='/api/local/source-state'){const id=p.get('source');if(!Object.hasOwn(targets,id))throw Error('INVALID_SOURCE');return proxies.status(id)}
  if(path==='/api/news/live')return news()
  if(path==='/api/market-watch/quote')return quote(p.get('instrument'))
+ if(path==='/api/market-observation'){const p=validateMarketObservation(JSON.parse(await readFile(join(project,'state/market-observation/latest.json'),'utf8')));return {...p,cached:offline}}
  if(path==='/api/market-radar/etf'){const data=validateEtfBundle(JSON.parse(await readFile(join(project,'state/etf-observation/latest.json'),'utf8')));return {...data,cached:offline}}
  if(path==='/api/market-radar')return remember('radar',20000,archivedRadar)
  if(path==='/api/cross-market/risk')return remember('risk',20000,()=>research.risk())

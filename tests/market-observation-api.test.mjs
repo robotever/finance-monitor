@@ -1,0 +1,8 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {fixture} from './fixtures/market-observation.mjs'
+import {onRequestGet,onRequestPost} from '../functions/api/market-observation.js'
+function db(){let saved;return {prepare(sql){return {bind(...xs){this.xs=xs;return this},async first(){return saved?{payload_json:JSON.stringify(saved)}:null},async run(){saved=JSON.parse(this.xs[3]);return {success:true,meta:{changes:1}}}}},get saved(){return saved}}}
+const request=(body,token='test')=>new Request('https://newsmonitor.pages.dev/api/market-observation',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)})
+test('read unavailable, auth required, payload validation prevents partial snapshots',async()=>{const store=db(),env={MARKET_DB:store,MARKET_DASHBOARD_PUBLISH_TOKEN:'test'};assert.equal((await onRequestGet({env})).status,503);assert.equal((await onRequestPost({env,request:request(fixture(),'bad')})).status,401);const p=fixture();p.scope.received=1;assert.equal((await onRequestPost({env,request:request(p)})).status,400);assert.equal(store.saved,undefined)})
+test('roundtrip actual contract and reject older snapshot even if newly generated',async()=>{const store=db(),env={MARKET_DB:store,MARKET_DASHBOARD_PUBLISH_TOKEN:'test'},p=fixture();assert.equal((await onRequestPost({env,request:request(p)})).status,200);assert.deepEqual(await (await onRequestGet({env})).json(),p);const old=fixture();old.snapshotAt='2026-11-26T06:30:00Z';old.observedAt='2026-11-26T06:40:00Z';assert.equal((await onRequestPost({env,request:request(old)})).status,409)})
