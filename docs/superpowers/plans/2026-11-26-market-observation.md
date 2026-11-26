@@ -16,5 +16,5 @@ No credentials/raw supplier envelopes in Git/browser; no writes to shared stock 
 - [x] TDD isolated API and table, authenticated publication/stale-write guard, local same-contract read.
 - [x] Collector/service: complete snapshots and pools, cache readonly panel, confirmed-daily calculations, failure details,15minute scheduling and safe logs.
 - [x] Shared compact UI, distribution and folded institution/anomaly details, actual per-group dates and refresh/cache behavior.
-- [ ] Tests/build/review and fixes; local preview then actual5184/offline, preserve static archive, cloud preview then production desktop/mobile actual checks.
-- [ ] Enable independent update job; compare payloads and unchanged old generation; update docs, PR/merge/sync and restore deployment settings.
+- [x] Tests/build/review and fixes; local preview then actual5184/offline, preserve static archive, cloud preview then production desktop/mobile actual checks.
+- [x] Enable independent update job; compare payloads and unchanged old generation; update docs, PR/merge/sync and restore deployment settings.

@@ -34,6 +34,7 @@
 
 - `market_observation_data.py` 采集/汇总；`market_observation_history.py` 管理只读历史导出及调整缓存。
 - `market_observation_service.py` 加锁、校验候选、原子替换快照，再鉴权发布；失败不替换成功快照。未知异常只记录安全类别。
+- 稳定本地页面代码位于项目内finance-monitor；其data兼容链接复用原工作树私有缓存/板块运行数据，清理工作树前需迁移这些数据。新模块状态独立于该链接。
 - 私有状态：项目根 `state/market-observation/`；供应商响应和中间日线留在 `market-observation-private/`，不进入 Git 或云端。
 - 本地 `/api/market-observation` 读取相同已验证快照；完全离线时附加缓存状态，日期不改写。
 - 云端 `0009_market_observation.sql` 新增独立 `market_observation_latest`；POST 复用既有发布令牌，严格字段/日期/样本/单位/大小/源URL校验，拒绝旧快照。既有板块、ETF、研究雷达表不改动。
