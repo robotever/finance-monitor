@@ -1,6 +1,11 @@
 const valid = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
-export function turnoverSeries(points, market) {
- return points.map(point => ({date:point.date,value:valid(point[market]) ? point[market] / 1e8 : null}))
+export function turnoverSeries(points, market, mode='amount') {
+ return points.map((point,index) => {
+  const current=point[market],previous=points[index-1]?.[market]
+  if(mode !== 'change')return {date:point.date,value:valid(current) ? current / 1e8 : null}
+  const known=valid(current)&&valid(previous),delta=known?current-previous:null
+  return {date:point.date,value:delta === null ? null : delta/1e8,changePct:known&&previous>0 ? delta/previous*100 : null}
+ })
 }
 export function rangeStart(points, months) {
  const last=points.at(-1)
@@ -13,14 +18,17 @@ export function rangeStart(points, months) {
  return first < 0 ? points.length : first
 }
 export function chartGeometry(points) {
- const high=Math.max(1,...points.filter(p=>valid(p.value)).map(p=>p.value))*1.1
- const coordinates=points.map((point,index)=>valid(point.value) ? {x:points.length < 2 ? 357 : 90+index*534/(points.length-1),y:192-point.value/high*172} : null)
+ const finite=value=>typeof value==='number'&&Number.isFinite(value)
+ const values=points.filter(p=>finite(p.value)).map(p=>p.value)
+ const high=Math.max(1,...values)*1.1,low=Math.min(0,...values)*1.1
+ const y=value=>192-(value-low)/(high-low)*172
+ const coordinates=points.map((point,index)=>finite(point.value) ? {x:points.length < 2 ? 357 : 90+index*534/(points.length-1),y:y(point.value)} : null)
  let path='',connected=false
  for(const point of coordinates){
   if(!point){connected=false;continue}
   path+=`${connected?'L':'M'}${point.x.toFixed(2)},${point.y.toFixed(2)} `;connected=true
  }
- return {path,coordinates,ticks:Array.from({length:4},(_,i)=>({value:high*i/3,y:192-i*172/3}))}
+ return {path,coordinates,zeroY:y(0),ticks:Array.from({length:4},(_,i)=>({value:low+(high-low)*i/3,y:192-i*172/3}))}
 }
 export function resizeWindow(length,start,end,factor) {
  const size=Math.min(length,Math.max(Math.min(5,length),Math.round((end-start)*factor)))

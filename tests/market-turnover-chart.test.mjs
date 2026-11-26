@@ -43,3 +43,22 @@ test('table formatting distinguishes positive, negative, zero and missing yuan',
  assert.equal(formatTurnover(0,true),'0.00')
  assert.equal(formatTurnover(null,true),'—')
 })
+
+test('daily change uses the preceding full-history session and keeps missing baselines unknown',()=>{
+ const rows=[{date:'2026-01-01',all:10e8},{date:'2026-01-02',all:12e8},{date:'2026-01-05',all:9e8},{date:'2026-01-06',all:null},{date:'2026-01-07',all:8e8},{date:'2026-01-08',all:0},{date:'2026-01-09',all:2e8}]
+ const values=turnoverSeries(rows,'all','change')
+ assert.deepEqual(values.map(p=>p.value),[null,2,-3,null,null,-8,2])
+ assert.equal(values[1].changePct,20)
+ assert.equal(values[2].changePct,-25)
+ assert.equal(values[6].changePct,null)
+ assert.equal(values.slice(2)[0].value,-3)
+})
+test('signed change charts show negative values and zero baseline in bounds',()=>{
+ const g=chartGeometry([{value:-3},{value:0},{value:2}])
+ assert.ok(g.coordinates.every(Boolean))
+ assert.ok(g.coordinates[0].y>g.coordinates[1].y)
+ assert.ok(g.coordinates[1].y>g.coordinates[2].y)
+ assert.ok(g.zeroY>20&&g.zeroY<192)
+ assert.ok(g.ticks.some(t=>t.value<0))
+ assert.ok(g.ticks.some(t=>t.value>0))
+})
