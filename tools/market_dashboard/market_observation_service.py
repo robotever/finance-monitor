@@ -11,6 +11,9 @@ def bucket(now):
  if local.weekday()>=5 or not (575<=minute<=695 or 780<=minute<=935 or 960<=minute<=975):return None
  return local.strftime('%Y-%m-%dT')+f'{minute//60:02}:{minute%60//15*15:02}'
 
+def publication_payload(data):
+ return {k:v for k,v in data.items() if k!='turnover'} if os.environ.get('MARKET_OBSERVATION_PUBLISH_TURNOVER')=='0' else data
+
 def publish(payload,url,token):
  u=urllib.parse.urlparse(url)
  if u.scheme!='https' or (u.hostname!='newsmonitor.pages.dev' and not (u.hostname or '').endswith('.newsmonitor.pages.dev')) or u.port not in (None,443) or u.path!='/api/market-observation' or u.query or u.fragment or u.username or u.password:raise ValueError('INVALID_PUBLISH_DESTINATION')
@@ -49,9 +52,9 @@ def main():
     atomic(latest,data)
    else:data=json.loads((root/'latest.json').read_text());validate_file(root/'latest.json',repo)
    if a.no_publish:print(json.dumps({'status':'collected','marketDate':data['marketDate'],'snapshotAt':data['snapshotAt']}));return 0
-   digest=hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest();pub=root/'published.json';old=json.loads(pub.read_text()) if pub.exists() else {}
+   wire=publication_payload(data);digest=hashlib.sha256(json.dumps(wire,sort_keys=True).encode()).hexdigest();pub=root/'published.json';old=json.loads(pub.read_text()) if pub.exists() else {}
    if old.get('digest')!=digest or old.get('url')!=a.url or a.force:
-    publish(data,a.url,os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN',''));atomic(pub,{'digest':digest,'url':a.url,'snapshotAt':data['snapshotAt']})
+    publish(wire,a.url,os.environ.get('MARKET_DASHBOARD_PUBLISH_TOKEN',''));atomic(pub,{'digest':digest,'url':a.url,'snapshotAt':data['snapshotAt']})
    if not a.publish_only:atomic(marker,{'slot':slot,'ok':True})
    print(json.dumps({'status':'published','marketDate':data['marketDate'],'snapshotAt':data['snapshotAt']}));return 0
   except Exception as e:
