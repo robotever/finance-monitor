@@ -52,6 +52,11 @@ try:
                 os.environ[key] = dotenv_value(value)
     os.environ['MARKET_DASHBOARD_STATE_ROOT'] = str(root / 'state')
     arguments = sys.argv[3:]
+    if '--market-observation' in arguments:
+        arguments.remove('--market-observation')
+        os.chdir(repo)
+        os.execvpe(sys.executable, [sys.executable, '-u', '-m',
+            'tools.market_dashboard.market_observation_service', *arguments], os.environ)
     if '--etf-observation' in arguments:
         arguments.remove('--etf-observation')
         os.chdir(repo)

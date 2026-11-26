@@ -87,3 +87,13 @@ before relying on holiday suppression.
 ## ETF资金观察日频服务
 
 `python3 ops/macos/install-etf-observation-service.py --enable` 安装独立的 `com.robot-ever.finance-monitor.etf-observation`。每30分钟唤醒，上海9–23点检查；完整同日数据复用，失败按小时重试，次日确认前一日份额。源与方法见 [ETF观察](../../docs/csi300-etf-observation.md)。不修改原板块及雷达评分服务。
+
+## 市场观测指标任务
+
+`python3 ops/macos/install-market-observation-service.py --enable` 安装独立的
+`com.robot-ever.finance-monitor.market-observation`，必须在稳定checkout执行。
+每5分钟唤醒、交易时段按15分钟桶采集并发布同花顺全A统计；详情16点补查。
+官方非交易日退出。Mac需开机联网且用户已登录，不依赖Codex保持打开。
+私有状态/日志分别在项目根 `state/market-observation` 和 `logs/market-observation`。
+复用现有凭据helper和发布令牌，无需向浏览器增加密钥。方法与回滚见
+[市场观测指标](../../docs/market-observation.md)。

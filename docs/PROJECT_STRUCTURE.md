@@ -1,5 +1,13 @@
 # 项目结构
 
+## 2026-11-26 市场观测指标
+
+- `src/components/MarketObservation.vue` 与 `src/features/market-observation/`：双端共用四卡、详情和严格契约。
+- `tools/market_dashboard/market_observation_{data,history,service}.py`：REST采集、官方CLI只读历史面板、独立调度发布。
+- `functions/api/market-observation.js`、`functions/_lib/market-observation.js` 与 `migrations/0009_market_observation.sql`：独立D1读写。
+- `ops/macos/install-market-observation-service.py`：稳定目录独立任务；私有状态在项目根 `state/market-observation`。
+- 方法与边界见 [市场观测指标](market-observation.md)。
+
 ## 2026-11-22 雷达恢复新增入口
 
 - `tools/market_dashboard/radar_inputs.py`：日线资金/广度采集、成员全量核验、单位归一、缓存与恢复。
