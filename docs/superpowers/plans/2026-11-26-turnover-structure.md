@@ -11,4 +11,4 @@
 - [x] Contract: strict nested turnover model/types, compatibility with legacy payload, numeric/time/unit and source invariants; API roundtrip tests.
 - [x] UI: two numeric columns/five rows, market switch and accessible one-year chart, preserve old four quantities folded, compact/mobile.
 - [x] Integrate producer optional enrichment and nonregressing publication, real candidate, tests/build and independent review.
-- [ ] Preview then production, stable service update and desktop entry; actual local/online desktop/mobile, refresh/chart/failure data checks; preserve static492; docs/PR/merge/restore deployment settings.
+- [x] Preview then production, stable service update and desktop entry; actual local/online desktop/mobile, refresh/chart/failure data checks; preserve static492; docs/PR/merge/restore deployment settings.
