@@ -1,0 +1,6 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {fixture} from './fixtures/market-observation.mjs'
+import {turnoverFixture} from './fixtures/market-turnover.mjs'
+import {onRequestPost,onRequestGet} from '../functions/api/market-observation.js'
+test('turnover extension authenticates and roundtrips in existing isolated observation table',async()=>{let saved;const db={prepare(){return {bind(...args){this.args=args;return this},async first(){return saved?{payload_json:JSON.stringify(saved)}:null},async run(){saved=JSON.parse(this.args[3]);return {success:true,meta:{changes:1}}}}}};const env={MARKET_DB:db,MARKET_DASHBOARD_PUBLISH_TOKEN:'test'};const p={...fixture(),turnover:turnoverFixture()};const req=x=>new Request('https://newsmonitor.pages.dev/api/market-observation',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify(x)});assert.equal((await onRequestPost({request:req(p),env})).status,200);assert.deepEqual(await (await onRequestGet({env})).json(),p);const bad=structuredClone(p);bad.turnover.rows[0].changeCny=99;assert.equal((await onRequestPost({request:req(bad),env})).status,400);assert.deepEqual(saved,p)})

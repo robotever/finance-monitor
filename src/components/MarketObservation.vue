@@ -5,8 +5,10 @@
    <p v-if="error || data.cached" class="observation-status" role="status">{{error || '当前显示缓存快照，时间见标题栏'}}</p>
    <div class="observation-grid">
     <article v-for="group in data.groups" :key="group.id" class="observation-card" :data-observation-group="group.id" :aria-labelledby="`observation-${group.id}`">
-     <header><h3 :id="`observation-${group.id}`">{{titles[group.id]}}</h3><time :datetime="group.asOf">{{timeText(group.asOf)}}</time></header>
-     <dl class="observation-metrics">
+     <header><h3 :id="`observation-${group.id}`">{{titles[group.id]}}</h3><time :datetime="group.id === 'turnover' && data.turnover ? data.turnover.asOf : group.asOf">{{timeText(group.id === 'turnover' && data.turnover ? data.turnover.asOf : group.asOf)}}</time></header>
+     <MarketTurnover v-if="group.id === 'turnover' && data.turnover" :data="data.turnover"/>
+     <details v-if="group.id === 'turnover' && data.turnover" class="observation-card-detail"><summary>成交集中度与历史量能</summary><dl class="observation-metrics"><div v-for="metric in group.metrics" :key="metric.id" class="observation-metric"><dt>{{metric.label}}</dt><dd :title="metricTitle(metric)"><strong>{{numberText(metric.value)}}</strong><span v-if="metric.value !== null" class="metric-unit">{{metric.unit}}</span></dd><span class="metric-date">{{modeText(metric.mode)}} · {{timeText(metric.date)}}</span></div></dl></details>
+     <dl v-else class="observation-metrics">
       <div v-for="metric in group.metrics" :key="metric.id" class="observation-metric" :data-metric="metric.id">
        <dt>{{metric.label}}</dt>
        <dd :title="metricTitle(metric)"><strong>{{numberText(metric.value)}}</strong><span v-if="metric.value !== null" class="metric-unit">{{metric.unit}}</span><span v-else class="sr-only">{{missingReason(metric.reason)}}</span></dd>
@@ -61,10 +63,12 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref, shallowRef} from 'vue'
 import ModuleHeader from './ModuleHeader.vue'
+import MarketTurnover from './MarketTurnover.vue'
+import type {TurnoverPayload} from '@/features/market-observation/turnover.mjs'
 import {validateMarketObservation} from '@/features/market-observation/model.mjs'
 
 type Metric = {id:string;label:string;value:number|null;unit:string;date:string;mode:'intraday'|'daily'|'previous-close';sample:number|null;reason:string|null}
-type Payload = {schemaVersion:string;observedAt:string;marketDate:string;previousMarketDate:string;snapshotAt:string;scope:{name:string;expected:number;received:number;active:number;excluded:number;historyMatched:number;historyExpected:number;historyAsOf:string};groups:{id:'breadth'|'trend'|'turnover'|'relay';title:string;asOf:string;metrics:Metric[]}[];details:{distribution:{label:string;count:number}[];relay:{date:string;sourceSealRate:number|null;upCount:number|null;downCount:number|null;openCount:number|null;touchedCount:number|null;ladder:{boards:number;count:number}[];yesterdayLimitUp:{date:string;expected:number;matched:number;meanReturn:number|null;promotionRate:number|null}};dragonTiger:{date:string;asOf:string;status:'ok'|'failed';rows:{code:string|null;name:string|null;netCny:number|null;buyCny:number|null;sellCny:number|null;rangeDays:number|null}[];note?:string|null};abnormal:{asOf:string;status:'ok'|'failed';rows:{code:string|null;name:string|null;startDate:string;endDate:string|null;label:string}[];note?:string|null}};sources:{id:string;url:string;asOf:string}[];notes:string[];cached?:boolean}
+type Payload = {schemaVersion:string;observedAt:string;marketDate:string;previousMarketDate:string;snapshotAt:string;scope:{name:string;expected:number;received:number;active:number;excluded:number;historyMatched:number;historyExpected:number;historyAsOf:string};groups:{id:'breadth'|'trend'|'turnover'|'relay';title:string;asOf:string;metrics:Metric[]}[];details:{distribution:{label:string;count:number}[];relay:{date:string;sourceSealRate:number|null;upCount:number|null;downCount:number|null;openCount:number|null;touchedCount:number|null;ladder:{boards:number;count:number}[];yesterdayLimitUp:{date:string;expected:number;matched:number;meanReturn:number|null;promotionRate:number|null}};dragonTiger:{date:string;asOf:string;status:'ok'|'failed';rows:{code:string|null;name:string|null;netCny:number|null;buyCny:number|null;sellCny:number|null;rangeDays:number|null}[];note?:string|null};abnormal:{asOf:string;status:'ok'|'failed';rows:{code:string|null;name:string|null;startDate:string;endDate:string|null;label:string}[];note?:string|null}};sources:{id:string;url:string;asOf:string}[];notes:string[];cached?:boolean;turnover?:TurnoverPayload}
 const data=shallowRef<Payload|null>(null), loading=ref(false), error=ref(''), dragonExpanded=ref(false), abnormalExpanded=ref(false)
 const titles={breadth:'市场广度',trend:'趋势覆盖',turnover:'量能结构',relay:'封板与接力'}
 const distributionMax=computed(()=>Math.max(1,...(data.value?.details.distribution.map(row=>row.count) ?? [])))

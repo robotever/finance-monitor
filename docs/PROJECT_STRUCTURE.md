@@ -1,5 +1,11 @@
 # 项目结构
 
+## 量能结构扩展
+
+- `MarketTurnover.vue`与`turnover-chart.mjs`：五行双列及一年图；`turnover.mjs`：严格子契约。
+- `market_turnover_data.py`：市场级原生日合计、同时间分钟校验、独立私有缓存；复用现有采集任务，不新增数据库表或服务。
+- 详见[量能方法](market-turnover.md)。
+
 ## 2026-11-26 市场观测指标
 
 - `src/components/MarketObservation.vue` 与 `src/features/market-observation/`：双端共用四卡、详情和严格契约。
